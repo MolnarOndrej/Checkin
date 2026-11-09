@@ -15,36 +15,56 @@ async function openCheckin(t) {
   return page;
 }
 
-test('ambient lighting and stars change gently and stay static with reduced motion', async (t) => {
+test('ambient light changes without animating the landscape on load', async (t) => {
   const page = await openCheckin(t);
   await page.setReducedMotion('no-preference');
   const animated = await page.evaluate(() => {
-    const glow = getComputedStyle(document.body, '::before');
+    const glow = () => getComputedStyle(document.body, '::before');
+    const halo = document.querySelector('.moon-halo');
     const star = document.querySelector('.sky-star');
+    function sample(animation, readStyle, fraction) {
+      animation.pause();
+      const { delay, duration } = animation.effect.getTiming();
+      // Sample a full cycle after the negative start delay.
+      animation.currentTime = delay + duration * (2 + fraction);
+      const { opacity, transform } = readStyle();
+      return { opacity: Number(opacity), transform };
+    }
+    const wash = document.getAnimations().find(({ animationName }) => animationName === glow().animationName);
+    const [moonlight] = halo.getAnimations();
     const [twinkle] = star.getAnimations();
-    twinkle.pause();
-    twinkle.currentTime = 0;
-    const dim = Number(getComputedStyle(star).opacity);
-    twinkle.currentTime = twinkle.effect.getTiming().duration / 2;
+    const dimWash = sample(wash, glow, .05);
+    const brightWash = sample(wash, glow, .95);
+    const dimHalo = sample(moonlight, () => getComputedStyle(halo), .05);
+    const brightHalo = sample(moonlight, () => getComputedStyle(halo), .95);
+    const dimStar = sample(twinkle, () => getComputedStyle(star), .1);
+    const brightStar = sample(twinkle, () => getComputedStyle(star), .5);
     return {
-      glowMoves: glow.animationName !== 'none',
-      glowIgnoresClicks: glow.pointerEvents === 'none',
-      starBrightens: Number(getComputedStyle(star).opacity) > dim,
+      bannerAnimations: [...document.querySelectorAll('.hero, .hero-scene, .hero-scene svg')]
+        .map((element) => getComputedStyle(element).animationName),
+      lightingStaysInPlace: [dimWash, brightWash, dimHalo, brightHalo, dimStar, brightStar]
+        .every(({ transform }) => transform === 'none'),
+      washBrightens: brightWash.opacity - dimWash.opacity > .5,
+      haloBrightens: brightHalo.opacity - dimHalo.opacity > .5,
+      starBrightens: brightStar.opacity - dimStar.opacity > .5,
+      glowIgnoresClicks: glow().pointerEvents === 'none',
     };
   });
-  assert.deepEqual(animated, { glowMoves: true, glowIgnoresClicks: true, starBrightens: true });
+  assert.deepEqual(animated, {
+    bannerAnimations: ['none', 'none', 'none'], lightingStaysInPlace: true,
+    washBrightens: true, haloBrightens: true, starBrightens: true, glowIgnoresClicks: true,
+  });
 
   await page.setReducedMotion('reduce');
   assert.deepEqual(await page.evaluate(() => {
     const glow = getComputedStyle(document.body, '::before');
+    const halo = getComputedStyle(document.querySelector('.moon-halo'));
     const star = getComputedStyle(document.querySelector('.sky-star'));
     return {
-      glowMoves: glow.animationName !== 'none',
-      glowVisible: glow.backgroundImage !== 'none',
-      starMoves: star.animationName !== 'none',
-      starVisible: Number(star.opacity) > 0,
+      animations: [glow, halo, star].map(({ animationName }) => animationName),
+      visible: [glow, halo, star].every(({ opacity }) => Number(opacity) > 0),
     };
-  }), { glowMoves: false, glowVisible: true, starMoves: false, starVisible: true });
+  }), { animations: ['none', 'none', 'none'], visible: true });
 });
 
 test('partial work counts without a daily score and survives reload', async (t) => {
