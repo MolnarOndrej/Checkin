@@ -54,7 +54,7 @@ button:disabled { cursor: default; }
 .icon-defs { position: absolute; width: 0; height: 0; }
 .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .shell { width: min(1120px, calc(100% - 72px)); margin: auto; padding: 16px 0 18px; }
-.calendar-controls button:hover { background: #2c303b; }
+.calendar-controls button:enabled:hover { background: #2c303b; }
 
 .hero {
   position: relative;
@@ -193,6 +193,7 @@ button:disabled { cursor: default; }
 .calendar-controls { display: flex; align-items: center; gap: 6px; }
 .calendar-controls button { display: grid; place-items: center; border: 1px solid #383c49; border-radius: 8px; background: var(--surface); height: 32px; }
 .icon-button { width: 32px; padding: 0; }
+.calendar-controls .icon-button:disabled { opacity: .4; }
 .icon-button .icon { width: 17px; height: 17px; }
 .today-button { padding: 0 11px; font-size: 12px; }
 .weekday-row, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; text-align: center; }

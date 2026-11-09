@@ -26,6 +26,33 @@ function captureRotations() {
   window.clearInterval = (delay) => ticks.delete(delay);
 }
 
+test('the next-month arrow is dimmed when the calendar shows the current month', async (t) => {
+  const page = await openCheckin(t);
+  const states = await page.evaluate(() => {
+    const next = document.querySelector('#next');
+    const previous = document.querySelector('#previous');
+    const title = document.querySelector('#calendar-title');
+    const state = () => ({
+      month: title.textContent,
+      disabled: next.disabled,
+      opacity: Number(getComputedStyle(next).opacity),
+    });
+
+    const current = state();
+    previous.click();
+    const earlier = state();
+    next.click();
+    return { current, earlier, returned: state() };
+  });
+
+  assert.equal(states.current.disabled, true);
+  assert.ok(states.current.opacity > 0 && states.current.opacity < states.earlier.opacity);
+  assert.equal(states.earlier.disabled, false);
+  assert.equal(states.earlier.opacity, 1);
+  assert.notEqual(states.earlier.month, states.current.month);
+  assert.deepEqual(states.returned, states.current);
+});
+
 test('backup restores missing check-ins and goal plans without overwriting saved records', async (t) => {
   const page = await openCheckin(t);
   const exported = await page.evaluate(async () => {
