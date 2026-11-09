@@ -845,8 +845,9 @@ test('an older plan can be edited without leaving the selected date or losing it
   });
 });
 
-test('panel and modal titles share a size and left inset on desktop and mobile', async (t) => {
+test('dashboard titles align across columns and share sizing with modal titles', async (t) => {
   const page = await openCheckin(t);
+  await page.setReducedMotion('reduce');
   await page.evaluate(async () => {
     const { dayKey } = await import('/calendar.js');
     localStorage.setItem(`checkin.day.${dayKey(new Date())}`, JSON.stringify({
@@ -860,11 +861,17 @@ test('panel and modal titles share a size and left inset on desktop and mobile',
     const find = (selector) => document.querySelector(selector);
     const readHeading = (panel) => {
       const heading = panel.querySelector('h2');
+      const panelBox = panel.getBoundingClientRect();
+      const text = document.createRange();
+      text.selectNodeContents(heading);
+      const textTop = text.getClientRects()[0].top;
       return {
         title: heading.innerText.trim(),
         namedByHeading: document.getElementById(panel.getAttribute('aria-labelledby')) === heading,
         fontSize: getComputedStyle(heading).fontSize,
-        leftInset: heading.getBoundingClientRect().left - panel.getBoundingClientRect().left,
+        leftInset: heading.getBoundingClientRect().left - panelBox.left,
+        textTop,
+        topInset: textTop - panelBox.top,
       };
     };
     const panels = Array.from(document.querySelectorAll('.dashboard .card'), readHeading);
@@ -885,12 +892,18 @@ test('panel and modal titles share a size and left inset on desktop and mobile',
     return { panels, modals };
   };
 
-  for (const width of [1280, 320]) {
+  for (const [width, columns] of [[1280, 3], [900, 2], [320, 1]]) {
     await page.setViewport(width, 900);
     const { panels, modals } = await page.evaluate(readTitles);
     assert.equal(panels.length, 4);
     assert.ok(panels[0].title);
     assert.deepEqual(panels.slice(1).map(({ title }) => title), ['Daily check-in', 'Activities', 'Goals']);
+    for (const { title, topInset } of panels) {
+      assert.equal(topInset, panels[0].topInset, title);
+    }
+    for (const { title, textTop } of panels.slice(0, columns)) {
+      assert.equal(textTop, panels[0].textTop, title);
+    }
     assert.deepEqual(modals.map(({ title }) => title), [
       'Previous plan', 'Activity plan for Guitar', 'Activity settings for Guitar', 'Goal settings', 'Backup & restore',
     ]);

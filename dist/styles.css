@@ -164,9 +164,10 @@ button:disabled { cursor: default; }
 .hero-tag span { color: var(--accent); margin-right: 3px; }
 
 .dashboard { display: grid; grid-template-columns: minmax(0, 1.36fr) minmax(0, 1fr); align-items: start; gap: 18px; margin-top: 18px; }
-.card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 19px; padding-block: 22px; }
+.card { --card-title-line-height: 32px; position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 19px; padding-block: 22px; }
 .card, dialog { padding-inline: 20px; }
 .card h2, .dialog-header h2 { font: 400 25px/1.1 Georgia, serif; letter-spacing: -.035em; margin: 0; }
+.card h2 { line-height: var(--card-title-line-height); }
 .card::before {
   content: "";
   position: absolute;
@@ -192,7 +193,7 @@ button:disabled { cursor: default; }
 }
 .calendar-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 17px; }
 .calendar-controls { display: flex; align-items: center; gap: 6px; }
-.calendar-controls button { display: grid; place-items: center; border: 1px solid #383c49; border-radius: 8px; background: var(--surface); height: 32px; }
+.calendar-controls button { display: grid; place-items: center; border: 1px solid #383c49; border-radius: 8px; background: var(--surface); height: var(--card-title-line-height); }
 .icon-button { width: 32px; padding: 0; }
 .calendar-controls .icon-button:disabled { opacity: .4; }
 .icon-button .icon { width: 17px; height: 17px; }
@@ -260,7 +261,7 @@ textarea { width: 100%; resize: vertical; }
 .text-button { margin-top: 12px; border: 0; padding: 0; background: none; color: var(--lilac); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .text-button:hover { color: var(--accent); }
 .dashboard-sidebar { grid-column: -2 / -1; display: grid; gap: 12px; min-width: 0; }
-.dashboard-sidebar .card { padding-block: 16px; }
+.dashboard-sidebar .card { padding-block-end: 16px; }
 .dashboard-sidebar h2 { margin-bottom: 10px; }
 #pin-form { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; max-width: 360px; }
 #pinned-list { list-style: none; padding: 0; margin: 0; }
