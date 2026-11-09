@@ -65,9 +65,10 @@
           </div>
           <div id="calendar" class="calendar-grid" role="group" aria-labelledby="calendar-title"></div>
           <div class="legend">
-            <span><i class="legend-full"></i> All done</span>
-            <span><i class="legend-partial"></i> Partial</span>
-            <span><i class="legend-note"></i> Note only</span>
+            <span><i class="legend-work"></i> Work logged</span>
+            <span><i class="legend-full"></i> 100% score</span>
+            <span><i class="legend-partial"></i> Other score</span>
+            <span><i class="legend-note"></i> Details only</span>
             <span><i class="legend-blank"></i> Open</span>
           </div>
         </section>
@@ -80,34 +81,45 @@
           <p id="selected-date" class="selected-date"></p>
           <h2 id="journal-title">How did it go?</h2>
           <p id="journal-copy" class="journal-copy"></p>
-          <div class="journal-actions">
-            <button type="button" id="complete" class="primary"><svg class="icon"><use href="#check"/></svg><span>All goals done</span><span class="button-score">100%</span></button>
+          <p id="plan-reminder" class="plan-reminder" hidden><strong>Next time</strong><span id="plan-preview"></span><button type="button" id="edit-plan">Edit plan</button></p>
+          <form id="entry-form" novalidate>
+            <fieldset id="goals">
+              <legend>What did you work on?</legend>
+              <div id="goal-list"></div>
+              <div class="goal-add">
+                <input id="new-goal" type="text" maxlength="140" aria-label="New goal" placeholder="Add or reuse a goal…" list="recent-goals">
+                <datalist id="recent-goals"></datalist>
+                <button id="add-goal" type="button">Add</button>
+              </div>
+            </fieldset>
+            <button type="submit" id="save" class="primary"><svg class="icon"><use href="#check"/></svg> Log what I did</button>
+            <p id="feedback" class="feedback" role="status"></p>
+            <details id="next-time">
+              <summary><svg class="icon"><use href="#flag"/></svg> Plan the next session <svg class="icon chevron"><use href="#down"/></svg></summary>
+              <div class="detail-fields">
+                <label for="next-plan">When will you start, and what would make it enjoyable?</label>
+                <textarea id="next-plan" rows="2" maxlength="240" placeholder="After dinner on Tuesday, I’ll play guitar for 15 minutes and start with a song I like."></textarea>
+                <button type="submit" class="save-button">Save check-in and plan</button>
+              </div>
+            </details>
             <details id="details">
-              <summary><svg class="icon"><use href="#pen"/></svg> Add details or set a score <svg class="icon chevron"><use href="#down"/></svg></summary>
-              <form id="entry-form" novalidate>
+              <summary><svg class="icon"><use href="#pen"/></svg> Notes or daily score <svg class="icon chevron"><use href="#down"/></svg></summary>
+              <div class="detail-fields">
                 <div class="score-heading">
                   <label for="has-score"><input id="has-score" type="checkbox"> Include a score</label>
                   <label class="score-value"><input id="score" type="number" min="0" max="100" step="1" value="80" aria-label="Score percentage">%</label>
                 </div>
                 <input id="score-range" type="range" min="0" max="100" step="1" value="80" aria-label="Set score percentage">
-                <fieldset id="goals">
-                  <legend>Goals</legend>
-                  <div id="goal-list"></div>
-                  <div class="goal-add">
-                    <input id="new-goal" type="text" maxlength="140" aria-label="New goal" placeholder="Write a goal…">
-                    <button id="add-goal" type="button" aria-label="Add goal">+</button>
-                  </div>
-                </fieldset>
                 <label class="notes-label" for="notes">Notes <span>optional</span></label>
-                <textarea id="notes" rows="3" maxlength="4000" placeholder="What helped? What would you try tomorrow?"></textarea>
+                <textarea id="notes" rows="3" maxlength="4000" placeholder="What helped? What felt good about the work?"></textarea>
                 <button type="submit" class="save-button">Save check-in</button>
-              </form>
+                <button type="button" id="complete" class="save-button">All goals done · 100%</button>
+              </div>
             </details>
-          </div>
-          <p id="feedback" class="feedback" role="status"></p>
-          <div class="month-progress">
+          </form>
+          <div class="week-progress">
             <span class="progress-icon"><svg class="icon"><use href="#sparkle"/></svg></span>
-            <div><strong id="logged-count">0 days recorded</strong><span id="progress-copy">On the trail this month</span></div>
+            <div><strong id="week-title">This week on the trail</strong><ul id="week-goals"></ul><p id="week-empty">No goal work logged this week.</p></div>
           </div>
         </section>
       </div>

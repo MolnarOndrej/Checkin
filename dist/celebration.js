@@ -15,7 +15,6 @@ const partialEffects = ['glimmer', 'waypoints', 'sprout', 'petals', 'mini-orbit'
 const openingEffects = ['starlight', 'meteor', 'fireflies', 'constellation', 'orbit'];
 const recentEffects = new Map();
 let animation;
-let finishAnimation;
 let audio;
 
 function chooseEffect(group, choices) {
@@ -35,24 +34,15 @@ function sizeCanvas() {
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 }
 
-function run(duration, draw, onFinish) {
-  if (!ctx || reducedMotion.matches) {
-    onFinish?.();
-    return;
-  }
+function run(duration, draw) {
+  if (!ctx || reducedMotion.matches) return;
   cancelAnimationFrame(animation);
-  finishAnimation?.();
-  finishAnimation = onFinish;
   sizeCanvas();
   const start = performance.now();
   function frame(now) {
     ctx.clearRect(0, 0, innerWidth, innerHeight);
     const elapsed = now - start;
-    if (elapsed >= duration || reducedMotion.matches) {
-      finishAnimation = undefined;
-      onFinish?.();
-      return;
-    }
+    if (elapsed >= duration || reducedMotion.matches) return;
     draw(elapsed / 1000);
     animation = requestAnimationFrame(frame);
   }
@@ -317,24 +307,15 @@ function playTune(full) {
   }
 }
 
-export function celebrate(origin, score, muted, onFinish) {
-  const full = score === 100;
+export function celebrate(origin, muted) {
+  const full = Math.random() < .2;
   if (!reducedMotion.matches) {
     const effect = chooseEffect(full ? 'full' : 'partial', full ? fullEffects : partialEffects);
     const x = origin.left + origin.width / 2;
     const y = origin.top + origin.height / 2;
     const colors = pick(palettes);
     const main = makeEffect(effect, x, y, colors);
-    const encore = full && Math.random() < .28
-      ? makeEffect(pick(['glimmer', 'petals', 'mini-orbit', 'waypoints']), x, y, colors)
-      : null;
-    const encoreDelay = between(.48, .8);
-    run(encore ? 2800 : 2250, (elapsed) => {
-      main(elapsed);
-      if (elapsed >= encoreDelay) encore?.(elapsed - encoreDelay);
-    }, onFinish);
-  } else {
-    onFinish?.();
+    run(1800, main);
   }
   if (!muted) playTune(full);
 }

@@ -1,4 +1,4 @@
-import { dateLabel, dayKey, monthStart, renderCalendar } from './calendar.js';
+import { dateLabel, dateOffset, dayKey, goalHasWork, monthStart, renderCalendar, weekStart } from './calendar.js';
 import { celebrate, playOpening } from './celebration.js';
 
 const byId = (id) => document.getElementById(id);
@@ -7,6 +7,8 @@ const trailRoute = byId('trail-route');
 const trailWaypoints = byId('trail-waypoints');
 const trailLength = trailRoute.getTotalLength();
 const details = byId('details');
+const nextTime = byId('next-time');
+const nextPlan = byId('next-plan');
 const form = byId('entry-form');
 const hasScore = byId('has-score');
 const score = byId('score');
@@ -16,6 +18,7 @@ const newGoal = byId('new-goal');
 const goalList = byId('goal-list');
 const feedback = byId('feedback');
 const complete = byId('complete');
+const save = byId('save');
 const sound = byId('sound');
 const entryPrefix = 'checkin.day.';
 const soundKey = 'checkin.sound';
@@ -24,6 +27,7 @@ let today = new Date();
 let selected = today;
 let month = monthStart(today);
 let muted = false;
+let displayedPlanKey;
 
 function entryFor(key) {
   try {
@@ -41,18 +45,18 @@ function announce(message = '', error = false) {
   feedback.toggleAttribute('data-error', error);
 }
 
-function updateCalendar() {
-  const recordedDays = renderCalendar({ grid, title: byId('calendar-title'), month, today, selected, entryFor });
-  updateTrail(recordedDays);
-  const logged = recordedDays.length;
-  byId('next').disabled = month >= monthStart(today);
-  byId('logged-count').textContent = `${logged} ${logged === 1 ? 'day' : 'days'} recorded`;
-  byId('progress-copy').textContent = month.getTime() === monthStart(today).getTime()
-    ? 'On the trail this month' : 'On the trail that month';
+function goalKey({ text }) {
+  return text.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-function updateTrail(recordedDays) {
-  const lights = recordedDays.map((day) => {
+function updateCalendar(glow = false) {
+  const workDays = renderCalendar({ grid, title: byId('calendar-title'), month, today, selected, entryFor });
+  updateTrail(workDays, glow);
+  byId('next').disabled = month >= monthStart(today);
+}
+
+function updateTrail(workDays, glow) {
+  const lights = workDays.map((day) => {
     // Keep each date at the same spot in shorter months.
     const progress = (day - 1) / 30;
     const point = trailRoute.getPointAtLength(trailLength * progress);
@@ -60,9 +64,67 @@ function updateTrail(recordedDays) {
     light.setAttribute('cx', point.x);
     light.setAttribute('cy', point.y);
     light.setAttribute('r', 2.6 - progress);
+    if (glow && day === selected.getDate()) light.classList.add('trail-glow');
     return light;
   });
   trailWaypoints.replaceChildren(...lights);
+}
+
+function updateWeek() {
+  const start = weekStart(selected);
+  const totals = new Map();
+  for (let offset = 0; offset < 7; offset++) {
+    const key = dayKey(dateOffset(start, offset));
+    if (key > dayKey(today)) break;
+    const worked = entryFor(key)?.goals.filter(goalHasWork) ?? [];
+    const dailyGoals = new Map(worked.map((goal) => [goalKey(goal), goal.text]));
+    for (const [name, text] of dailyGoals) {
+      totals.set(name, { text, days: (totals.get(name)?.days ?? 0) + 1 });
+    }
+  }
+  byId('week-title').textContent = dayKey(start) === dayKey(weekStart(today))
+    ? 'This week on the trail' : 'That week on the trail';
+  byId('week-empty').hidden = totals.size > 0;
+  byId('week-goals').replaceChildren(...Array.from(totals.values(), ({ text, days }) => {
+    const item = document.createElement('li');
+    item.textContent = `${text} · ${days} ${days === 1 ? 'day' : 'days'}`;
+    return item;
+  }));
+}
+
+function updatePlanAndSuggestions(entry) {
+  const key = dayKey(selected);
+  const keys = new Set(cachedEntries.keys());
+  try {
+    for (let index = 0; index < localStorage.length; index++) {
+      const storageKey = localStorage.key(index);
+      if (storageKey?.startsWith(entryPrefix)) keys.add(storageKey.slice(entryPrefix.length));
+    }
+  } catch {}
+
+  const suggestions = new Map();
+  let plan = entry?.nextPlan;
+  displayedPlanKey = plan ? key : null;
+  // A newer day of work closes the prior plan, while a gap or note-only day keeps it visible.
+  let lookForPlan = key === dayKey(today) && !plan && !entry?.goals.some(goalHasWork);
+  for (const previousKey of Array.from(keys).sort().reverse()) {
+    if (previousKey >= key) continue;
+    const previous = entryFor(previousKey);
+    if (!previous) continue;
+    if (lookForPlan && (previous.nextPlan || previous.goals.some(goalHasWork))) {
+      plan = previous.nextPlan;
+      displayedPlanKey = plan ? previousKey : null;
+      lookForPlan = false;
+    }
+    for (const goal of previous.goals) {
+      if (suggestions.size === 20) break;
+      if (!suggestions.has(goalKey(goal))) suggestions.set(goalKey(goal), goal.text);
+    }
+    if (suggestions.size === 20 && !lookForPlan) break;
+  }
+  byId('recent-goals').replaceChildren(...Array.from(suggestions.values(), (text) => new Option(text)));
+  byId('plan-reminder').hidden = !plan;
+  byId('plan-preview').textContent = plan ?? '';
 }
 
 function updateSummary(entry) {
@@ -72,33 +134,61 @@ function updateSummary(entry) {
   byId('selected-date').textContent = dateLabel(selected);
   const title = byId('journal-title');
   const copy = byId('journal-copy');
-  if (entry?.score === 100) {
-    title.textContent = 'Quest complete!';
-    copy.textContent = 'You gave this day everything you set out to do.';
+  const worked = entry?.goals.filter(goalHasWork) ?? [];
+  if (worked.length) {
+    title.textContent = 'Work logged.';
+    copy.textContent = describeWork(worked);
   } else if (entry?.score != null) {
-    title.textContent = `${entry.score}% complete`;
-    copy.textContent = 'You took a moment to check in. That counts.';
+    title.textContent = 'Day remembered.';
+    copy.textContent = `Daily score: ${entry.score}%.`;
   } else if (entry) {
     title.textContent = 'Day remembered.';
-    copy.textContent = 'Your details are saved. You can add a score anytime.';
+    copy.textContent = 'Your check-in is saved.';
   } else {
     title.textContent = 'How did it go?';
-    copy.textContent = 'Mark the win or take a moment to reflect.';
+    copy.textContent = 'Record the time or effort you put into your goals.';
   }
 }
 
-function addGoalRow({ text, done }) {
+function describeWork(goals) {
+  if (goals.length === 1) {
+    const { text, minutes } = goals[0];
+    return minutes ? `You put ${minutes} min into “${text}”.` : `You made time for “${text}”.`;
+  }
+  return `You made time for ${goals.length} goals.`;
+}
+
+function addGoalRow({ text, done, worked, minutes }) {
   const row = document.createElement('div');
   row.className = 'goal-row';
-  const checkbox = document.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = done;
-  checkbox.setAttribute('aria-label', 'Mark goal done');
   const label = document.createElement('input');
   label.type = 'text';
   label.maxLength = 140;
   label.value = text;
   label.setAttribute('aria-label', 'Goal text');
+  const status = document.createElement('select');
+  status.append(new Option('No work logged', 'open'), new Option('Worked on it', 'worked'), new Option('Done', 'done'));
+  status.value = done ? 'done' : worked ? 'worked' : 'open';
+  const duration = document.createElement('input');
+  duration.type = 'number';
+  duration.min = '1';
+  duration.max = '1440';
+  duration.step = '1';
+  duration.placeholder = 'Min';
+  duration.value = minutes ?? '';
+  const updateLabels = () => {
+    const goal = label.value.trim() || 'goal';
+    status.setAttribute('aria-label', `Progress for ${goal}`);
+    duration.setAttribute('aria-label', `Optional minutes for ${goal}`);
+  };
+  updateLabels();
+  label.addEventListener('input', updateLabels);
+  status.addEventListener('change', () => {
+    if (status.value === 'open') duration.value = '';
+  });
+  duration.addEventListener('input', () => {
+    if (duration.value && status.value === 'open') status.value = 'worked';
+  });
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.textContent = '×';
@@ -107,22 +197,27 @@ function addGoalRow({ text, done }) {
     row.remove();
     newGoal.focus();
   });
-  row.append(checkbox, label, remove);
+  row.append(label, remove, status, duration);
   goalList.append(row);
+  return status;
 }
 
 function commitNewGoal() {
   const text = newGoal.value.trim();
   if (!text) return;
-  addGoalRow({ text, done: false });
+  const status = addGoalRow({ text, worked: true });
   newGoal.value = '';
+  return status;
 }
 
 function readGoals(allDone) {
-  commitNewGoal();
   return Array.from(goalList.children, (row) => {
-    const [checkbox, text] = row.querySelectorAll('input');
-    return { text: text.value.trim(), done: allDone || checkbox.checked };
+    const [text, duration] = row.querySelectorAll('input');
+    const status = row.querySelector('select').value;
+    const goal = { text: text.value.trim(), done: allDone || status === 'done' };
+    if (!goal.done && status === 'worked') goal.worked = true;
+    if (duration.value) goal.minutes = duration.valueAsNumber;
+    return goal;
   }).filter((goal) => goal.text);
 }
 
@@ -130,6 +225,7 @@ function loadForm(entry) {
   hasScore.checked = entry?.score != null;
   score.value = range.value = entry?.score ?? 80;
   notes.value = entry?.notes ?? '';
+  nextPlan.value = entry?.nextPlan ?? '';
   newGoal.value = '';
   goalList.replaceChildren();
   entry?.goals.forEach(addGoalRow);
@@ -140,15 +236,25 @@ function viewDate(date, focusCalendar = false) {
   selected = date;
   month = monthStart(date);
   details.open = false;
+  nextTime.open = false;
   const entry = entryFor(dayKey(date));
   loadForm(entry);
   updateSummary(entry);
   updateCalendar();
+  updateWeek();
+  updatePlanAndSuggestions(entry);
   announce();
   if (focusCalendar) grid.querySelector('[data-selected]')?.focus();
 }
 
 function saveEntry(percentage, allDone, source) {
+  commitNewGoal();
+  const invalidDuration = goalList.querySelector('input[type="number"]:invalid');
+  if (invalidDuration) {
+    announce('Enter whole minutes from 1 to 1440, or leave minutes blank.', true);
+    invalidDuration.focus();
+    return;
+  }
   const origin = source.getBoundingClientRect();
   const key = dayKey(selected);
   const previous = entryFor(key);
@@ -157,9 +263,10 @@ function saveEntry(percentage, allDone, source) {
     notes: notes.value.trim(),
     goals: readGoals(allDone),
   };
-  const hasContent = percentage !== null || entry.notes || entry.goals.length;
+  if (nextPlan.value.trim()) entry.nextPlan = nextPlan.value.trim();
+  const hasContent = percentage !== null || entry.notes || entry.goals.length || entry.nextPlan;
   if (!hasContent && !previous) {
-    announce('Add a score, a goal, or a note to save this day.', true);
+    announce('Add a goal, a note, a score, or a plan to save this day.', true);
     return;
   }
   try {
@@ -169,16 +276,20 @@ function saveEntry(percentage, allDone, source) {
     announce('Checkin could not save to this browser. Your edits are still here.', true);
     return;
   }
-  updateSummary(hasContent ? entry : undefined);
-  updateCalendar();
-  loadForm(hasContent ? entry : undefined);
-  details.open = false;
-  if (source !== complete) details.querySelector('summary').focus();
-  announce(hasContent ? 'Check-in saved.' : 'Check-in cleared.');
-  if (percentage !== null && previous?.score !== percentage) {
-    const stamp = grid.querySelector('[data-selected] .day-mark');
-    stamp?.classList.add('day-mark-pending');
-    celebrate(origin, percentage, muted, () => stamp?.classList.remove('day-mark-pending'));
+  const previouslyWorked = new Set(previous?.goals.filter(goalHasWork).map(goalKey));
+  const newWork = new Map(entry.goals.filter(goalHasWork).map((goal) => [goalKey(goal), goal]));
+  for (const name of previouslyWorked) newWork.delete(name);
+  const savedEntry = hasContent ? entry : undefined;
+  updateSummary(savedEntry);
+  updateCalendar(newWork.size > 0);
+  updateWeek();
+  updatePlanAndSuggestions(savedEntry);
+  loadForm(savedEntry);
+  if (newWork.size) {
+    announce(`${describeWork(Array.from(newWork.values()))} Check-in saved.`);
+    celebrate(origin, muted);
+  } else {
+    announce(hasContent ? 'Check-in saved.' : 'Check-in cleared.');
   }
 }
 
@@ -225,25 +336,31 @@ score.addEventListener('input', () => {
   hasScore.checked = true;
   if (score.value !== '' && score.validity.valid) range.value = score.value;
 });
-byId('add-goal').addEventListener('click', () => {
-  commitNewGoal();
-  newGoal.focus();
-});
+byId('add-goal').addEventListener('click', () => (commitNewGoal() ?? newGoal).focus());
 newGoal.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.isComposing) {
     event.preventDefault();
-    commitNewGoal();
+    commitNewGoal()?.focus();
   }
 });
 complete.addEventListener('click', () => saveEntry(100, true, complete));
+byId('edit-plan').addEventListener('click', () => {
+  if (displayedPlanKey !== dayKey(selected)) {
+    const [year, month, day] = displayedPlanKey.split('-').map(Number);
+    viewDate(new Date(year, month - 1, day));
+  }
+  nextTime.open = true;
+  nextPlan.focus();
+});
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   if (hasScore.checked && (score.value === '' || !score.validity.valid)) {
     announce('Enter a score from 0 to 100, or uncheck Include a score.', true);
+    details.open = true;
     score.focus();
     return;
   }
-  saveEntry(hasScore.checked ? score.valueAsNumber : null, false, event.submitter ?? complete);
+  saveEntry(hasScore.checked ? score.valueAsNumber : null, false, event.submitter ?? save);
 });
 
 viewDate(today);

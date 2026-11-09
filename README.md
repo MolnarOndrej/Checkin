@@ -1,6 +1,8 @@
 # Checkin
 
-Checkin is a local, single-page evening journal with a calendar. Select today or an earlier day, then use **All goals done** to record 100% in one click. Open **Add details or set a score** to record any score from 0 to 100, add a note, or write and tick off individual goals. The score is your overall assessment and is independent of the checklist. The one-click action marks any listed goals done.
+Checkin is a local, single-page evening journal with a calendar. Select today or an earlier day, add or reuse a goal, and choose **Worked on it** or **Done**. Minutes are optional. Use **Log what I did** to save. The moonlit trail lights up for dates with recorded work, and the weekly summary shows how many days you worked on each goal.
+
+Use **Plan the next session** to write when you’ll start and what could make the work enjoyable. Checkin shows the latest plan on today’s check-in until you log more work or save a newer plan. **Notes or daily score** holds optional reflection, your overall score, and the **All goals done** shortcut.
 
 ## Run locally
 
@@ -12,7 +14,7 @@ npm start
 
 Open [Checkin](http://127.0.0.1:4173) in your desktop browser. There are no dependencies to install. Keep using the same address and browser profile to access your history. The entries and sound preference are stored in that browser's local storage. Clearing its site data removes those entries.
 
-The opening scene animates when the page loads. Saving a new or changed score triggers a random celebration with sound on by default. Openings, 100% scores, and partial scores each remember their last effect so the same one won't play twice in a row, even after a reload. Colors and motion vary within effects, and a 100% check-in can trigger an extra flourish. Motion follows your system's reduced-motion setting. To clear a day, remove its details, uncheck **Include a score**, and save.
+The opening scene animates when the page loads. Logging work on a goal for the first time on a given date triggers a celebration with sound on by default. Motion follows your system’s reduced-motion setting. To clear a day, remove its goals, note, and plan, uncheck **Include a score**, and save.
 
 ## Source layout
 

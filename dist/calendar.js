@@ -16,8 +16,21 @@ export function dateLabel(date) {
   return dateFormat.format(date);
 }
 
+export function dateOffset(date, offset) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset);
+}
+
+export function weekStart(date) {
+  return dateOffset(date, -((date.getDay() + 6) % 7));
+}
+
+export function goalHasWork(goal) {
+  return goal.done || goal.worked === true;
+}
+
 function statusLabel(entry) {
   if (!entry) return 'open';
+  if (entry.goals.some(goalHasWork)) return 'work logged';
   if (entry.score === null) return 'details only';
   return `${entry.score}% complete`;
 }
@@ -30,7 +43,7 @@ export function renderCalendar({ grid, title, month, today, selected, entryFor }
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const cells = Math.max(35, Math.ceil((offset + days) / 7) * 7);
   const fragment = document.createDocumentFragment();
-  const recordedDays = [];
+  const workDays = [];
 
   for (let index = 0; index < cells; index++) {
     const number = index - offset + 1;
@@ -60,12 +73,16 @@ export function renderCalendar({ grid, title, month, today, selected, entryFor }
     label.textContent = number;
     button.append(label);
 
-    if (entry) {
-      recordedDays.push(number);
+    if (entry && !button.disabled) {
       const mark = document.createElement('span');
       mark.className = 'day-mark';
       mark.setAttribute('aria-hidden', 'true');
-      if (entry.score === 100) {
+      const hasWork = entry.goals.some(goalHasWork);
+      if (hasWork) {
+        workDays.push(number);
+        button.dataset.status = 'work';
+        mark.textContent = '✦';
+      } else if (entry.score === 100) {
         button.dataset.status = 'full';
         const check = document.createElementNS(svgNamespace, 'svg');
         check.setAttribute('class', 'icon');
@@ -86,5 +103,5 @@ export function renderCalendar({ grid, title, month, today, selected, entryFor }
     fragment.append(button);
   }
   grid.replaceChildren(fragment);
-  return recordedDays;
+  return workDays;
 }
