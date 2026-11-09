@@ -210,19 +210,21 @@ button:disabled { cursor: default; }
   height: 2px;
   pointer-events: none;
   background: linear-gradient(90deg, transparent, var(--lilac), transparent);
-  opacity: .18;
-  animation: edge-glint 13s ease-in-out -5s infinite alternate;
+  opacity: 0;
 }
 .journal-card::before {
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  animation-duration: 17s;
-  animation-delay: -11s;
-  animation-direction: alternate-reverse;
+}
+.card[data-highlight]::before {
+  animation: edge-glint 7s ease-in-out;
+}
+.journal-card[data-highlight]::before {
+  animation-direction: reverse;
 }
 @keyframes edge-glint {
-  0%, 15% { opacity: .08; transform: translateX(0); }
+  0% { opacity: 0; transform: translateX(0); }
   55% { opacity: .65; }
-  90%, 100% { opacity: .13; transform: translateX(128%); }
+  100% { opacity: 0; transform: translateX(128%); }
 }
 .calendar-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 17px; }
 .calendar-controls { display: flex; align-items: center; gap: 6px; }

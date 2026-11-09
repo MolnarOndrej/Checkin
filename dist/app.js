@@ -120,6 +120,33 @@ function setupTrailMottos() {
   }, 5 * 60 * 1000);
 }
 
+function setupPanelHighlights() {
+  const panels = [...document.querySelectorAll('.dashboard .card')];
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let highlighted;
+  let timer;
+
+  function highlightPanel() {
+    const choices = panels.filter((panel) => panel !== highlighted);
+    highlighted?.removeAttribute('data-highlight');
+    highlighted = choices[Math.floor(Math.random() * choices.length)];
+    highlighted.setAttribute('data-highlight', '');
+  }
+
+  function updateMotion() {
+    clearInterval(timer);
+    if (reducedMotion.matches) {
+      highlighted?.removeAttribute('data-highlight');
+      return;
+    }
+    highlightPanel();
+    timer = setInterval(highlightPanel, 8_000);
+  }
+
+  reducedMotion.addEventListener('change', updateMotion);
+  updateMotion();
+}
+
 function entryFor(key) {
   try {
     const entry = JSON.parse(localStorage.getItem(entryPrefix + key));
@@ -488,4 +515,5 @@ setupBackup({
 });
 setupAmbientEffects();
 setupTrailMottos();
+setupPanelHighlights();
 playOpening();
