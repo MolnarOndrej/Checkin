@@ -147,6 +147,7 @@
           <ul id="pinned-list"></ul>
         </section>
       </div>
+      <button type="button" id="open-backup" class="text-button" aria-haspopup="dialog">Backup &amp; restore</button>
     </main>
   </div>
   <datalist id="goal-options"></datalist>
@@ -200,6 +201,22 @@
         <button type="button" id="unpin-goal" class="save-button">Unpin goal</button>
       </div>
     </form>
+  </dialog>
+  <dialog id="backup-dialog" aria-labelledby="backup-title" closedby="any">
+    <div class="dialog-header">
+      <h2 id="backup-title">Backup &amp; restore</h2>
+      <button type="button" id="close-backup" class="icon-button" aria-label="Close backup and restore">
+        <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
+      </button>
+    </div>
+    <p>Download a copy of your saved check-ins and goal plans. The file contains your notes in plain text.</p>
+    <button type="button" id="download-backup" class="save-button">Download backup</button>
+    <p id="download-feedback" class="feedback" role="status"></p>
+    <p>Restore adds missing check-ins and goal records. It keeps the records already in this browser.</p>
+    <label for="backup-file">Choose a Checkin backup file</label>
+    <input type="file" id="backup-file" accept=".json,application/json">
+    <p id="backup-feedback" class="feedback" role="status"></p>
+    <button type="button" id="restore-backup" class="save-button" hidden>Restore missing records</button>
   </dialog>
   <canvas id="effects" aria-hidden="true"></canvas>
 </body>

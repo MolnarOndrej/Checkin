@@ -26,6 +26,134 @@ function captureRotations() {
   window.clearInterval = (delay) => ticks.delete(delay);
 }
 
+test('backup restores missing check-ins and goal plans without overwriting saved records', async (t) => {
+  const page = await openCheckin(t);
+  const exported = await page.evaluate(async () => {
+    const { dayKey } = await import('/calendar.js');
+    const today = `checkin.day.${dayKey(new Date())}`;
+    const older = 'checkin.day.2025-01-02';
+    const records = {
+      [today]: {
+        score: 80, notes: 'Evening reflection', nextPlan: 'Start after dinner',
+        goals: [{ text: 'Guitar', done: false, worked: true, minutes: 20 }, { text: 'Writing', done: true }],
+      },
+      [older]: { score: null, notes: 'Older reflection', goals: [] },
+      'checkin.pinned.guitar': {
+        text: 'Guitar', pinned: true, plan: 'Practice the chorus', fallback: 'Play it once', pickup: 'Bar 9',
+      },
+      'checkin.pinned.reading': { text: 'Reading', pinned: false, pickup: 'Page 23' },
+    };
+    for (const [key, value] of Object.entries(records)) localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem('unrelated', 'keep me');
+
+    const find = (selector) => document.querySelector(selector);
+    find('#open-backup').click();
+    const click = HTMLAnchorElement.prototype.click;
+    let download;
+    HTMLAnchorElement.prototype.click = function () {
+      download = { filename: this.download, response: fetch(this.href) };
+    };
+    try {
+      find('#download-backup').click();
+    } finally {
+      HTMLAnchorElement.prototype.click = click;
+    }
+    const { filename, response } = download;
+    const backup = window.testBackup = await (await response).text();
+    window.chooseBackup = (contents) => new Promise((resolve) => {
+      const feedback = find('#backup-feedback');
+      const observer = new MutationObserver(() => {
+        if (!feedback.textContent) return;
+        observer.disconnect();
+        resolve({ message: feedback.textContent, canRestore: !find('#restore-backup').hidden });
+      });
+      observer.observe(feedback, { childList: true });
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([contents], filename, { type: 'application/json' }));
+      const input = find('#backup-file');
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change'));
+    });
+    for (const key of Object.keys(records)) localStorage.removeItem(key);
+    localStorage.setItem(older, JSON.stringify({ score: null, notes: 'Keep this reflection', goals: [] }));
+    return { filename, today, records, backup: JSON.parse(backup) };
+  });
+  assert.equal(exported.filename, `${exported.today.replace('checkin.day.', 'checkin-backup-')}.json`);
+  assert.deepEqual(exported.backup, { format: 'checkin', version: 1, records: exported.records });
+
+  assert.deepEqual(await page.evaluate(() => {
+    const invalid = JSON.parse(window.testBackup);
+    invalid.records['checkin.day.2025-02-30'] = { goals: [] };
+    return window.chooseBackup(JSON.stringify(invalid));
+  }), { message: 'Checkin could not read this backup. Choose a valid Checkin backup file.', canRestore: false });
+  assert.deepEqual(await page.evaluate(() => window.chooseBackup(window.testBackup)), {
+    message: '1 check-in and 2 goal records ready to restore. This browser already has 1 record from the backup.',
+    canRestore: true,
+  });
+
+  const attempted = await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    const keys = () => Object.keys(localStorage).filter((key) => key.startsWith('checkin.day.') || key.startsWith('checkin.pinned.'));
+    const before = keys();
+    find('#notes').value = 'Unsaved reflection';
+    find('#restore-backup').click();
+    const blockedDraft = find('#backup-feedback').textContent;
+    const draft = find('#notes').value;
+    find('#notes').value = '';
+
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'checkin.pinned.guitar') throw new DOMException('Storage is full', 'QuotaExceededError');
+      setItem.call(this, key, value);
+    };
+    try {
+      find('#restore-backup').click();
+    } finally {
+      Storage.prototype.setItem = setItem;
+    }
+    return { before, after: keys(), blockedDraft, draft, failure: find('#backup-feedback').textContent };
+  });
+  assert.deepEqual(attempted, {
+    before: ['checkin.day.2025-01-02'], after: ['checkin.day.2025-01-02'],
+    blockedDraft: 'Save your current check-in edits before restoring this date.',
+    draft: 'Unsaved reflection', failure: 'Checkin could not restore the backup. Check browser storage and try again.',
+  });
+
+  assert.deepEqual(await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    find('#restore-backup').click();
+    return {
+      message: find('#backup-feedback').textContent,
+      note: find('#notes').value,
+      week: find('#week-goals').textContent,
+      goals: find('#pinned-list').textContent.trim(),
+    };
+  }), { message: 'Restored 3 records.', note: 'Evening reflection', week: 'Guitar · 1 dayWriting · 1 day', goals: 'Guitar' });
+
+  await page.reload();
+  assert.deepEqual(await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    find('#edit-plan').click();
+    const previousPlan = find('#next-plan').value;
+    find('#cancel-plan-edit').click();
+    find('[data-edit]').click();
+    return {
+      previousPlan, note: find('#notes').value, score: find('#score').valueAsNumber,
+      minutes: find('[aria-label="Optional minutes for Guitar"]').valueAsNumber,
+      writing: find('[aria-label="Progress for Writing"]').value,
+      plan: find('#goal-plan').value, fallback: find('#goal-fallback').value, pickup: find('#goal-pickup').value,
+      unpinned: JSON.parse(localStorage.getItem('checkin.pinned.reading')),
+      existing: JSON.parse(localStorage.getItem('checkin.day.2025-01-02')).notes,
+      unrelated: localStorage.getItem('unrelated'),
+    };
+  }), {
+    previousPlan: 'Start after dinner', note: 'Evening reflection', score: 80, minutes: 20, writing: 'done',
+    plan: 'Practice the chorus', fallback: 'Play it once', pickup: 'Bar 9',
+    unpinned: { text: 'Reading', pinned: false, pickup: 'Page 23' },
+    existing: 'Keep this reflection', unrelated: 'keep me',
+  });
+});
+
 test('the Goals panel fades and slides in with the check-in on refresh', async (t) => {
   const page = await openCheckin(t, () => {
     document.addEventListener('DOMContentLoaded', () => {

@@ -1,6 +1,7 @@
 import { dateLabel, dateOffset, dayKey, goalHasWork, goalKey, monthStart, renderCalendar, weekStart } from './calendar.js';
 import { celebrate, playOpening } from './celebration.js';
 import { setupPinnedGoals } from './pinned-goals.js';
+import { entryPrefix, setupBackup } from './backup.js';
 
 const byId = (id) => document.getElementById(id);
 const grid = byId('calendar');
@@ -20,7 +21,6 @@ const goalList = byId('goal-list');
 const feedback = byId('feedback');
 const complete = byId('complete');
 const save = byId('save');
-const entryPrefix = 'checkin.day.';
 const cachedEntries = new Map();
 let today = new Date();
 let selected = today;
@@ -29,6 +29,7 @@ let muted = false;
 let displayedPlanKey;
 let editingPlanKey;
 let pinnedNames = [];
+let loadedDraft;
 
 function setupAmbientEffects() {
   const scene = document.querySelector('.hero-scene');
@@ -291,12 +292,18 @@ function readGoals() {
   }).filter((goal) => goal.text);
 }
 
+function draftState() {
+  return JSON.stringify(Array.from(form.querySelectorAll('input, select, textarea'),
+    (field) => [field.value, field.validity.badInput]));
+}
+
 function loadForm(entry) {
   score.value = entry?.score ?? '';
   notes.value = entry?.notes ?? '';
   newGoal.value = '';
   goalList.replaceChildren();
   entry?.goals.forEach(addGoalRow);
+  loadedDraft = draftState();
 }
 
 function viewDate(date, focusCalendar = false) {
@@ -442,11 +449,25 @@ form.addEventListener('submit', (event) => {
   saveEntry(score.value === '' ? null : score.valueAsNumber);
 });
 
-const suggestPickup = setupPinnedGoals((names) => {
+const { suggestPickup, refreshGoals } = setupPinnedGoals((names) => {
   pinnedNames = names;
   updateGoalOptions();
 }, announce);
 viewDate(today);
+setupBackup({
+  canRestore: (records) => !records.some(([key]) => key === entryPrefix + dayKey(selected))
+    || draftState() === loadedDraft,
+  onRestore: (added) => {
+    const key = dayKey(selected);
+    const entry = entryFor(key);
+    if (added.has(entryPrefix + key)) loadForm(entry);
+    refreshGoals();
+    updateSummary(entry);
+    updateCalendar();
+    updateWeek();
+    updatePlanAndSuggestions(entry);
+  },
+});
 setupAmbientEffects();
 setupTrailMottos();
 playOpening();

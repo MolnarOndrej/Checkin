@@ -257,6 +257,11 @@ dialog::backdrop { background: #11121bbb; }
 dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
 #plan-date { margin: 0 0 4px; color: var(--muted); }
 #goal-editor label span { color: var(--muted); font-size: 11px; }
+#backup-dialog > p:not(.feedback) { color: var(--muted); font-size: 13px; }
+#backup-dialog > label { display: block; font-size: 13px; }
+#download-feedback:not(:empty) { margin-top: 8px; }
+#backup-file { display: block; width: 100%; margin: 6px 0 10px; font: inherit; }
+#restore-backup { margin-top: 8px; }
 .week-progress { display: flex; gap: 10px; align-items: flex-start; margin-top: 17px; padding-top: 15px; border-top: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
 .progress-icon { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 8px; color: var(--lilac); background: #353045; flex: none; }
 .progress-icon .icon { width: 16px; height: 16px; }

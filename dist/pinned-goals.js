@@ -1,6 +1,5 @@
 import { goalKey } from './calendar.js';
-
-const prefix = 'checkin.pinned.';
+import { pinnedGoalPrefix as prefix } from './backup.js';
 
 export function setupPinnedGoals(updateOptions, announcePickup) {
   const list = document.getElementById('pinned-list');
@@ -148,8 +147,9 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
     if (event.key === null || event.key.startsWith(prefix)) render();
   });
   render();
-  return (goals = []) => {
+  function suggestPickup(goals = []) {
     recentlyLogged = goals.map((goal) => prefix + goalKey(goal));
     renderPickupSuggestions();
-  };
+  }
+  return { suggestPickup, refreshGoals: render };
 }

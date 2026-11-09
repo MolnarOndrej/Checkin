@@ -16,6 +16,8 @@ npm start
 
 Open [Checkin](http://127.0.0.1:4173) in your desktop browser. There are no dependencies to install. Keep using the same address and browser profile to access your history. Entries, pinned goals, and the sound preference are stored in that browser’s local storage. Clearing its site data removes them.
 
+Open **Backup & restore** below the dashboard to download a JSON file with saved check-ins and goal records, including plans and pickup notes for unpinned goals. The file contains your notes in plain text. Choose that file in another Checkin browser profile to preview what can be restored. **Restore missing records** adds missing days and goals and keeps any already saved for the same date or goal name.
+
 The opening scene animates when the page loads. Logging work on a goal for the first time on a given date triggers a celebration with sound on by default. Motion follows your system’s reduced-motion setting. To clear a day, remove its goals, empty its notes and score, and save. If the day has a saved plan, empty it in the dated **Previous plan** dialog and save the plan as well.
 
 ## Source layout
@@ -23,6 +25,7 @@ The opening scene animates when the page loads. Logging work on a goal for the f
 - `dist/index.html`, `styles.css`, and the SVG assets define the UI and artwork.
 - `dist/app.js` manages the editor, storage, and navigation.
 - `dist/pinned-goals.js` manages pinned goals and their plans.
+- `dist/backup.js` handles backup downloads and restore.
 - `dist/calendar.js` handles local calendar dates and day tiles.
 - `dist/celebration.js` renders effects and synthesizes audio.
 - `server.mjs` serves the static files on loopback.
