@@ -12,6 +12,7 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
   const plan = document.getElementById('goal-plan');
   const fallback = document.getElementById('goal-fallback');
   const pickup = document.getElementById('goal-pickup');
+  const complete = document.getElementById('complete-goal-plan');
   const dismiss = document.getElementById('dismiss-goal-plan');
   const suggestions = document.getElementById('pickup-suggestions');
   const suggestionButtons = new Map();
@@ -43,36 +44,20 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
     plan.value = goal.plan ?? '';
     fallback.value = goal.fallback ?? '';
     pickup.value = goal.pickup ?? '';
-    dismiss.hidden = !goal.plan;
+    complete.hidden = dismiss.hidden = !goal.plan;
     editorFeedback.textContent = '';
     dialog.showModal();
     if (focusPickup) pickup.focus();
   }
 
-  function renderCard(key, goal) {
-    const card = template.content.firstElementChild.cloneNode(true);
-    card.querySelector('h3').textContent = goal.text;
-    for (const field of ['plan', 'fallback', 'pickup']) {
-      const line = card.querySelector(`[data-${field}]`);
-      line.hidden = !goal[field];
-      line.querySelector('span').textContent = goal[field] ?? '';
-    }
-
-    const edit = card.querySelector('[data-edit]');
+  function renderRow(key, goal) {
+    const row = template.content.firstElementChild.cloneNode(true);
+    row.querySelector('span').textContent = goal.text;
+    const edit = row.querySelector('[data-edit]');
     edit.setAttribute('aria-label', `Plan or pickup note for ${goal.text}`);
     edit.addEventListener('click', () => openEditor(key, goal));
     editButtons.set(key, edit);
-
-    const done = card.querySelector('[data-done]');
-    done.hidden = !goal.plan;
-    done.setAttribute('aria-label', `Mark plan done for ${goal.text}`);
-    done.addEventListener('click', () => {
-      if (!saveGoal(key, { plan: '', fallback: '' }, pinFeedback)) return;
-      render();
-      pinFeedback.textContent = `Plan marked done for ${goal.text}.`;
-      (editButtons.get(key) ?? pinName).focus();
-    });
-    return card;
+    return row;
   }
 
   function render() {
@@ -90,7 +75,7 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
     goals.sort(([, first], [, second]) => first.text.localeCompare(second.text));
     pinned = new Map(goals);
     editButtons.clear();
-    list.replaceChildren(...goals.map(([key, goal]) => renderCard(key, goal)));
+    list.replaceChildren(...goals.map(([key, goal]) => renderRow(key, goal)));
     updateOptions(goals.map(([, goal]) => goal.text));
     renderPickupSuggestions();
   }
@@ -142,6 +127,9 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
       return;
     }
     finishEdit({ plan: nextStep, fallback: backup, pickup: pickup.value.trim() }, 'Next step and note saved.');
+  });
+  complete.addEventListener('click', () => {
+    finishEdit({ plan: '', fallback: '' }, 'Plan marked done.');
   });
   dismiss.addEventListener('click', () => {
     finishEdit({ plan: '', fallback: '' }, 'Plan dismissed.');

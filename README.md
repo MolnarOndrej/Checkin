@@ -2,7 +2,7 @@
 
 Checkin is a local, single-page evening journal with a calendar. Select today or an earlier day and use **Add or find a goal** to enter a new goal or pick a pinned or recent one. Choose **Worked on it** or **Done** and add minutes if you like. Use **Save check-in** to save. The moonlit trail lights up for dates with recorded work, and the weekly summary under the calendar shows how many days you worked on each goal.
 
-Pin recurring goals in the **Goals** panel to keep them in the check-in’s goal suggestions. Use **Plan or pickup note** to set a next step, an optional fallback, and a note about where to pick up. Plans stay with their own goals until you edit, finish, or dismiss them. Unpinning hides the goal and its details. Pin it again to bring them back. The **Previous plan** link opens a dated plan from an earlier version for editing while you stay on the selected day.
+Pin recurring goals in the **Goals** panel to keep them in the check-in’s goal suggestions. Use the pencil icon next to a goal to open its next step, optional fallback, and pickup note. Plans stay with their own goals until you edit, finish, or dismiss them. Unpinning hides the goal and its details. Pin it again to bring them back. The **Previous plan** link opens a dated plan from an earlier version for editing while you stay on the selected day.
 
 Open **Notes & score** for an optional reflection and overall score. **Mark all done + set score to 100%** fills in the changes for you to review and save.
 

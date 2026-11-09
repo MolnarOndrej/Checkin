@@ -145,11 +145,11 @@
         <section class="card goals-card" aria-labelledby="pinned-title">
           <h2 id="pinned-title">Goals</h2>
           <form id="pin-form">
-            <input id="pin-name" type="text" maxlength="140" list="recent-goals" aria-label="Goal to pin" placeholder="Pin a recurring goal…">
+            <input id="pin-name" type="text" maxlength="140" list="recent-goals" aria-label="Goal to pin" placeholder="Goal name">
             <button type="submit" class="save-button">Pin goal</button>
           </form>
           <p id="pin-feedback" class="feedback" role="status"></p>
-          <div id="pinned-list"></div>
+          <ul id="pinned-list"></ul>
         </section>
       </div>
     </main>
@@ -158,16 +158,12 @@
   <datalist id="goal-options"></datalist>
   <datalist id="recent-goals"></datalist>
   <template id="pinned-goal-card">
-    <article class="pinned-goal">
-      <h3></h3>
-      <p data-plan hidden><strong>Next step</strong> <span></span></p>
-      <p data-fallback hidden><strong>Fallback</strong> <span></span></p>
-      <p data-pickup hidden><strong>Pick up here</strong> <span></span></p>
-      <div class="goal-actions">
-        <button type="button" data-edit class="save-button">Plan or pickup note</button>
-        <button type="button" data-done class="save-button" hidden>Plan done</button>
-      </div>
-    </article>
+    <li class="pinned-goal">
+      <span></span>
+      <button type="button" data-edit class="icon-button" aria-haspopup="dialog" title="Plan or pickup note">
+        <svg class="icon" aria-hidden="true"><use href="#pen"/></svg>
+      </button>
+    </li>
   </template>
   <dialog id="plan-editor" aria-labelledby="plan-editor-title" aria-describedby="plan-date">
     <form id="plan-editor-form">
@@ -197,6 +193,7 @@
         <button type="button" id="cancel-goal-edit" class="save-button">Cancel</button>
       </div>
       <div class="goal-actions">
+        <button type="button" id="complete-goal-plan" class="save-button">Mark plan done</button>
         <button type="button" id="dismiss-goal-plan" class="save-button">Dismiss plan</button>
         <button type="button" id="unpin-goal" class="save-button">Unpin goal</button>
       </div>

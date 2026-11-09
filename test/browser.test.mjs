@@ -267,6 +267,7 @@ test('an older plan can be edited without leaving the selected date or losing it
 test('the check-in stays focused while pinned goals remain available in the shared picker', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(1280, 900);
+  await page.setReducedMotion('reduce');
   const staged = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
     const panel = find('.journal-card');
@@ -283,6 +284,9 @@ test('the check-in stays focused while pinned goals remain available in the shar
     }
     pinWithPlan('Guitar', 'After dinner, play the chorus.', 'If I get home late, play it once.', 'Start at bar 9.');
     pinWithPlan('Writing', 'After coffee, draft a paragraph.');
+    const sidebar = find('.goals-card').getBoundingClientRect();
+    const journal = panel.getBoundingClientRect();
+    const [first, second] = find('#pinned-list').children;
     const layout = {
       unchangedOffset: saveOffset() === initialOffset,
       formCount: panel.querySelectorAll('form').length,
@@ -291,6 +295,11 @@ test('the check-in stays focused while pinned goals remain available in the shar
       weekByCalendar: Boolean(find('.calendar-card #week-goals')),
       detailsCollapsed: !find('#details').open,
       options: Array.from(find('#new-goal').list.options, ({ value }) => value),
+      sidebar: sidebar.left >= journal.right && Math.abs(sidebar.top - journal.top) < 1,
+      vertical: second.offsetTop > first.offsetTop,
+      firstRow: first.textContent.trim(),
+      rowButtons: first.querySelectorAll('button').length,
+      planIcon: first.querySelector('button svg use').getAttribute('href'),
     };
     find('#new-goal').value = layout.options[1];
     find('#add-goal').click();
@@ -315,32 +324,40 @@ test('the check-in stays focused while pinned goals remain available in the shar
     layout: {
       unchangedOffset: true, formCount: 1, submitCount: 1, goalsSeparate: true, weekByCalendar: true,
       detailsCollapsed: true, options: ['Guitar', 'Writing'],
+      sidebar: true, vertical: true, firstRow: 'Guitar', rowButtons: 1, planIcon: '#pen',
     },
   });
 
   await page.reload();
   const reloaded = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
-    const guitar = find('[aria-label="Plan or pickup note for Guitar"]').closest('article');
-    const writing = find('[aria-label="Plan or pickup note for Writing"]').closest('article');
+    find('[aria-label="Plan or pickup note for Guitar"]').click();
+    const guitar = {
+      guitarPlan: find('#goal-plan').value,
+      fallback: find('#goal-fallback').value,
+      pickup: find('#goal-pickup').value,
+      dialogOpen: find('#goal-editor').matches(':modal'),
+    };
+    find('#cancel-goal-edit').click();
+    find('[aria-label="Plan or pickup note for Writing"]').click();
     return {
-      guitarPlan: guitar.querySelector('[data-plan] span').textContent,
-      fallback: guitar.querySelector('[data-fallback] span').textContent,
-      pickup: guitar.querySelector('[data-pickup] span').textContent,
-      writingPlan: writing.querySelector('[data-plan] span').textContent,
-      writingPickup: writing.querySelector('[data-pickup] span').textContent,
+      ...guitar,
+      writingPlan: find('#goal-plan').value,
+      writingPickup: find('#goal-pickup').value,
       workMark: find('[data-selected]').dataset.status,
     };
   });
   assert.deepEqual(reloaded, {
     guitarPlan: 'After dinner, play the chorus.', fallback: 'If I get home late, play it once.',
-    pickup: 'Start at bar 9.', writingPlan: 'After coffee, draft a paragraph.',
+    pickup: 'Start at bar 9.', dialogOpen: true, writingPlan: 'After coffee, draft a paragraph.',
     writingPickup: 'Continue the opening paragraph.', workMark: 'work',
   });
 
   await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
-    find('[aria-label="Mark plan done for Guitar"]').click();
+    find('#cancel-goal-edit').click();
+    find('[aria-label="Plan or pickup note for Guitar"]').click();
+    find('#complete-goal-plan').click();
     find('[aria-label="Plan or pickup note for Writing"]').click();
     find('#goal-plan').value = 'After lunch, draft a paragraph.';
     find('#goal-editor button[type="submit"]').click();
@@ -350,24 +367,36 @@ test('the check-in stays focused while pinned goals remain available in the shar
   await page.reload();
   const changes = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
+    const openGoal = (name) => find(`[aria-label="Plan or pickup note for ${name}"]`).click();
     const unpinned = !find('[aria-label="Plan or pickup note for Guitar"]')
       && !Array.from(find('#goal-options').options).some(({ value }) => value === 'Guitar');
-    const rescheduled = find('[data-plan] span').textContent;
+    openGoal('Writing');
+    const rescheduled = find('#goal-plan').value;
+    find('#dismiss-goal-plan').click();
+    openGoal('Writing');
+    const writingPlan = find('#goal-plan').value;
+    find('#cancel-goal-edit').click();
     find('#pin-name').value = 'Guitar';
     find('#pin-form button').click();
-    const guitar = find('[aria-label="Plan or pickup note for Guitar"]').closest('article');
-    find('[aria-label="Plan or pickup note for Writing"]').click();
-    find('#dismiss-goal-plan').click();
+    openGoal('Guitar');
     return {
-      unpinned, rescheduled,
-      guitarPlanHidden: guitar.querySelector('[data-plan]').hidden,
-      guitarFallbackHidden: guitar.querySelector('[data-fallback]').hidden,
-      pickup: guitar.querySelector('[data-pickup] span').textContent,
-      writingPlanHidden: find('[aria-label="Plan or pickup note for Writing"]').closest('article').querySelector('[data-plan]').hidden,
+      unpinned, rescheduled, writingPlan,
+      guitarPlan: find('#goal-plan').value,
+      guitarFallback: find('#goal-fallback').value,
+      pickup: find('#goal-pickup').value,
+      completeHidden: find('#complete-goal-plan').hidden,
     };
   });
   assert.deepEqual(changes, {
-    unpinned: true, rescheduled: 'After lunch, draft a paragraph.', guitarPlanHidden: true,
-    guitarFallbackHidden: true, pickup: 'Start at bar 9.', writingPlanHidden: true,
+    unpinned: true, rescheduled: 'After lunch, draft a paragraph.', writingPlan: '', guitarPlan: '',
+    guitarFallback: '', pickup: 'Start at bar 9.', completeHidden: true,
   });
+
+  await page.evaluate(() => document.querySelector('#cancel-goal-edit').click());
+  await page.setViewport(360, 800);
+  assert.equal(await page.evaluate(() => {
+    const journal = document.querySelector('.journal-card').getBoundingClientRect();
+    const sidebar = document.querySelector('.goals-card').getBoundingClientRect();
+    return sidebar.top >= journal.bottom && sidebar.left === journal.left && sidebar.right === journal.right;
+  }), true);
 });

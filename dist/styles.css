@@ -227,15 +227,15 @@ textarea { width: 100%; resize: vertical; }
 .feedback[data-error] { color: var(--gold); }
 .text-button { margin-top: 12px; border: 0; padding: 0; background: none; color: var(--lilac); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .text-button:hover { color: var(--accent); }
-.goals-card { grid-column: 1 / -1; }
+.goals-card { grid-column: -2 / -1; padding: 16px; }
 .goals-card h2 { font: 400 24px Georgia, serif; margin: 0 0 10px; }
-.pinned-goal h3 { font-size: 13px; margin: 0 0 6px; }
 #pin-form { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; max-width: 360px; }
-#pinned-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+#pinned-list { list-style: none; padding: 0; margin: 0; }
 #pinned-list:not(:empty) { margin-top: 10px; }
-.pinned-goal { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow-wrap: anywhere; }
-.pinned-goal p { margin: 0 0 6px; color: #bcbdc9; font-size: 12px; line-height: 1.5; }
-.pinned-goal p strong { color: var(--text); margin-right: 3px; }
+.pinned-goal { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0 2px 4px; font-size: 13px; overflow-wrap: anywhere; }
+.pinned-goal + .pinned-goal { border-top: 1px solid var(--line); }
+.pinned-goal .icon-button { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border: 0; border-radius: 6px; background: transparent; color: var(--lilac); }
+.pinned-goal .icon-button:hover { background: var(--surface); color: var(--accent); }
 .goal-actions { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .goal-actions[hidden] { display: none; }
 #pin-feedback:not(:empty) { margin-top: 6px; }
@@ -260,6 +260,9 @@ dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
 .journal-card { animation-delay: .24s; }
 @keyframes enter { from { opacity: 0; transform: translateY(12px); } }
 
+@media (min-width: 1040px) {
+  .dashboard { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 216px; }
+}
 @media (max-width: 760px) {
   .shell { width: calc(100% - 28px); }
   .dashboard { grid-template-columns: 1fr; }
