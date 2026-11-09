@@ -984,6 +984,55 @@ test('legacy scores, notes, and checklist entries load and can still be edited',
   });
 });
 
+test('check-in and activity feedback clear independently and a new message resets its timer', async (t) => {
+  const page = await openCheckin(t);
+  const messages = await page.evaluate(async () => {
+    const find = (selector) => document.querySelector(selector);
+    const checkin = find('#feedback');
+    const activity = find('#pin-feedback');
+    const waitForClear = (element) => new Promise((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (element.textContent) return;
+        observer.disconnect();
+        resolve();
+      });
+      observer.observe(element, { childList: true });
+    });
+
+    find('#score').value = '75';
+    find('#save').click();
+    find('#pin-name').value = 'Guitar';
+    find('#pin-form button').click();
+    const initial = [checkin.innerText, activity.innerText];
+    const checkinCleared = waitForClear(checkin);
+    const activityCleared = waitForClear(activity);
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    find('#pinned-list [data-edit]').click();
+    const unpinnedAt = performance.now();
+    find('#unpin-activity').click();
+    const afterUnpin = activity.innerText;
+    await checkinCleared;
+    const afterCheckinCleared = [checkin.innerText, activity.innerText];
+    await activityCleared;
+    return { initial, afterUnpin, afterCheckinCleared, final: activity.innerText, elapsed: performance.now() - unpinnedAt };
+  });
+  const { elapsed, ...visibleMessages } = messages;
+  assert.ok(elapsed >= 3900, `Unpin feedback cleared after ${elapsed} ms`);
+  assert.deepEqual(visibleMessages, {
+    initial: ['Check-in saved.', 'Guitar is pinned.'],
+    afterUnpin: 'Activity unpinned.',
+    afterCheckinCleared: ['', 'Activity unpinned.'],
+    final: '',
+  });
+
+  await page.reload();
+  assert.deepEqual(await page.evaluate(() => ({
+    score: document.querySelector('#score').value,
+    pinned: JSON.parse(localStorage.getItem('checkin.pinned.guitar')).pinned,
+  })), { score: '75', pinned: false });
+});
+
 test('an optional score can be saved as zero or cleared from a narrow check-in', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(360, 800);

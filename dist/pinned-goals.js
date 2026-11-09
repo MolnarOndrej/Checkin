@@ -1,6 +1,7 @@
 import { goalKey } from './calendar.js';
 import { pinnedGoalPrefix as prefix } from './backup.js';
 import { setDialogTitle } from './dialog-title.js';
+import { showFeedback } from './feedback.js';
 
 export function setupPinnedGoals(updateActivities, announcePickup, openTracking) {
   const list = document.getElementById('pinned-list');
@@ -32,7 +33,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
       localStorage.setItem(key, JSON.stringify(goal));
       return goal;
     } catch {
-      feedback.textContent = 'Checkin could not save this activity in your browser.';
+      showFeedback(feedback, 'Checkin could not save this activity in your browser.');
       return null;
     }
   }
@@ -45,7 +46,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
     fallback.value = goal.fallback ?? '';
     pickup.value = goal.pickup ?? '';
     complete.hidden = dismiss.hidden = !goal.plan;
-    editorFeedback.textContent = '';
+    showFeedback(editorFeedback);
     dialog.showModal();
     if (focusPickup) pickup.focus();
   }
@@ -72,7 +73,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
         if (goal) goals.push([key, goal]);
       }
     } catch {
-      pinFeedback.textContent = 'Checkin could not read your activities.';
+      showFeedback(pinFeedback, 'Checkin could not read your activities.');
     }
     goals.sort(([, first], [, second]) => first.text.localeCompare(second.text));
     pinned = new Map(goals.filter(([, goal]) => goal.pinned));
@@ -107,7 +108,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
     if (!goal) return;
     pinName.value = '';
     render();
-    pinFeedback.textContent = `${text} is pinned.`;
+    showFeedback(pinFeedback, `${text} is pinned.`);
     (editButtons.get(key) ?? pinName).focus();
   });
 
@@ -115,7 +116,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
     if (!saveGoal(editingKey, fields, editorFeedback)) return;
     render();
     if (editingPickup) announcePickup(message);
-    else pinFeedback.textContent = message;
+    else showFeedback(pinFeedback, message);
     dialog.close();
   }
 
@@ -124,7 +125,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
     const nextStep = plan.value.trim();
     const backup = fallback.value.trim();
     if (backup && !nextStep) {
-      editorFeedback.textContent = 'Add a next step for this fallback, or leave both blank.';
+      showFeedback(editorFeedback, 'Add a next step for this fallback, or leave both blank.');
       plan.focus();
       return;
     }

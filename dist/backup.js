@@ -1,5 +1,6 @@
 import { dayKey, goalKey } from './calendar.js';
 import { isAmount, isDateKey, isGoal, isMeasurement } from './measurements.js';
+import { showFeedback } from './feedback.js';
 
 export const entryPrefix = 'checkin.day.';
 export const pinnedGoalPrefix = 'checkin.pinned.';
@@ -94,9 +95,8 @@ export function setupBackup({ canRestore, onRestore }) {
   let records = [];
   let selection = 0;
 
-  function show(message, error = false) {
-    feedback.textContent = message;
-    feedback.toggleAttribute('data-error', error);
+  function show(message, error) {
+    showFeedback(feedback, message, error);
   }
 
   document.getElementById('open-backup').addEventListener('click', () => {
@@ -104,7 +104,7 @@ export function setupBackup({ canRestore, onRestore }) {
     file.value = '';
     records = [];
     restore.hidden = true;
-    downloadFeedback.textContent = '';
+    showFeedback(downloadFeedback);
     show('');
     dialog.showModal();
   });
@@ -112,11 +112,9 @@ export function setupBackup({ canRestore, onRestore }) {
   document.getElementById('download-backup').addEventListener('click', () => {
     try {
       downloadBackup();
-      downloadFeedback.textContent = 'Backup download started.';
-      downloadFeedback.removeAttribute('data-error');
+      showFeedback(downloadFeedback, 'Backup download started.');
     } catch {
-      downloadFeedback.textContent = 'Checkin could not export the saved data from this browser.';
-      downloadFeedback.setAttribute('data-error', '');
+      showFeedback(downloadFeedback, 'Checkin could not export the saved data from this browser.', true);
     }
   });
 

@@ -1,5 +1,6 @@
 import { dateOffset, dayKey, goalKey, weekStart } from './calendar.js';
 import { setDialogTitle } from './dialog-title.js';
+import { showFeedback } from './feedback.js';
 import {
   formatAmount, formatDate, formatQuantity, goalIncludes, goalProgress, goalsOverlap, goalUnit, goalWindow,
   isGoal, isMeasurement, metersForUnit, unitKey,
@@ -8,11 +9,6 @@ import {
 const byId = (id) => document.getElementById(id);
 const todayKey = () => dayKey(new Date());
 const goalLabel = (goal) => formatQuantity(goal.amount, goalUnit(goal));
-
-function show(feedback, message, error = false) {
-  feedback.textContent = message;
-  feedback.toggleAttribute('data-error', error);
-}
 
 export function renderGoals(activities, date, entriesBetween, openGoalSettings) {
   const key = dayKey(date);
@@ -102,12 +98,12 @@ export function setupTracking({ getActivity, saveActivity }) {
       measurement = { unit: unit.value.trim(), trackMinutes: minutes.checked };
       if (!factor.disabled && factor.value !== '') measurement.metersPerUnit = factor.valueAsNumber;
       if (!isMeasurement(measurement)) {
-        show(measurementFeedback, 'Enter a unit and a positive distance per unit, or leave distance blank.', true);
+        showFeedback(measurementFeedback, 'Enter a unit and a positive distance per unit, or leave distance blank.', true);
         return;
       }
     }
     if (saveActivity(activityName, { measurement }, measurementFeedback)) {
-      show(measurementFeedback, 'Activity settings saved.');
+      showFeedback(measurementFeedback, 'Activity settings saved.');
     }
   });
 
@@ -121,7 +117,7 @@ export function setupTracking({ getActivity, saveActivity }) {
     factorUnit = unitKey(unit.value);
     factor.value = measurement?.metersPerUnit ?? '';
     minutes.checked = measurement?.trackMinutes ?? true;
-    show(measurementFeedback, '');
+    showFeedback(measurementFeedback);
     updateMeasurementFields();
     dialog.showModal();
   };
@@ -197,7 +193,7 @@ export function setupGoalSettings({ getActivity, saveActivity, activityNames, se
           if (saveActivity(activityName, { goals: updated }, goalFeedback)) {
             renderGoalList();
             summary.focus();
-            show(goalFeedback, goal.start > today ? 'Scheduled goal canceled.' : 'Goal ended. Past progress is saved.');
+            showFeedback(goalFeedback, goal.start > today ? 'Scheduled goal canceled.' : 'Goal ended. Past progress is saved.');
           }
         });
         item.append(title, schedule, stop);
@@ -207,7 +203,7 @@ export function setupGoalSettings({ getActivity, saveActivity, activityNames, se
 
   function updateGoalActivity() {
     goalUnitInput.value = getActivity(activity.value)?.measurement?.unit ?? '';
-    show(goalFeedback, '');
+    showFeedback(goalFeedback);
     updateGoalFields();
     renderGoalList();
   }
@@ -235,7 +231,7 @@ export function setupGoalSettings({ getActivity, saveActivity, activityNames, se
     event.preventDefault();
     const activityName = activity.value.trim();
     if (!activityName) {
-      show(goalFeedback, 'Choose or enter an activity for this goal.', true);
+      showFeedback(goalFeedback, 'Choose or enter an activity for this goal.', true);
       activity.focus();
       return;
     }
@@ -255,12 +251,12 @@ export function setupGoalSettings({ getActivity, saveActivity, activityNames, se
       goal.end = dayKey(dateOffset(monday, 6));
     }
     if (!isGoal(goal)) {
-      show(goalFeedback, 'Enter a positive goal amount, a unit if needed, and a valid schedule.', true);
+      showFeedback(goalFeedback, 'Enter a positive goal amount, a unit if needed, and a valid schedule.', true);
       return;
     }
     const existing = getActivity(activityName)?.goals ?? [];
     if (existing.some((saved) => goalsOverlap(saved, goal))) {
-      show(goalFeedback, 'This activity already has a goal in that period. Choose different dates or end the existing goal.', true);
+      showFeedback(goalFeedback, 'This activity already has a goal in that period. Choose different dates or end the existing goal.', true);
       return;
     }
     if (saveActivity(activityName, { goals: [...existing, goal] }, goalFeedback)) {
@@ -268,7 +264,7 @@ export function setupGoalSettings({ getActivity, saveActivity, activityNames, se
       amount.value = '';
       details.open = false;
       summary.focus();
-      show(goalFeedback, 'Goal created.');
+      showFeedback(goalFeedback, 'Goal created.');
     }
   });
 

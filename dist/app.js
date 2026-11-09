@@ -5,6 +5,7 @@ import { entryPrefix, setupBackup } from './backup.js';
 import { createActivityRow } from './activity-row.js';
 import { measurementSummary } from './measurements.js';
 import { renderGoals, setupGoalSettings, setupTracking } from './tracking.js';
+import { showFeedback } from './feedback.js';
 
 const byId = (id) => document.getElementById(id);
 const grid = byId('calendar');
@@ -164,9 +165,8 @@ function entryFor(key) {
   return cachedEntries.get(key);
 }
 
-function announce(message = '', error = false) {
-  feedback.textContent = message;
-  feedback.toggleAttribute('data-error', error);
+function announce(message, error) {
+  showFeedback(feedback, message, error);
 }
 
 function updateCalendar(glow = false) {
@@ -448,7 +448,7 @@ editPlan.addEventListener('click', () => {
   const [year, month, day] = editingPlanKey.split('-').map(Number);
   byId('plan-date').textContent = dateLabel(new Date(year, month - 1, day));
   nextPlan.value = entryFor(editingPlanKey)?.nextPlan ?? '';
-  planFeedback.textContent = '';
+  showFeedback(planFeedback);
   planEditor.showModal();
 });
 byId('cancel-plan-edit').addEventListener('click', () => planEditor.close());
@@ -461,7 +461,7 @@ byId('plan-editor-form').addEventListener('submit', (event) => {
   try {
     persistEntry(editingPlanKey, entry);
   } catch {
-    planFeedback.textContent = 'Checkin could not save this plan. Your edits are still here.';
+    showFeedback(planFeedback, 'Checkin could not save this plan. Your edits are still here.');
     return;
   }
   updateCalendar();
