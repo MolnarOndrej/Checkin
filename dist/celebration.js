@@ -15,6 +15,7 @@ const partialEffects = ['glimmer', 'waypoints', 'sprout', 'petals', 'mini-orbit'
 const openingEffects = ['starlight', 'meteor', 'fireflies', 'constellation', 'orbit'];
 const recentEffects = new Map();
 let animation;
+let finishAnimation;
 let audio;
 
 function chooseEffect(group, choices) {
@@ -34,15 +35,24 @@ function sizeCanvas() {
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 }
 
-function run(duration, draw) {
-  if (!ctx || reducedMotion.matches) return;
+function run(duration, draw, onFinish) {
+  if (!ctx || reducedMotion.matches) {
+    onFinish?.();
+    return;
+  }
   cancelAnimationFrame(animation);
+  finishAnimation?.();
+  finishAnimation = onFinish;
   sizeCanvas();
   const start = performance.now();
   function frame(now) {
     ctx.clearRect(0, 0, innerWidth, innerHeight);
     const elapsed = now - start;
-    if (elapsed >= duration || reducedMotion.matches) return;
+    if (elapsed >= duration || reducedMotion.matches) {
+      finishAnimation = undefined;
+      onFinish?.();
+      return;
+    }
     draw(elapsed / 1000);
     animation = requestAnimationFrame(frame);
   }
@@ -307,7 +317,7 @@ function playTune(full) {
   }
 }
 
-export function celebrate(origin, score, muted) {
+export function celebrate(origin, score, muted, onFinish) {
   const full = score === 100;
   if (!reducedMotion.matches) {
     const effect = chooseEffect(full ? 'full' : 'partial', full ? fullEffects : partialEffects);
@@ -322,7 +332,9 @@ export function celebrate(origin, score, muted) {
     run(encore ? 2800 : 2250, (elapsed) => {
       main(elapsed);
       if (elapsed >= encoreDelay) encore?.(elapsed - encoreDelay);
-    });
+    }, onFinish);
+  } else {
+    onFinish?.();
   }
   if (!muted) playTune(full);
 }

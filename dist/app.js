@@ -157,7 +157,9 @@ function saveEntry(percentage, allDone, source) {
   if (source !== complete) details.querySelector('summary').focus();
   announce(hasContent ? 'Check-in saved.' : 'Check-in cleared.');
   if (percentage !== null && previous?.score !== percentage) {
-    celebrate(origin, percentage, muted);
+    const stamp = grid.querySelector('[data-selected] .day-mark');
+    stamp?.classList.add('day-mark-pending');
+    celebrate(origin, percentage, muted, () => stamp?.classList.remove('day-mark-pending'));
   }
 }
 

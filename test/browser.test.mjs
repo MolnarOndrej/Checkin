@@ -23,9 +23,25 @@ test('a score, note, and goal survive reload and can be marked complete', async 
     find('#new-goal').value = 'Synthetic test goal';
     find('#add-goal').click();
     find('#entry-form button[type="submit"]').click();
-    return find('#feedback').textContent;
+    const stamp = find('[data-selected] .day-mark');
+    return {
+      feedback: find('#feedback').textContent,
+      visibility: getComputedStyle(stamp).visibility,
+      reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    };
   });
-  assert.equal(saved, 'Check-in saved.');
+  assert.equal(saved.feedback, 'Check-in saved.');
+  assert.equal(saved.visibility, saved.reducedMotion ? 'visible' : 'hidden');
+
+  const revealedStamp = await page.evaluate(async () => {
+    const stamp = document.querySelector('[data-selected] .day-mark');
+    const deadline = performance.now() + 4000;
+    while (getComputedStyle(stamp).visibility === 'hidden' && performance.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return { score: stamp.textContent, visibility: getComputedStyle(stamp).visibility };
+  });
+  assert.deepEqual(revealedStamp, { score: '75%', visibility: 'visible' });
 
   await page.reload();
   const readEntry = () => {
@@ -37,14 +53,16 @@ test('a score, note, and goal survive reload and can be marked complete', async 
       goal: find('[aria-label="Goal text"]').value,
       done: find('[aria-label="Mark goal done"]').checked,
       daysRecorded: find('#logged-count').textContent,
+      stamp: find('[data-selected] .day-mark').textContent,
     };
   };
   const entry = await page.evaluate(readEntry);
   assert.deepEqual(entry, {
-    score: 75, note: 'Synthetic test note', goal: 'Synthetic test goal', done: false, daysRecorded: '1 day recorded',
+    score: 75, note: 'Synthetic test note', goal: 'Synthetic test goal', done: false, daysRecorded: '1 day recorded', stamp: '75%',
   });
 
   await page.evaluate(() => document.querySelector('#complete').click());
   await page.reload();
-  assert.deepEqual(await page.evaluate(readEntry), { ...entry, score: 100, done: true });
+  assert.deepEqual(await page.evaluate(readEntry), { ...entry, score: 100, done: true, stamp: '' });
+  assert.equal(await page.evaluate(() => document.querySelector('[data-selected] .day-mark use').getAttribute('href')), '#check');
 });
