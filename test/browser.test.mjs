@@ -16,6 +16,16 @@ async function openCheckin(t, beforeLoad) {
   return page;
 }
 
+function captureRotations() {
+  Math.random = () => .99;
+  const ticks = window.rotationTicks = new Map();
+  window.setInterval = (callback, delay) => {
+    ticks.set(delay, callback);
+    return delay;
+  };
+  window.clearInterval = (delay) => ticks.delete(delay);
+}
+
 test('ambient effects run at different rhythms without moving the landscape', async (t) => {
   const page = await openCheckin(t);
   await page.setReducedMotion('no-preference');
@@ -71,18 +81,9 @@ test('ambient effects run at different rhythms without moving the landscape', as
 });
 
 test('moonlit trail rotates through random effects and the river flows downstream when selected', async (t) => {
-  const page = await openCheckin(t, () => {
-    Math.random = () => .99;
-    window.setInterval = (callback, delay) => {
-      window.ambientTick = callback;
-      window.ambientDelay = delay;
-      return 1;
-    };
-    window.clearInterval = (id) => {
-      if (id === 1) delete window.ambientTick;
-    };
-  });
+  const page = await openCheckin(t, captureRotations);
   assert.deepEqual(await page.evaluate(() => {
+    const ambientTick = window.rotationTicks.get(12_000);
     const scene = document.querySelector('.hero-scene');
     const ripple = scene.querySelector('.river-current path');
     const animation = ripple.getAnimations()[0];
@@ -94,18 +95,18 @@ test('moonlit trail rotates through random effects and the river flows downstrea
     const visible = Number(getComputedStyle(ripple).opacity) > .5;
     const effects = [scene.dataset.ambient];
     Math.random = () => .99;
-    window.ambientTick();
+    ambientTick();
     effects.push(scene.dataset.ambient);
     const hidden = Number(getComputedStyle(ripple).opacity) === 0 && ripple.getAnimations().length === 0;
     for (const draw of [.6, 0, 0, .99]) {
       Math.random = () => draw;
-      window.ambientTick();
+      ambientTick();
       effects.push(scene.dataset.ambient);
     }
-    return { effects, moving, visible, hidden, delay: window.ambientDelay };
+    return { effects, moving, visible, hidden };
   }), {
     effects: ['river', 'fireflies', 'meteor', 'moon', 'stars', 'river'],
-    moving: true, visible: true, hidden: true, delay: 12_000,
+    moving: true, visible: true, hidden: true,
   });
 
   await page.setReducedMotion('reduce');
@@ -115,11 +116,43 @@ test('moonlit trail rotates through random effects and the river flows downstrea
       await new Promise(requestAnimationFrame);
     }
     return {
-      rotating: Boolean(window.ambientTick),
+      rotating: window.rotationTicks.has(12_000),
       selected: scene.hasAttribute('data-ambient'),
       rippleVisible: Number(getComputedStyle(scene.querySelector('.river-current path')).opacity) > 0,
     };
   }), { rotating: false, selected: false, rippleVisible: false });
+});
+
+test('the Moonlit Trail heading shows a new two-line motto every five minutes', async (t) => {
+  const page = await openCheckin(t, captureRotations);
+  await page.setViewport(320, 800);
+  const result = await page.evaluate(() => {
+    const title = document.querySelector('#page-title');
+    const lines = [...title.querySelectorAll('span, em')];
+    const heroRight = title.closest('.hero').getBoundingClientRect().right;
+    const readTitle = () => lines.map((line) => line.textContent).join(' ');
+    const first = readTitle();
+    const ambientTick = window.rotationTicks.get(12_000);
+    for (let tick = 0; tick < 24; tick++) ambientTick();
+    const afterAmbientTicks = readTitle();
+    const mottoTick = window.rotationTicks.get(300_000);
+    const mottos = [];
+    for (let tick = 0; tick < 10; tick++) {
+      mottos.push({
+        text: readTitle(),
+        fits: lines.every((line) => line.getClientRects().length === 1
+          && line.getBoundingClientRect().right <= heroRight),
+      });
+      mottoTick();
+    }
+    return { first, afterAmbientTicks, mottos, afterCycle: readTitle() };
+  });
+  assert.equal(result.first, 'Let effort lead.');
+  assert.equal(result.afterAmbientTicks, result.first);
+  assert.equal(result.mottos[1].text, 'The way forward.');
+  assert.equal(new Set(result.mottos.map(({ text }) => text)).size, 10);
+  assert.deepEqual(result.mottos.filter(({ fits }) => !fits), []);
+  assert.equal(result.afterCycle, result.first);
 });
 
 test('partial work counts without a daily score and survives reload', async (t) => {

@@ -57,6 +57,37 @@ function setupAmbientEffects() {
   updateMotion();
 }
 
+function setupTrailMottos() {
+  const title = byId('page-title');
+  const firstLine = title.querySelector('span');
+  const secondLine = title.querySelector('em');
+  const mottos = [
+    [firstLine.textContent, secondLine.textContent],
+    ['One step', 'at a time.'],
+    ['Steps', 'add up.'],
+    ['Build', 'slowly.'],
+    ['Begin', 'again.'],
+    ['Keep', 'at it.'],
+    ['Move', 'gently.'],
+    ['Today', 'counts.'],
+    ['Stay', 'steady.'],
+    ['Let effort', 'lead.'],
+  ];
+  let index = Math.floor(Math.random() * mottos.length);
+
+  function showMotto() {
+    const [first, second] = mottos[index];
+    firstLine.textContent = first;
+    secondLine.textContent = second;
+  }
+
+  showMotto();
+  setInterval(() => {
+    index = (index + 1) % mottos.length;
+    showMotto();
+  }, 5 * 60 * 1000);
+}
+
 function entryFor(key) {
   try {
     const entry = JSON.parse(localStorage.getItem(entryPrefix + key));
@@ -421,4 +452,5 @@ const suggestPickup = setupPinnedGoals((names) => {
 }, announce);
 viewDate(today);
 setupAmbientEffects();
+setupTrailMottos();
 playOpening();
