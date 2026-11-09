@@ -255,8 +255,8 @@ textarea { width: 100%; resize: vertical; }
 #pin-feedback:not(:empty) { margin-top: 6px; }
 dialog { width: min(420px, calc(100% - 28px)); padding: 20px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; }
 dialog::backdrop { background: #11121bbb; }
-.dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
+.dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.dialog-header h2 { min-width: 0; margin: 0; font: 400 25px Georgia, serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #plan-date { margin: 0 0 4px; color: var(--muted); }
 #activity-editor label span { color: var(--muted); font-size: 11px; }
 #backup-dialog > p:not(.feedback) { color: var(--muted); font-size: 13px; }

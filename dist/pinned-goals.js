@@ -1,5 +1,6 @@
 import { goalKey } from './calendar.js';
 import { pinnedGoalPrefix as prefix } from './backup.js';
+import { setDialogTitle } from './dialog-title.js';
 
 export function setupPinnedGoals(updateActivities, announcePickup, openTracking) {
   const list = document.getElementById('pinned-list');
@@ -39,7 +40,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
   function openEditor(key, goal, focusPickup = false) {
     editingKey = key;
     editingPickup = focusPickup;
-    document.getElementById('activity-editor-title').textContent = `Activity plan for ${goal.text}`;
+    setDialogTitle(document.getElementById('activity-editor-title'), `Activity plan for ${goal.text}`);
     plan.value = goal.plan ?? '';
     fallback.value = goal.fallback ?? '';
     pickup.value = goal.pickup ?? '';

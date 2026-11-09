@@ -1,4 +1,5 @@
 import { dateOffset, dayKey, goalKey, weekStart } from './calendar.js';
+import { setDialogTitle } from './dialog-title.js';
 import {
   formatAmount, formatDate, formatQuantity, goalIncludes, goalProgress, goalsOverlap, goalUnit, goalWindow,
   isGoal, isMeasurement, metersForUnit, unitKey,
@@ -114,7 +115,7 @@ export function setupTracking({ getActivity, saveActivity }) {
     activityName = text;
     opener = trigger;
     const measurement = getActivity(text)?.measurement;
-    byId('activity-settings-title').textContent = `Activity settings for ${text}`;
+    setDialogTitle(byId('activity-settings-title'), `Activity settings for ${text}`);
     mode.value = measurement ? 'custom' : 'minutes';
     unit.value = measurement?.unit ?? '';
     factorUnit = unitKey(unit.value);

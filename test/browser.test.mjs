@@ -799,6 +799,61 @@ test('all modals show a single heading that names the dialog', async (t) => {
   ].map((title) => ({ title, namedByHeading: true })));
 });
 
+test('modal titles use an ellipsis at the character limit or when space runs out', async (t) => {
+  const page = await openCheckin(t);
+  const { exactFit, longName } = await page.evaluate(() => {
+    const exactFit = 'i'.repeat(14);
+    const longName = `${'i'.repeat(12)}👩‍🎨abcdefghijklmnop`;
+    const input = document.querySelector('#pin-name');
+    for (const name of [exactFit, longName]) {
+      input.value = name;
+      document.querySelector('#pin-form button').click();
+    }
+    return { exactFit, longName };
+  });
+
+  const readTitles = () => Array.from(document.querySelectorAll('#pinned-list li')).flatMap((row) =>
+    Array.from(row.querySelectorAll('button')).map((trigger) => {
+      trigger.click();
+      const dialog = document.querySelector('dialog:modal');
+      const header = dialog.querySelector('.dialog-header');
+      const heading = header.querySelector('h2');
+      const close = header.querySelector('button');
+      const style = getComputedStyle(heading);
+      const result = {
+        title: heading.innerText,
+        fullTitle: heading.title,
+        accessibleTitle: heading.getAttribute('aria-label') ?? heading.textContent,
+        singleLine: style.whiteSpace === 'nowrap' && style.overflowX === 'hidden' && style.textOverflow === 'ellipsis',
+        clipped: heading.scrollWidth > heading.clientWidth,
+        closeFits: close.getBoundingClientRect().right <= dialog.getBoundingClientRect().right,
+      };
+      close.click();
+      return result;
+    }));
+
+  await page.setViewport(1280, 900);
+  const desktop = await page.evaluate(readTitles);
+  const expectedTitles = new Map([
+    [`Activity plan for ${exactFit}`, `Activity plan for ${exactFit}`],
+    [`Activity settings for ${exactFit}`, `Activity settings for ${'i'.repeat(9)}…`],
+    [`Activity plan for ${longName}`, `Activity plan for ${'i'.repeat(12)}👩‍🎨…`],
+    [`Activity settings for ${longName}`, `Activity settings for ${'i'.repeat(9)}…`],
+  ]);
+  assert.equal(desktop.length, expectedTitles.size);
+  for (const result of desktop) {
+    assert.equal(result.title, expectedTitles.get(result.fullTitle));
+    assert.equal(result.accessibleTitle, result.fullTitle);
+    assert.ok(result.singleLine && result.closeFits);
+    assert.equal(result.clipped, false);
+  }
+
+  await page.setViewport(320, 800);
+  const mobile = await page.evaluate(readTitles);
+  assert.ok(mobile.some((result) => result.clipped));
+  assert.deepEqual(mobile.map(({ clipped, ...result }) => result), desktop.map(({ clipped, ...result }) => result));
+});
+
 test('both editors dismiss via their centered close icon or backdrop and discard drafts', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(360, 800);
