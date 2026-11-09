@@ -68,6 +68,7 @@ export function setupBackup({ canRestore, onRestore }) {
   const restore = document.getElementById('restore-backup');
   const feedback = document.getElementById('backup-feedback');
   const downloadFeedback = document.getElementById('download-feedback');
+  const status = document.getElementById('backup-status');
   let records = [];
   let selection = 0;
 
@@ -80,6 +81,7 @@ export function setupBackup({ canRestore, onRestore }) {
     file.value = '';
     records = [];
     restore.hidden = true;
+    showFeedback(status);
     showFeedback(downloadFeedback);
     show('');
     dialog.showModal();
@@ -88,10 +90,12 @@ export function setupBackup({ canRestore, onRestore }) {
   document.getElementById('download-backup').addEventListener('click', () => {
     try {
       downloadBackup();
-      showFeedback(downloadFeedback, 'Backup download started.');
     } catch {
       showFeedback(downloadFeedback, 'Checkin could not export the saved data from this browser.', true);
+      return;
     }
+    dialog.close();
+    showFeedback(status, 'Backup download started.');
   });
 
   file.addEventListener('change', async () => {
@@ -130,11 +134,8 @@ export function setupBackup({ canRestore, onRestore }) {
       show('Checkin could not restore the backup. Check browser storage and try again.', true);
       return;
     }
-    restore.hidden = true;
-    file.value = '';
-    records = [];
-    file.focus();
-    show(added.size ? `Restored ${countLabel(added.size, 'record')}.` : 'All of these records are already in this browser.');
     if (added.size) onRestore(added);
+    dialog.close();
+    showFeedback(status, added.size ? `Restored ${countLabel(added.size, 'record')}.` : 'All of these records are already in this browser.');
   });
 }

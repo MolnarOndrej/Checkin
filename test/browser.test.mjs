@@ -143,6 +143,8 @@ test('backup restores missing check-ins and goal plans without overwriting saved
     } finally {
       HTMLAnchorElement.prototype.click = click;
     }
+    const dialogOpen = find('#backup-dialog').open;
+    const message = find('#backup-status').textContent;
     const { filename, response } = download;
     const backup = window.testBackup = await (await response).text();
     window.chooseBackup = (contents) => new Promise((resolve) => {
@@ -161,12 +163,15 @@ test('backup restores missing check-ins and goal plans without overwriting saved
     });
     for (const key of Object.keys(records)) localStorage.removeItem(key);
     localStorage.setItem(older, JSON.stringify({ score: null, notes: 'Keep this reflection', goals: [] }));
-    return { filename, today, records, backup: JSON.parse(backup) };
+    return { filename, today, records, backup: JSON.parse(backup), dialogOpen, message };
   });
+  assert.equal(exported.dialogOpen, false);
+  assert.equal(exported.message, 'Backup download started.');
   assert.equal(exported.filename, `${exported.today.replace('checkin.day.', 'checkin-backup-')}.json`);
   assert.deepEqual(exported.backup, { format: 'checkin', version: 1, records: exported.records });
 
   assert.deepEqual(await page.evaluate(() => {
+    document.querySelector('#open-backup').click();
     const invalid = JSON.parse(window.testBackup);
     invalid.records['checkin.day.2025-02-30'] = { goals: [] };
     return window.chooseBackup(JSON.stringify(invalid));
@@ -196,12 +201,16 @@ test('backup restores missing check-ins and goal plans without overwriting saved
     } finally {
       Storage.prototype.setItem = setItem;
     }
-    return { before, after: keys(), blockedDraft, draft, failure: find('#backup-feedback').textContent };
+    return {
+      before, after: keys(), blockedDraft, draft,
+      dialogOpen: find('#backup-dialog').open, failure: find('#backup-feedback').textContent,
+    };
   });
   assert.deepEqual(attempted, {
     before: ['checkin.day.2025-01-02'], after: ['checkin.day.2025-01-02'],
     blockedDraft: 'Save your current check-in edits before restoring this date.',
-    draft: 'Unsaved reflection', failure: 'Checkin could not restore the backup. Check browser storage and try again.',
+    draft: 'Unsaved reflection', dialogOpen: true,
+    failure: 'Checkin could not restore the backup. Check browser storage and try again.',
   });
 
   assert.deepEqual(await page.evaluate(() => {
@@ -211,12 +220,16 @@ test('backup restores missing check-ins and goal plans without overwriting saved
     }));
     find('#restore-backup').click();
     return {
-      message: find('#backup-feedback').textContent,
+      dialogOpen: find('#backup-dialog').open,
+      message: find('#backup-status').textContent,
       note: find('#notes').value,
       week: find('#week-goals').textContent,
       goals: find('#pinned-list').textContent.trim(),
     };
-  }), { message: 'Restored 3 records.', note: 'Evening reflection', week: 'Guitar · 1 dayWriting · 1 day', goals: 'Guitar' });
+  }), {
+    dialogOpen: false, message: 'Restored 3 records.', note: 'Evening reflection',
+    week: 'Guitar · 1 dayWriting · 1 day', goals: 'Guitar',
+  });
 
   await page.reload();
   assert.deepEqual(await page.evaluate(() => {
