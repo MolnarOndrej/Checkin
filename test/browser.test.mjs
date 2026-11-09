@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { openBrowser, startProcess } from './browser.mjs';
 
-async function openCheckin(t) {
+async function openCheckin(t, beforeLoad) {
   const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
     env: { ...process.env, PORT: '0' },
   }, /Checkin is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
@@ -11,6 +11,7 @@ async function openCheckin(t) {
   const url = await server.ready;
   assert.notEqual(new URL(url).port, '4173');
   const page = await openBrowser(t);
+  if (beforeLoad) await page.beforeLoad(beforeLoad);
   await page.navigate(url);
   return page;
 }
@@ -22,29 +23,32 @@ test('ambient effects run at different rhythms without moving the landscape', as
     const effects = [
       ['body', '::before', .05, .95],
       ['body', '::after', .05, .95],
-      ['.moon-halo', null, .05, .95],
-      ['.sky-star', null, .1, .5],
-      ['.sky-meteor', null, .5, .93],
-      ['.firefly', null, .05, .3],
+      ['.moon-halo', null, .05, .95, 'moon'],
+      ['.sky-star', null, .1, .5, 'stars'],
+      ['.sky-meteor', null, .05, .2, 'meteor'],
+      ['.firefly', null, .05, .3, 'fireflies'],
       ['.calendar-card', '::before', .05, .55],
     ];
-    const animations = document.getAnimations();
+    const scene = document.querySelector('.hero-scene');
     return {
       landscapeAnimations: [...document.querySelectorAll('.hero, .hero-scene, .hero-scene svg, .hero-scene use')]
         .map((element) => getComputedStyle(element).animationName),
-      effects: effects.map(([selector, pseudo, dimAt, brightAt]) => {
+      effects: effects.map(([selector, pseudo, dimAt, brightAt, effect]) => {
+        if (effect) scene.dataset.ambient = effect;
         const element = document.querySelector(selector);
         const style = () => getComputedStyle(element, pseudo);
-        const animation = animations.find(({ animationName }) => animationName === style().animationName);
+        const animation = document.getAnimations().find(({ animationName }) => animationName === style().animationName);
         const { delay, duration, iterations } = animation.effect.getTiming();
         animation.pause();
         // Sample an even-numbered cycle after any negative start delay.
-        animation.currentTime = delay + duration * (2 + dimAt);
+        const cycleStart = delay + (iterations === Infinity ? 2 * duration : 0);
+        animation.currentTime = cycleStart + duration * dimAt;
         const dim = Number(style().opacity);
         const start = style().transform;
-        animation.currentTime = delay + duration * (2 + brightAt);
+        animation.currentTime = cycleStart + duration * brightAt;
         return {
-          duration, repeats: iterations === Infinity, brightens: Number(style().opacity) - dim > .45,
+          duration, expectedIterations: iterations === (effect === 'meteor' ? 1 : Infinity),
+          brightens: Number(style().opacity) - dim > .45,
           moves: style().transform !== start,
           interceptsClicks: Boolean(pseudo) && style().pointerEvents !== 'none',
         };
@@ -53,7 +57,7 @@ test('ambient effects run at different rhythms without moving the landscape', as
   });
   assert.deepEqual(animated.landscapeAnimations, ['none', 'none', 'none', 'none']);
   assert.equal(new Set(animated.effects.map(({ duration }) => duration)).size, animated.effects.length);
-  assert.ok(animated.effects.every(({ repeats, brightens, interceptsClicks }) => repeats && brightens && !interceptsClicks));
+  assert.ok(animated.effects.every(({ expectedIterations, brightens, interceptsClicks }) => expectedIterations && brightens && !interceptsClicks));
   assert.deepEqual(animated.effects.map(({ moves }) => moves), [true, true, false, false, true, true, true]);
 
   await page.setReducedMotion('reduce');
@@ -64,6 +68,58 @@ test('ambient effects run at different rhythms without moving the landscape', as
       meteorHidden: Number(getComputedStyle(document.querySelector('.sky-meteor')).opacity) === 0,
     };
   }), { running: 0, haloVisible: true, meteorHidden: true });
+});
+
+test('moonlit trail rotates through random effects and the river flows downstream when selected', async (t) => {
+  const page = await openCheckin(t, () => {
+    Math.random = () => .99;
+    window.setInterval = (callback, delay) => {
+      window.ambientTick = callback;
+      window.ambientDelay = delay;
+      return 1;
+    };
+    window.clearInterval = (id) => {
+      if (id === 1) delete window.ambientTick;
+    };
+  });
+  assert.deepEqual(await page.evaluate(() => {
+    const scene = document.querySelector('.hero-scene');
+    const ripple = scene.querySelector('.river-current path');
+    const animation = ripple.getAnimations()[0];
+    animation.pause();
+    animation.currentTime = 0;
+    const start = Number.parseFloat(getComputedStyle(ripple).strokeDashoffset);
+    animation.currentTime = 4_000;
+    const moving = Number.parseFloat(getComputedStyle(ripple).strokeDashoffset) < start;
+    const visible = Number(getComputedStyle(ripple).opacity) > .5;
+    const effects = [scene.dataset.ambient];
+    Math.random = () => .99;
+    window.ambientTick();
+    effects.push(scene.dataset.ambient);
+    const hidden = Number(getComputedStyle(ripple).opacity) === 0 && ripple.getAnimations().length === 0;
+    for (const draw of [.6, 0, 0, .99]) {
+      Math.random = () => draw;
+      window.ambientTick();
+      effects.push(scene.dataset.ambient);
+    }
+    return { effects, moving, visible, hidden, delay: window.ambientDelay };
+  }), {
+    effects: ['river', 'fireflies', 'meteor', 'moon', 'stars', 'river'],
+    moving: true, visible: true, hidden: true, delay: 12_000,
+  });
+
+  await page.setReducedMotion('reduce');
+  assert.deepEqual(await page.evaluate(async () => {
+    const scene = document.querySelector('.hero-scene');
+    for (let frame = 0; frame < 60 && scene.hasAttribute('data-ambient'); frame++) {
+      await new Promise(requestAnimationFrame);
+    }
+    return {
+      rotating: Boolean(window.ambientTick),
+      selected: scene.hasAttribute('data-ambient'),
+      rippleVisible: Number(getComputedStyle(scene.querySelector('.river-current path')).opacity) > 0,
+    };
+  }), { rotating: false, selected: false, rippleVisible: false });
 });
 
 test('partial work counts without a daily score and survives reload', async (t) => {

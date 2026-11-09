@@ -32,6 +32,31 @@ let displayedPlanKey;
 let editingPlanKey;
 let pinnedNames = [];
 
+function setupAmbientEffects() {
+  const scene = document.querySelector('.hero-scene');
+  const effects = ['moon', 'stars', 'meteor', 'fireflies', 'river'];
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let timer;
+
+  function pickEffect() {
+    const choices = effects.filter((effect) => effect !== scene.dataset.ambient);
+    scene.dataset.ambient = choices[Math.floor(Math.random() * choices.length)];
+  }
+
+  function updateMotion() {
+    clearInterval(timer);
+    if (reducedMotion.matches) {
+      delete scene.dataset.ambient;
+      return;
+    }
+    pickEffect();
+    timer = setInterval(pickEffect, 12_000);
+  }
+
+  reducedMotion.addEventListener('change', updateMotion);
+  updateMotion();
+}
+
 function entryFor(key) {
   try {
     const entry = JSON.parse(localStorage.getItem(entryPrefix + key));
@@ -395,4 +420,5 @@ const suggestPickup = setupPinnedGoals((names) => {
   updateGoalOptions();
 }, announce);
 viewDate(today);
+setupAmbientEffects();
 playOpening();

@@ -105,6 +105,7 @@ export async function openBrowser(t) {
   }
 
   return {
+    beforeLoad: (action) => page('Page.addScriptToEvaluateOnNewDocument', { source: `(${action})()` }),
     navigate: (url) => load('Page.navigate', { url }),
     reload: () => load('Page.reload'),
     setReducedMotion: (value) => page('Emulation.setEmulatedMedia', {
