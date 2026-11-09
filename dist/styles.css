@@ -69,9 +69,12 @@ button:disabled { cursor: default; }
 }
 .hero-scene, .hero::after { position: absolute; inset: 0; z-index: -1; }
 .hero-scene svg { position: absolute; left: 50%; translate: -50% 0; height: 100%; min-width: 100%; }
-.moon-halo { opacity: .45; }
+.moon-halo {
+  opacity: .45;
+  animation: moonlight 7s ease-in-out -2s infinite alternate paused;
+}
 [data-ambient="moon"] .moon-halo {
-  animation: moonlight 7s ease-in-out -2s infinite alternate;
+  animation-play-state: running;
 }
 @keyframes moonlight {
   from { opacity: .12; }
@@ -101,16 +104,15 @@ button:disabled { cursor: default; }
 }
 .sky-owl { opacity: 0; }
 [data-ambient="owl"] .sky-owl {
-  animation: owl-glide 9s linear 1s;
+  animation: owl-glide var(--owl-duration) linear var(--owl-delay);
 }
 [data-ambient="owl"] .owl-wing {
-  animation: owl-wingbeat 3s ease-in-out 1s 3;
+  animation: owl-wingbeat calc(var(--owl-duration) / 3) ease-in-out var(--owl-delay) 3;
 }
 @keyframes owl-glide {
-  0% { opacity: 0; transform: translate(448px, 64px) rotate(-8deg); }
+  0% { opacity: 0; offset-distance: 0%; }
   22%, 76% { opacity: .86; }
-  50% { transform: translate(536px, 43px) rotate(-5deg); }
-  100% { opacity: 0; transform: translate(624px, 40px) rotate(3deg); }
+  100% { opacity: 0; offset-distance: 100%; }
 }
 @keyframes owl-wingbeat {
   0%, 16%, 100% { transform: scaleY(.65); }

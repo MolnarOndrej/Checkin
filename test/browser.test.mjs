@@ -322,7 +322,7 @@ test('moonlit trail rotates through random effects and the river flows downstrea
   }), { rotating: false, selected: false, rippleVisible: false });
 });
 
-test('the owl glides left of the moon and fades out on desktop and mobile', async (t) => {
+test('the owl varies its route, direction, and speed on desktop and mobile', async (t) => {
   const page = await openCheckin(t, captureRotations);
   await page.setReducedMotion('no-preference');
 
@@ -336,37 +336,59 @@ test('the owl glides left of the moon and fades out on desktop and mobile', asyn
       const opacity = () => Number(getComputedStyle(owl).opacity);
       const idle = opacity();
       const tick = window.rotationTicks.get(12_000);
-      Math.random = () => .6;
-      tick();
-      const glide = owl.getAnimations()[0];
-      const flap = wing.getAnimations()[0];
-      glide.pause();
-      flap.pause();
-      const { delay, duration } = glide.effect.getTiming();
-      glide.currentTime = 0;
-      const before = opacity();
-      glide.currentTime = delay + duration * .5;
-      const first = owl.getBoundingClientRect();
-      const visible = opacity() > .5;
-      const wingUp = () => new DOMMatrix(getComputedStyle(wing).transform).m22 > 0;
-      flap.currentTime = delay + 840;
-      const raisesWing = wingUp();
-      flap.currentTime = delay + 1290;
-      const lowersWing = !wingUp();
-      glide.currentTime = delay + duration * .7;
-      const second = owl.getBoundingClientRect();
       const hero = scene.getBoundingClientRect();
       const moonCenter = new DOMPoint(805, 102).matrixTransform(scene.querySelector('svg').getScreenCTM());
-      glide.currentTime = delay + duration;
-      const after = opacity();
-      return {
-        idle, before, after, visible, raisesWing, lowersWing,
-        glidesRight: second.left > first.left,
-        inLeftSky: first.left >= hero.left && second.right < Math.min(hero.right, moonCenter.x),
-      };
+
+      function fly(draws) {
+        Math.random = () => draws.shift();
+        tick();
+        const [glide] = owl.getAnimations();
+        const [flap] = wing.getAnimations();
+        glide.pause();
+        flap.pause();
+        const { delay, duration } = glide.effect.getTiming();
+        const wingbeat = flap.effect.getTiming().duration;
+        glide.currentTime = 0;
+        const before = opacity();
+        flap.currentTime = delay + wingbeat * .28;
+        const raisesWing = new DOMMatrix(getComputedStyle(wing).transform).m22 > 0;
+        flap.currentTime = delay + wingbeat * .43;
+        const lowersWing = new DOMMatrix(getComputedStyle(wing).transform).m22 < 0;
+        const positions = [.3, .5, .7].map((progress) => {
+          glide.currentTime = delay + duration * progress;
+          const bounds = owl.getBoundingClientRect();
+          const head = new DOMPoint(16, 0).matrixTransform(owl.getScreenCTM());
+          const tail = new DOMPoint(-13, 2).matrixTransform(owl.getScreenCTM());
+          return { bounds, visible: opacity() > .5, facesRight: head.x > tail.x };
+        });
+        const [first, middle, last] = positions;
+        const glidesRight = last.bounds.left > first.bounds.left;
+        glide.currentTime = delay + duration;
+        return {
+          duration, delay, before, after: opacity(), raisesWing, lowersWing, glidesRight,
+          dips: middle.bounds.top > Math.max(first.bounds.top, last.bounds.top) + 1,
+          facesForward: positions.every(({ facesRight }) => facesRight === glidesRight),
+          inLeftSky: positions.every(({ bounds, visible }) =>
+            visible && bounds.left >= hero.left && bounds.right < Math.min(hero.right, moonCenter.x)),
+        };
+      }
+
+      // Select the same speed draw twice to verify consecutive flights still differ.
+      const outbound = fly([.6, 0, 0, 0, 1, 1, 0, 0]);
+      Math.random = () => .99;
+      tick(); // Owl to river.
+      const inbound = fly([.6, 0, .9, 0, 0, 0, 0, .8]);
+      return { idle, outbound, inbound };
     }), {
-      idle: 0, before: 0, after: 0, visible: true, raisesWing: true, lowersWing: true,
-      glidesRight: true, inLeftSky: true,
+      idle: 0,
+      outbound: {
+        duration: 6000, delay: 500, before: 0, after: 0, raisesWing: true, lowersWing: true,
+        glidesRight: true, dips: true, facesForward: true, inLeftSky: true,
+      },
+      inbound: {
+        duration: 7000, delay: 1500, before: 0, after: 0, raisesWing: true, lowersWing: true,
+        glidesRight: false, dips: false, facesForward: true, inLeftSky: true,
+      },
     }, `viewport width ${width}`);
   }
 
@@ -377,45 +399,65 @@ test('the owl glides left of the moon and fades out on desktop and mobile', asyn
   }), { opacity: 0, animations: 0 });
 });
 
-test('Moonlit Trail fireflies hold their position and brightness between turns', async (t) => {
+test('the Moonlit Trail moon halo and fireflies hold their appearance between turns', async (t) => {
   const page = await openCheckin(t, captureRotations);
   await page.setReducedMotion('no-preference');
   await page.reload();
-  const result = await page.evaluate(async () => {
+  const results = await page.evaluate(async () => {
     const tick = window.rotationTicks.get(12_000);
-    const fireflies = [...document.querySelectorAll('.firefly')];
     const frame = () => new Promise(requestAnimationFrame);
-    const sample = () => fireflies.map((firefly) => {
-      const { transform, opacity } = getComputedStyle(firefly);
-      return { transform, opacity };
-    });
 
-    const idle = sample();
-    await frame();
-    const stillIdle = sample();
-    tick(); // River to fireflies.
-    const started = sample();
-    await frame();
-    await frame();
-    const flying = sample();
-    tick(); // Fireflies to river.
-    const stopped = sample();
-    await frame();
-    await frame();
-    const holding = sample();
-    tick(); // River back to fireflies.
-    const resumed = sample();
-    await frame();
-    await frame();
-    return { idle, stillIdle, started, flying, stopped, holding, resumed, movingAgain: sample() };
+    async function sampleTurns(selector, draw) {
+      const lights = [...document.querySelectorAll(selector)];
+      const sample = () => lights.map((light) => {
+        const { transform, opacity } = getComputedStyle(light);
+        return { transform, opacity };
+      });
+      async function waitForMotion(previous) {
+        let current = previous;
+        for (let i = 0; i < 30; i++) {
+          await frame();
+          current = sample();
+          if (current.some(({ transform, opacity }, index) =>
+            transform !== previous[index].transform || opacity !== previous[index].opacity)) break;
+        }
+        return current;
+      }
+
+      Math.random = () => draw;
+      const idle = sample();
+      await frame();
+      const stillIdle = sample();
+      tick();
+      const started = sample();
+      const moving = await waitForMotion(started);
+      tick();
+      const stopped = sample();
+      await frame();
+      await frame();
+      const holding = sample();
+      tick();
+      const resumed = sample();
+      const movingAgain = await waitForMotion(resumed);
+      Math.random = () => .99;
+      tick(); // Return to the river before sampling the next effect.
+      return { idle, stillIdle, started, moving, stopped, holding, resumed, movingAgain };
+    }
+
+    return {
+      fireflies: await sampleTurns('.firefly', .99),
+      moon: await sampleTurns('.moon-halo', 0),
+    };
   });
-  assert.deepEqual(result.stillIdle, result.idle);
-  assert.deepEqual(result.started, result.idle);
-  assert.notDeepEqual(result.flying, result.started);
-  assert.deepEqual(result.stopped, result.flying);
-  assert.deepEqual(result.holding, result.stopped);
-  assert.deepEqual(result.resumed, result.holding);
-  assert.notDeepEqual(result.movingAgain, result.resumed);
+  for (const [effect, result] of Object.entries(results)) {
+    assert.deepEqual(result.stillIdle, result.idle, effect);
+    assert.deepEqual(result.started, result.idle, effect);
+    assert.notDeepEqual(result.moving, result.started, effect);
+    assert.deepEqual(result.stopped, result.moving, effect);
+    assert.deepEqual(result.holding, result.stopped, effect);
+    assert.deepEqual(result.resumed, result.holding, effect);
+    assert.notDeepEqual(result.movingAgain, result.resumed, effect);
+  }
 });
 
 test('the Moonlit Trail motto rotates on the timer and stays the same on refresh', async (t) => {

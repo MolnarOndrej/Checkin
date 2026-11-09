@@ -38,13 +38,31 @@ let loadedDraft;
 
 function setupAmbientEffects() {
   const scene = document.querySelector('.hero-scene');
+  const owl = scene.querySelector('.sky-owl');
   const effects = ['moon', 'stars', 'meteor', 'owl', 'fireflies', 'river'];
+  const flightDurations = [6, 7, 8, 9, 10];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let lastFlightDuration;
   let timer;
+
+  function prepareOwlFlight() {
+    const durations = flightDurations.filter((duration) => duration !== lastFlightDuration);
+    lastFlightDuration = durations[Math.floor(Math.random() * durations.length)];
+    const facesRight = Math.random() < .5;
+    const [start, firstBend, secondBend, end] = facesRight ? [480, 528, 576, 624] : [624, 576, 528, 480];
+    const skyHeight = () => 30 + Math.round(Math.random() * 44);
+    owl.style.offsetPath = `path("M ${start} ${skyHeight()} C ${firstBend} ${skyHeight()}, ${secondBend} ${skyHeight()}, ${end} ${skyHeight()}")`;
+    owl.style.offsetRotate = facesRight ? 'auto' : 'reverse';
+    owl.style.transform = facesRight ? '' : 'scaleX(-1)';
+    owl.style.setProperty('--owl-duration', `${lastFlightDuration}s`);
+    owl.style.setProperty('--owl-delay', `${.5 + Math.random() * 1.25}s`);
+  }
 
   function pickEffect() {
     const choices = effects.filter((effect) => effect !== scene.dataset.ambient);
-    scene.dataset.ambient = choices[Math.floor(Math.random() * choices.length)];
+    const effect = choices[Math.floor(Math.random() * choices.length)];
+    if (effect === 'owl') prepareOwlFlight();
+    scene.dataset.ambient = effect;
   }
 
   function updateMotion() {
