@@ -15,6 +15,38 @@ async function openCheckin(t) {
   return page;
 }
 
+test('ambient lighting and stars change gently and stay static with reduced motion', async (t) => {
+  const page = await openCheckin(t);
+  await page.setReducedMotion('no-preference');
+  const animated = await page.evaluate(() => {
+    const glow = getComputedStyle(document.body, '::before');
+    const star = document.querySelector('.sky-star');
+    const [twinkle] = star.getAnimations();
+    twinkle.pause();
+    twinkle.currentTime = 0;
+    const dim = Number(getComputedStyle(star).opacity);
+    twinkle.currentTime = twinkle.effect.getTiming().duration / 2;
+    return {
+      glowMoves: glow.animationName !== 'none',
+      glowIgnoresClicks: glow.pointerEvents === 'none',
+      starBrightens: Number(getComputedStyle(star).opacity) > dim,
+    };
+  });
+  assert.deepEqual(animated, { glowMoves: true, glowIgnoresClicks: true, starBrightens: true });
+
+  await page.setReducedMotion('reduce');
+  assert.deepEqual(await page.evaluate(() => {
+    const glow = getComputedStyle(document.body, '::before');
+    const star = getComputedStyle(document.querySelector('.sky-star'));
+    return {
+      glowMoves: glow.animationName !== 'none',
+      glowVisible: glow.backgroundImage !== 'none',
+      starMoves: star.animationName !== 'none',
+      starVisible: Number(star.opacity) > 0,
+    };
+  }), { glowMoves: false, glowVisible: true, starMoves: false, starVisible: true });
+});
+
 test('partial work counts without a daily score and survives reload', async (t) => {
   const page = await openCheckin(t);
   const saved = await page.evaluate(() => {

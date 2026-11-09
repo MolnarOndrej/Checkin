@@ -107,6 +107,9 @@ export async function openBrowser(t) {
   return {
     navigate: (url) => load('Page.navigate', { url }),
     reload: () => load('Page.reload'),
+    setReducedMotion: (value) => page('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value }],
+    }),
     async evaluate(action) {
       const { result, exceptionDetails } = await page('Runtime.evaluate', {
         expression: `(${action})()`, returnByValue: true, awaitPromise: true,
