@@ -2,6 +2,9 @@ import { dateLabel, dateOffset, dayKey, goalHasWork, goalKey, monthStart, render
 import { celebrate, playOpening } from './celebration.js';
 import { setupPinnedGoals } from './pinned-goals.js';
 import { entryPrefix, setupBackup } from './backup.js';
+import { createActivityRow } from './activity-row.js';
+import { measurementSummary } from './measurements.js';
+import { renderGoals, setupTracking } from './tracking.js';
 
 const byId = (id) => document.getElementById(id);
 const grid = byId('calendar');
@@ -22,6 +25,7 @@ const feedback = byId('feedback');
 const complete = byId('complete');
 const save = byId('save');
 const cachedEntries = new Map();
+const activityRows = new WeakMap();
 let today = new Date();
 let selected = today;
 let month = monthStart(today);
@@ -29,6 +33,7 @@ let muted = false;
 let displayedPlanKey;
 let editingPlanKey;
 let pinnedNames = [];
+let activities = [];
 let loadedDraft;
 
 function setupAmbientEffects() {
@@ -156,6 +161,24 @@ function updateWeek() {
   }));
 }
 
+function entryKeys() {
+  const keys = new Set(cachedEntries.keys());
+  try {
+    for (let index = 0; index < localStorage.length; index++) {
+      const storageKey = localStorage.key(index);
+      if (storageKey?.startsWith(entryPrefix)) keys.add(storageKey.slice(entryPrefix.length));
+    }
+  } catch {}
+  return keys;
+}
+
+function updateActivityGoals() {
+  renderGoals(activities, selected, (start, end) => Array.from(entryKeys())
+    .filter((key) => key >= start && key <= end)
+    .map(entryFor)
+    .filter(Boolean), openActivityTracking);
+}
+
 function updateGoalOptions() {
   const options = new Map(pinnedNames.map((text) => [goalKey({ text }), new Option(text)]));
   for (const option of byId('recent-goals').options) {
@@ -167,13 +190,7 @@ function updateGoalOptions() {
 
 function updatePlanAndSuggestions(entry) {
   const key = dayKey(selected);
-  const keys = new Set(cachedEntries.keys());
-  try {
-    for (let index = 0; index < localStorage.length; index++) {
-      const storageKey = localStorage.key(index);
-      if (storageKey?.startsWith(entryPrefix)) keys.add(storageKey.slice(entryPrefix.length));
-    }
-  } catch {}
+  const keys = entryKeys();
 
   const suggestions = new Map();
   displayedPlanKey = entry?.nextPlan ? key : null;
@@ -206,6 +223,7 @@ function updateSummary(entry) {
   const worked = entry?.goals.filter(goalHasWork) ?? [];
   copy.textContent = worked.length ? describeWork(worked) : '';
   if (entry?.score != null) {
+    if (copy.textContent && !copy.textContent.endsWith('.')) copy.textContent += '.';
     copy.textContent += `${worked.length ? ' ' : ''}Daily score: ${entry.score}%.`;
   }
   copy.hidden = !copy.textContent;
@@ -213,54 +231,20 @@ function updateSummary(entry) {
 
 function describeWork(goals) {
   if (goals.length === 1) {
-    const { text, minutes } = goals[0];
-    return minutes ? `You put ${minutes} min into “${text}”.` : `You made time for “${text}”.`;
+    const { text, minutes, measurement } = goals[0];
+    if (measurement?.amount !== undefined) return `${text} · ${measurementSummary(measurement, minutes)}`;
+    return minutes ? `You put ${minutes} min into “${text}”.` : `You worked on “${text}”.`;
   }
-  return `You made time for ${goals.length} goals.`;
+  return `You worked on ${goals.length} activities.`;
 }
 
-function addGoalRow({ text, done, worked, minutes }) {
-  const row = document.createElement('div');
-  row.className = 'goal-row';
-  const label = document.createElement('input');
-  label.type = 'text';
-  label.maxLength = 140;
-  label.value = text;
-  label.setAttribute('aria-label', 'Goal text');
-  const status = document.createElement('select');
-  status.append(new Option('No work logged', 'open'), new Option('Worked on it', 'worked'), new Option('Done', 'done'));
-  status.value = done ? 'done' : worked ? 'worked' : 'open';
-  const duration = document.createElement('input');
-  duration.type = 'number';
-  duration.min = '1';
-  duration.max = '1440';
-  duration.step = '1';
-  duration.placeholder = 'Min';
-  duration.value = minutes ?? '';
-  const updateLabels = () => {
-    const goal = label.value.trim() || 'goal';
-    status.setAttribute('aria-label', `Progress for ${goal}`);
-    duration.setAttribute('aria-label', `Optional minutes for ${goal}`);
-  };
-  updateLabels();
-  label.addEventListener('input', updateLabels);
-  status.addEventListener('change', () => {
-    if (status.value === 'open') duration.value = '';
+function addGoalRow(activity, saved = false) {
+  const controller = createActivityRow(activity, {
+    saved, getActivity, openTracking: openActivityTracking, onRemove: () => newGoal.focus(),
   });
-  duration.addEventListener('input', () => {
-    if (duration.value && status.value === 'open') status.value = 'worked';
-  });
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.textContent = '×';
-  remove.setAttribute('aria-label', 'Remove goal');
-  remove.addEventListener('click', () => {
-    row.remove();
-    newGoal.focus();
-  });
-  row.append(label, remove, status, duration);
-  goalList.append(row);
-  return status;
+  activityRows.set(controller.row, controller);
+  goalList.append(controller.row);
+  return controller.status;
 }
 
 function commitNewGoal() {
@@ -273,7 +257,7 @@ function commitNewGoal() {
 
 function stageGoal(text) {
   const name = goalKey({ text });
-  const existing = Array.from(goalList.querySelectorAll('input[type="text"]'))
+  const existing = Array.from(goalList.querySelectorAll('.activity-input'))
     .find((input) => goalKey({ text: input.value }) === name);
   if (!existing) return addGoalRow({ text, worked: true });
   const status = existing.closest('.goal-row').querySelector('select');
@@ -282,14 +266,7 @@ function stageGoal(text) {
 }
 
 function readGoals() {
-  return Array.from(goalList.children, (row) => {
-    const [text, duration] = row.querySelectorAll('input');
-    const status = row.querySelector('select').value;
-    const goal = { text: text.value.trim(), done: status === 'done' };
-    if (!goal.done && status === 'worked') goal.worked = true;
-    if (duration.value) goal.minutes = duration.valueAsNumber;
-    return goal;
-  }).filter((goal) => goal.text);
+  return Array.from(goalList.children, (row) => activityRows.get(row).read()).filter((goal) => goal.text);
 }
 
 function draftState() {
@@ -302,7 +279,7 @@ function loadForm(entry) {
   notes.value = entry?.notes ?? '';
   newGoal.value = '';
   goalList.replaceChildren();
-  entry?.goals.forEach(addGoalRow);
+  entry?.goals.forEach((activity) => addGoalRow(activity, true));
   loadedDraft = draftState();
 }
 
@@ -316,6 +293,7 @@ function viewDate(date, focusCalendar = false) {
   updateSummary(entry);
   updateCalendar();
   updateWeek();
+  updateActivityGoals();
   updatePlanAndSuggestions(entry);
   suggestPickup();
   announce();
@@ -333,11 +311,13 @@ function persistEntry(key, entry) {
 
 function saveEntry(percentage) {
   commitNewGoal();
-  const invalidDuration = goalList.querySelector('input[type="number"]:invalid');
-  if (invalidDuration) {
-    announce('Enter whole minutes from 1 to 1440, or leave minutes blank.', true);
-    invalidDuration.focus();
-    return;
+  for (const row of goalList.children) {
+    const invalid = activityRows.get(row).validate();
+    if (invalid) {
+      announce(invalid.message, true);
+      invalid.field.focus();
+      return;
+    }
   }
   const origin = save.getBoundingClientRect();
   const key = dayKey(selected);
@@ -350,7 +330,7 @@ function saveEntry(percentage) {
   if (previous?.nextPlan) entry.nextPlan = previous.nextPlan;
   const hasContent = hasEntryContent(entry);
   if (!hasContent && !previous) {
-    announce('Add a goal, a note, or a score to save this day.', true);
+    announce('Add an activity, a note, or a score to save this day.', true);
     return;
   }
   try {
@@ -366,6 +346,7 @@ function saveEntry(percentage) {
   updateSummary(savedEntry);
   updateCalendar(newWork.size > 0);
   updateWeek();
+  updateActivityGoals();
   updatePlanAndSuggestions(savedEntry);
   loadForm(savedEntry);
   const loggedGoals = Array.from(newWork.values());
@@ -449,10 +430,21 @@ form.addEventListener('submit', (event) => {
   saveEntry(score.value === '' ? null : score.valueAsNumber);
 });
 
-const { suggestPickup, refreshGoals } = setupPinnedGoals((names) => {
-  pinnedNames = names;
+function openActivityTracking(text, trigger) {
+  openTracking(text, trigger);
+}
+
+const { suggestPickup, refreshGoals, getActivity, saveActivity } = setupPinnedGoals((records) => {
+  activities = records;
+  pinnedNames = records.filter(({ pinned }) => pinned).map(({ text }) => text);
   updateGoalOptions();
-}, announce);
+  updateActivityGoals();
+  for (const row of goalList.children) activityRows.get(row).refreshMeasurement();
+}, announce, openActivityTracking);
+const openTracking = setupTracking({ getActivity, saveActivity, selectedDate: () => selected });
+window.addEventListener('storage', (event) => {
+  if (event.key === null || event.key.startsWith(entryPrefix)) updateActivityGoals();
+});
 viewDate(today);
 setupBackup({
   canRestore: (records) => !records.some(([key]) => key === entryPrefix + dayKey(selected))

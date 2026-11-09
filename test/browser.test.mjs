@@ -35,13 +35,19 @@ test('backup restores missing check-ins and goal plans without overwriting saved
     const records = {
       [today]: {
         score: 80, notes: 'Evening reflection', nextPlan: 'Start after dinner',
-        goals: [{ text: 'Guitar', done: false, worked: true, minutes: 20 }, { text: 'Writing', done: true }],
+        goals: [
+          { text: 'Guitar', done: false, worked: true, minutes: 20 },
+          { text: 'Writing', done: true, measurement: { unit: 'pages', amount: 0, trackMinutes: false } },
+        ],
       },
       [older]: { score: null, notes: 'Older reflection', goals: [] },
       'checkin.pinned.guitar': {
         text: 'Guitar', pinned: true, plan: 'Practice the chorus', fallback: 'Play it once', pickup: 'Bar 9',
       },
-      'checkin.pinned.reading': { text: 'Reading', pinned: false, pickup: 'Page 23' },
+      'checkin.pinned.reading': {
+        text: 'Reading', pinned: false, pickup: 'Page 23', measurement: { unit: 'pages', trackMinutes: false },
+        goals: [{ id: 'reading-2025', metric: 'amount', amount: 50, unit: 'pages', repeat: 'range', start: '2025-01-01', end: '2025-01-31' }],
+      },
     };
     for (const [key, value] of Object.entries(records)) localStorage.setItem(key, JSON.stringify(value));
     localStorage.setItem('unrelated', 'keep me');
@@ -87,7 +93,7 @@ test('backup restores missing check-ins and goal plans without overwriting saved
     return window.chooseBackup(JSON.stringify(invalid));
   }), { message: 'Checkin could not read this backup. Choose a valid Checkin backup file.', canRestore: false });
   assert.deepEqual(await page.evaluate(() => window.chooseBackup(window.testBackup)), {
-    message: '1 check-in and 2 goal records ready to restore. This browser already has 1 record from the backup.',
+    message: '1 check-in and 2 activity records ready to restore. This browser already has 1 record from the backup.',
     canRestore: true,
   });
 
@@ -141,15 +147,16 @@ test('backup restores missing check-ins and goal plans without overwriting saved
       previousPlan, note: find('#notes').value, score: find('#score').valueAsNumber,
       minutes: find('[aria-label="Optional minutes for Guitar"]').valueAsNumber,
       writing: find('[aria-label="Progress for Writing"]').value,
+      pages: find('[aria-label="Optional pages for Writing"]').valueAsNumber,
       plan: find('#goal-plan').value, fallback: find('#goal-fallback').value, pickup: find('#goal-pickup').value,
       unpinned: JSON.parse(localStorage.getItem('checkin.pinned.reading')),
       existing: JSON.parse(localStorage.getItem('checkin.day.2025-01-02')).notes,
       unrelated: localStorage.getItem('unrelated'),
     };
   }), {
-    previousPlan: 'Start after dinner', note: 'Evening reflection', score: 80, minutes: 20, writing: 'done',
+    previousPlan: 'Start after dinner', note: 'Evening reflection', score: 80, minutes: 20, writing: 'done', pages: 0,
     plan: 'Practice the chorus', fallback: 'Play it once', pickup: 'Bar 9',
-    unpinned: { text: 'Reading', pinned: false, pickup: 'Page 23' },
+    unpinned: exported.records['checkin.pinned.reading'],
     existing: 'Keep this reflection', unrelated: 'keep me',
   });
 });
@@ -390,6 +397,167 @@ test('partial work counts without a daily score and survives reload', async (t) 
   });
 });
 
+test('daily lap lengths and durations persist while a distance goal spans a change of unit', async (t) => {
+  const page = await openCheckin(t, () => {
+    const fixed = new Date(2026, 10, 11, 12).getTime();
+    window.Date = class extends Date {
+      constructor(...args) { super(...(args.length ? args : [fixed])); }
+      static now() { return fixed; }
+    };
+  });
+  const saved = await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    const set = (selector, value) => {
+      const field = find(selector);
+      field.value = value;
+      field.dispatchEvent(new Event('input'));
+      field.dispatchEvent(new Event('change'));
+    };
+    const click = (selector) => find(selector).click();
+    const progress = () => find('#activity-goals-list strong').textContent;
+    const addRunning = () => {
+      set('#new-goal', 'Running');
+      click('#add-goal');
+    };
+    set('#pin-name', 'Running');
+    click('#pin-form button');
+    click('#pinned-list [data-tracking]');
+    set('#measurement-mode', 'custom');
+    set('#measurement-unit', 'laps');
+    set('#measurement-factor', '400');
+    click('#measurement-form button');
+    click('#new-activity-goal summary');
+    set('#activity-goal-metric', 'amount');
+    set('#activity-goal-amount', '2');
+    set('#activity-goal-unit', 'km');
+    set('#activity-goal-repeat', 'range');
+    set('#activity-goal-start', '2026-11-09');
+    set('#activity-goal-end', '2026-11-11');
+    click('#activity-goal-form button');
+    click('#close-tracking');
+
+    click('[data-day="9"]');
+    addRunning();
+    set('[data-amount]', '1');
+    set('[data-minutes]', '5');
+    const preview = find('.daily-metrics').textContent;
+    click('#save');
+    const firstProgress = progress();
+
+    click('[data-day="10"]');
+    addRunning();
+    set('[data-amount]', '2');
+    set('[data-minutes]', '10');
+    click('.daily-distance summary');
+    set('[data-factor]', '500');
+    click('#save');
+    const secondProgress = progress();
+
+    click('#pinned-list [data-tracking]');
+    set('#measurement-unit', 'km');
+    click('#measurement-form button');
+    click('#close-tracking');
+    click('#today');
+    addRunning();
+    set('[data-amount]', '0.6');
+    click('#save');
+    return { preview, firstProgress, secondProgress, completed: progress() };
+  });
+  assert.deepEqual(saved, {
+    preview: '400 m · 12:30 min/km', firstProgress: '0.4 / 2 km',
+    secondProgress: '1.4 / 2 km', completed: '2 / 2 km',
+  });
+
+  await page.reload();
+  const reloaded = await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    const today = find('#journal-copy').textContent;
+    find('[data-day="9"]').click();
+    const first = find('#journal-copy').textContent;
+    const factor = find('[data-factor]').valueAsNumber;
+    find('[data-day="10"]').click();
+    return {
+      today, first, factor, second: find('#journal-copy').textContent,
+      secondFactor: find('[data-factor]').valueAsNumber,
+      completed: find('#activity-goals-list strong').textContent,
+    };
+  });
+  assert.deepEqual(reloaded, {
+    today: 'Running · 0.6 km', first: 'Running · 1 lap · 5 min · 400 m · 12:30 min/km', factor: 400,
+    second: 'Running · 2 laps · 10 min · 1 km · 10:00 min/km', secondFactor: 500, completed: '2 / 2 km',
+  });
+  await page.setViewport(360, 720);
+  assert.deepEqual(await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    find('.goal-row [data-tracking]').click();
+    find('#new-activity-goal summary').click();
+    const dialog = find('#tracking-editor');
+    const rect = dialog.getBoundingClientRect();
+    return {
+      withinViewport: rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
+      fitsWidth: dialog.scrollWidth === dialog.clientWidth,
+      visible: dialog.matches(':modal'),
+    };
+  }), { withinViewport: true, fitsWidth: true, visible: true });
+});
+
+test('a weekly days goal counts a check-in with no amount and preserves progress when replaced', async (t) => {
+  const page = await openCheckin(t, () => {
+    const fixed = new Date(2026, 10, 11, 12).getTime();
+    window.Date = class extends Date {
+      constructor(...args) { super(...(args.length ? args : [fixed])); }
+      static now() { return fixed; }
+    };
+  });
+  const result = await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    const click = (selector) => find(selector).click();
+    const progress = () => find('#activity-goals-list strong').textContent;
+    click('[data-day="9"]');
+    find('#new-goal').value = 'Strength';
+    click('#add-goal');
+    click('.goal-row [data-tracking]');
+    click('#new-activity-goal summary');
+    find('#activity-goal-amount').value = '3';
+    click('#activity-goal-form button');
+    click('#close-tracking');
+    click('#save');
+    const first = progress();
+    click('#today');
+    click('#activity-goals-list button');
+    click('#new-activity-goal summary');
+    find('#activity-goal-amount').value = '2';
+    click('#activity-goal-form button');
+    const overlap = find('#activity-goal-feedback').textContent;
+    click('#tracking-goals-list button');
+    click('#activity-goal-form button');
+    click('#close-tracking');
+    const replacement = progress();
+    click('[data-day="9"]');
+    const historical = progress();
+
+    find('#new-goal').value = 'Reading';
+    click('#add-goal');
+    document.querySelectorAll('.goal-row [data-tracking]')[1].click();
+    click('#new-activity-goal summary');
+    find('#activity-goal-repeat').value = 'week';
+    find('#activity-goal-repeat').dispatchEvent(new Event('change'));
+    find('#activity-goal-amount').value = '3';
+    click('#activity-goal-form button');
+    click('#close-tracking');
+    return {
+      first, overlap, replacement, historical,
+      oneWeek: Array.from(document.querySelectorAll('#activity-goals-list small'), (item) => item.textContent),
+    };
+  });
+  assert.deepEqual(result, {
+    first: '1 / 3 days',
+    overlap: 'This activity already has a goal in that period. Choose different dates or end the existing goal.',
+    replacement: '0 / 2 days', historical: '1 / 3 days',
+    oneWeek: ['Nov 9, 2026 – Nov 15, 2026', 'Nov 9, 2026 – Nov 10, 2026'],
+  });
+});
+
 test('legacy scores, notes, and checklist entries load and can still be edited', async (t) => {
   const page = await openCheckin(t);
   await page.evaluate(() => {
@@ -512,8 +680,8 @@ test('an older plan can be edited without leaving the selected date or losing it
     initial: {
       reminder: 'After coffee, write for 15 minutes with music.', modal: true, earlierDate: true, focus: 'next-plan',
     },
-    suggestion: 'Writing', emptyWeek: 'No goal work logged this week.',
-    draft: { sameDay: true, notes: 'Draft for today', work: 'worked', week: 'No goal work logged this week.' },
+    suggestion: 'Writing', emptyWeek: 'No activity logged this week.',
+    draft: { sameDay: true, notes: 'Draft for today', work: 'worked', week: 'No activity logged this week.' },
   });
   await page.reload();
   assert.deepEqual(await page.evaluate(() => {
@@ -633,7 +801,8 @@ test('the check-in stays focused while pinned goals remain available in the shar
       vertical: second.offsetTop > first.offsetTop,
       firstRow: first.textContent.trim(),
       rowButtons: first.querySelectorAll('button').length,
-      planIcon: first.querySelector('button svg use').getAttribute('href'),
+      planIcon: first.querySelector('[data-edit] use').getAttribute('href'),
+      trackingIcon: first.querySelector('[data-tracking] use').getAttribute('href'),
     };
     find('#new-goal').value = layout.options[1];
     find('#add-goal').click();
@@ -658,7 +827,7 @@ test('the check-in stays focused while pinned goals remain available in the shar
     layout: {
       unchangedOffset: true, formCount: 1, submitCount: 1, goalsSeparate: true, weekByCalendar: true,
       detailsCollapsed: true, options: ['Guitar', 'Writing'],
-      sidebar: true, vertical: true, firstRow: 'Guitar', rowButtons: 1, planIcon: '#pen',
+      sidebar: true, vertical: true, firstRow: 'Guitar', rowButtons: 2, planIcon: '#pen', trackingIcon: '#tracking-icon',
     },
   });
 

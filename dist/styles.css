@@ -219,18 +219,19 @@ details[open] summary .chevron { transform: rotate(180deg); }
 form, .detail-fields { display: grid; gap: 10px; font-size: 13px; }
 .detail-fields { padding: 12px; border-top: 1px solid #363a47; }
 .score-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-form input[type="text"], form input[type="number"], form select, textarea { background: #1a1c24; border: 1px solid #3a3e4c; border-radius: 6px; color: var(--text); padding: 7px 8px; min-width: 0; font: inherit; }
+form input[type="text"], form input[type="number"], form input[type="date"], form select, textarea { background: #1a1c24; border: 1px solid #3a3e4c; border-radius: 6px; color: var(--text); padding: 7px 8px; min-width: 0; font: inherit; }
 .score-field input { width: 78px; }
 fieldset { min-width: 0; margin: 1px 0; padding: 0; border: 0; }
 fieldset legend { padding: 0; margin-bottom: 6px; }
 .goal-add { display: flex; gap: 6px; }
 .goal-add input { flex: 1; }
-.goal-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 6px; padding: 8px; margin-bottom: 7px; border: 1px solid var(--line); border-radius: 8px; }
-.goal-row input[type="text"] { grid-column: 1 / -1; grid-row: 1; padding-right: 38px; }
-.goal-row button { grid-column: 2; grid-row: 1; justify-self: end; margin: 3px; }
-.goal-row select { grid-row: 2; }
-.goal-add button, .goal-row button, .save-button { border: 1px solid #4a4e5f; background: #303443; border-radius: 6px; padding: 4px 9px; }
-.goal-add button:hover, .goal-row button:hover, .save-button:hover { background: #44485b; }
+.goal-row { display: grid; gap: 8px; padding: 9px; margin-bottom: 7px; border: 1px solid var(--line); border-radius: 9px; }
+.activity-row-header { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px; }
+.time-only { grid-template-columns: minmax(0, 1fr) minmax(78px, .46fr); }
+.time-only .activity-row-header { grid-column: 1 / -1; }
+.time-only > select { align-self: end; }
+.goal-add button, .save-button { border: 1px solid #4a4e5f; background: #303443; border-radius: 6px; padding: 4px 9px; }
+.goal-add button:hover, .save-button:hover { background: #44485b; }
 .optional { color: var(--muted); font-size: 11px; margin-left: 3px; }
 textarea { width: 100%; resize: vertical; }
 .save-button { padding: 8px; font-weight: 650; }
@@ -244,10 +245,11 @@ textarea { width: 100%; resize: vertical; }
 #pin-form { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; max-width: 360px; }
 #pinned-list { list-style: none; padding: 0; margin: 0; }
 #pinned-list:not(:empty) { margin-top: 10px; }
-.pinned-goal { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0 2px 4px; font-size: 13px; overflow-wrap: anywhere; }
+.pinned-goal { display: flex; align-items: center; gap: 2px; padding: 2px 0 2px 4px; font-size: 13px; overflow-wrap: anywhere; }
+.activity-name { flex: 1; min-width: 0; }
 .pinned-goal + .pinned-goal { border-top: 1px solid var(--line); }
-.pinned-goal .icon-button, .dialog-header .icon-button { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--lilac); }
-.pinned-goal .icon-button:hover, .dialog-header .icon-button:hover { background: var(--surface); color: var(--accent); }
+.pinned-goal .icon-button, .dialog-header .icon-button, .activity-row-header .icon-button { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--lilac); }
+.pinned-goal .icon-button:hover, .dialog-header .icon-button:hover, .activity-row-header .icon-button:hover { background: var(--surface); color: var(--accent); }
 .goal-actions { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .goal-actions[hidden] { display: none; }
 #pin-feedback:not(:empty) { margin-top: 6px; }
@@ -268,6 +270,30 @@ dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
 .week-progress ul, .week-progress p { margin: 4px 0 0; color: var(--muted); }
 .week-progress ul { padding-left: 16px; }
 .week-progress ul:empty { display: none; }
+
+.tracking-field:not([hidden]), .tracking-fields:not([hidden]) { display: grid; gap: 5px; min-width: 0; }
+.tracking-fields:not([hidden]) { gap: 10px; }
+.tracking-field input, .tracking-field select { width: 100%; }
+.tracking-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tracking-pair.single-measure { grid-template-columns: minmax(0, 1fr); }
+.tracking-check { display: flex; gap: 7px; align-items: center; }
+.tracking-check input, #activity-goals-list progress { accent-color: var(--accent); }
+.tracking-hint, .tracking-kicker, #activity-goals-list small, #tracking-goals-list small { color: var(--muted); font-size: 12px; margin: 0; overflow-wrap: anywhere; }
+.tracking-kicker { margin-bottom: 3px; }
+.daily-measures label { color: var(--muted); overflow-wrap: anywhere; }
+.daily-distance { margin: 0; }
+.daily-distance summary { padding: 6px 8px; color: var(--muted); font-size: 12px; }
+.daily-metrics { color: var(--accent); padding: 1px 2px; }
+.activity-goals { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 13px; }
+#activity-goals-list, #tracking-goals-list { list-style: none; padding: 0; margin: 0; }
+#activity-goals-list li, #tracking-goals-list li { display: grid; gap: 5px; padding: 9px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; background: var(--surface); font-size: 13px; overflow-wrap: anywhere; }
+#activity-goals-list .text-button, #tracking-goals-list .text-button { justify-self: start; text-align: left; margin: 0; }
+#activity-goals-list progress { width: 100%; height: 8px; }
+#tracking-editor { width: min(465px, calc(100% - 28px)); max-height: calc(100dvh - 28px); }
+.tracking-section { display: grid; gap: 10px; border-top: 1px solid var(--line); margin-top: 15px; padding-top: 13px; }
+.tracking-section h3 { font-size: 14px; margin: 0; }
+#tracking-goals-list:empty { display: none; }
+#activity-goal-feedback:not(:empty) { margin-top: 3px; }
 
 #effects { position: fixed; inset: 0; z-index: 10; width: 100%; height: 100%; pointer-events: none; }
 .reveal { animation: enter .75s cubic-bezier(.2,.65,.3,1) backwards; }

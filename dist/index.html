@@ -21,6 +21,7 @@
     <symbol id="pen" viewBox="0 0 24 24"><path d="m4 20 1-5L16 4a2 2 0 0 1 4 4L9 19l-5 1zm10-14 4 4"/></symbol>
     <symbol id="close-icon" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="flag" viewBox="0 0 24 24"><path d="M5 21V4m0 1c5-5 9 4 14 0v11c-5 4-9-5-14 0"/></symbol>
+    <symbol id="tracking-icon" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="#242631"/><circle cx="15" cy="17" r="3" fill="#242631"/></symbol>
   </svg>
   <div class="shell">
     <main>
@@ -98,7 +99,7 @@
           </div>
           <div class="week-progress">
             <span class="progress-icon"><svg class="icon"><use href="#sparkle"/></svg></span>
-            <div><strong id="week-title">This week on the trail</strong><ul id="week-goals"></ul><p id="week-empty">No goal work logged this week.</p></div>
+            <div><strong id="week-title">This week on the trail</strong><ul id="week-goals"></ul><p id="week-empty">No activity logged this week.</p></div>
           </div>
         </section>
 
@@ -114,7 +115,7 @@
               <legend>What did you work on?</legend>
               <div id="goal-list"></div>
               <div class="goal-add">
-                <input id="new-goal" type="text" maxlength="140" aria-label="Add or find a goal" placeholder="Add or find a goal…" list="goal-options">
+                <input id="new-goal" type="text" maxlength="140" aria-label="Add or find an activity" placeholder="Add or find an activity…" list="goal-options">
                 <button id="add-goal" type="button">Add</button>
               </div>
             </fieldset>
@@ -138,13 +139,18 @@
         </section>
 
         <section class="card goals-card reveal" aria-labelledby="pinned-title">
-          <h2 id="pinned-title">Goals</h2>
+          <h2 id="pinned-title">Activities</h2>
           <form id="pin-form">
-            <input id="pin-name" type="text" maxlength="140" list="recent-goals" aria-label="Goal to pin" placeholder="Goal name">
-            <button type="submit" class="save-button">Pin goal</button>
+            <input id="pin-name" type="text" maxlength="140" list="recent-goals" aria-label="Activity to pin" placeholder="Activity name">
+            <button type="submit" class="save-button">Pin</button>
           </form>
           <p id="pin-feedback" class="feedback" role="status"></p>
           <ul id="pinned-list"></ul>
+          <section class="activity-goals" aria-labelledby="activity-goals-title">
+            <h2 id="activity-goals-title">Goals</h2>
+            <p id="activity-goals-empty" class="tracking-hint">Open an activity’s tracking settings to set a goal.</p>
+            <ul id="activity-goals-list"></ul>
+          </section>
         </section>
       </div>
       <button type="button" id="open-backup" class="text-button" aria-haspopup="dialog">Backup &amp; restore</button>
@@ -152,9 +158,47 @@
   </div>
   <datalist id="goal-options"></datalist>
   <datalist id="recent-goals"></datalist>
+  <template id="activity-row-template">
+    <div class="goal-row">
+      <div class="activity-row-header">
+        <input class="activity-input" type="text" maxlength="140" aria-label="Activity name">
+        <button type="button" class="icon-button" data-tracking aria-haspopup="dialog" title="Tracking and goals">
+          <svg class="icon" aria-hidden="true"><use href="#tracking-icon"/></svg>
+        </button>
+        <button type="button" class="icon-button" data-remove aria-label="Remove activity" title="Remove activity">
+          <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
+        </button>
+      </div>
+      <select>
+        <option value="open">No work logged</option>
+        <option value="worked">Worked on it</option>
+        <option value="done">Done</option>
+      </select>
+      <div class="tracking-pair daily-measures">
+        <label class="tracking-field" data-amount-field>
+          <span data-unit></span>
+          <input type="number" data-amount min="0" max="1000000000" step="any" placeholder="Optional">
+        </label>
+        <label class="tracking-field" data-minutes-field>
+          <span>Minutes</span>
+          <input type="number" data-minutes min="1" max="1440" step="1" placeholder="Optional">
+        </label>
+      </div>
+      <details class="daily-distance">
+        <summary><span data-distance-label>Distance per unit</span> <svg class="icon chevron" aria-hidden="true"><use href="#down"/></svg></summary>
+        <label class="detail-fields tracking-field">Meters per unit for this check-in
+          <input type="number" data-factor min="0" max="1000000000" step="any" placeholder="e.g. 400">
+        </label>
+      </details>
+      <p class="daily-metrics tracking-hint" hidden></p>
+    </div>
+  </template>
   <template id="pinned-goal-card">
     <li class="pinned-goal">
-      <span></span>
+      <span class="activity-name"></span>
+      <button type="button" data-tracking class="icon-button" aria-haspopup="dialog" title="Tracking and goals">
+        <svg class="icon" aria-hidden="true"><use href="#tracking-icon"/></svg>
+      </button>
       <button type="button" data-edit class="icon-button" aria-haspopup="dialog" title="Plan or pickup note">
         <svg class="icon" aria-hidden="true"><use href="#pen"/></svg>
       </button>
@@ -181,7 +225,7 @@
     <form id="goal-editor-form">
       <div class="dialog-header">
         <h2 id="goal-editor-title"></h2>
-        <button type="button" id="cancel-goal-edit" class="icon-button" aria-label="Close goal editor" title="Close">
+        <button type="button" id="cancel-goal-edit" class="icon-button" aria-label="Close activity plan" title="Close">
           <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
         </button>
       </div>
@@ -198,9 +242,76 @@
       <div class="goal-actions">
         <button type="button" id="complete-goal-plan" class="save-button">Mark plan done</button>
         <button type="button" id="dismiss-goal-plan" class="save-button">Dismiss plan</button>
-        <button type="button" id="unpin-goal" class="save-button">Unpin goal</button>
+        <button type="button" id="unpin-goal" class="save-button">Unpin activity</button>
       </div>
     </form>
+  </dialog>
+  <dialog id="tracking-editor" aria-labelledby="tracking-title" closedby="any">
+    <div class="dialog-header">
+      <div><p class="tracking-kicker">Activity settings</p><h2 id="tracking-title"></h2></div>
+      <button type="button" id="close-tracking" class="icon-button" aria-label="Close activity settings" title="Close">
+        <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
+      </button>
+    </div>
+    <form id="measurement-form" class="tracking-section">
+      <h3>Daily tracking</h3>
+      <label class="tracking-field">Measure
+        <select id="measurement-mode">
+          <option value="minutes">Time in minutes</option>
+          <option value="custom">Custom unit</option>
+        </select>
+      </label>
+      <div id="measurement-custom" class="tracking-fields" hidden>
+        <label class="tracking-field">Unit of work
+          <input id="measurement-unit" type="text" maxlength="32" placeholder="e.g. laps, km, sets" disabled>
+        </label>
+        <label class="tracking-field" id="measurement-factor-field">Meters per unit <span class="optional">optional</span>
+          <input id="measurement-factor" type="number" min="0" max="1000000000" step="any" placeholder="e.g. 400" disabled>
+        </label>
+        <label class="tracking-check"><input id="measurement-minutes" type="checkbox" checked> Also log minutes</label>
+      </div>
+      <p class="tracking-hint">Settings apply when you add this activity to a check-in. Saved measurements keep their original units.</p>
+      <p id="measurement-feedback" class="feedback" role="status"></p>
+      <div><button type="submit" class="save-button">Save tracking</button></div>
+    </form>
+    <section class="tracking-section" aria-labelledby="tracking-goals-title">
+      <h3 id="tracking-goals-title">Goals</h3>
+      <ul id="tracking-goals-list"></ul>
+      <details id="new-activity-goal">
+        <summary>Add a goal <svg class="icon chevron" aria-hidden="true"><use href="#down"/></svg></summary>
+        <form id="activity-goal-form" class="detail-fields">
+          <label class="tracking-field">Measure progress by
+            <select id="activity-goal-metric">
+              <option value="days">Days worked</option>
+              <option value="amount">Amount logged</option>
+              <option value="minutes">Minutes logged</option>
+            </select>
+          </label>
+          <div class="tracking-pair">
+            <label class="tracking-field"><span id="activity-goal-amount-label">Days</span>
+              <input id="activity-goal-amount" type="number" min="0" max="1000000000" step="1" required>
+            </label>
+            <label class="tracking-field" id="activity-goal-unit-field" hidden>Unit
+              <input id="activity-goal-unit" type="text" maxlength="32" placeholder="e.g. laps or km" disabled>
+            </label>
+          </div>
+          <label class="tracking-field">Schedule
+            <select id="activity-goal-repeat">
+              <option value="weekly">Every week (Monday–Sunday)</option>
+              <option value="week">Selected week only</option>
+              <option value="range">Specific date range</option>
+            </select>
+          </label>
+          <div class="tracking-pair">
+            <label class="tracking-field" id="activity-goal-start-field">Start date<input id="activity-goal-start" type="date" required></label>
+            <label class="tracking-field" id="activity-goal-end-field" hidden>End date<input id="activity-goal-end" type="date" disabled></label>
+          </div>
+          <p id="activity-goal-hint" class="tracking-hint"></p>
+          <div><button type="submit" class="save-button">Create goal</button></div>
+        </form>
+      </details>
+      <p id="activity-goal-feedback" class="feedback" role="status"></p>
+    </section>
   </dialog>
   <dialog id="backup-dialog" aria-labelledby="backup-title" closedby="any">
     <div class="dialog-header">
@@ -209,10 +320,10 @@
         <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
       </button>
     </div>
-    <p>Download a copy of your saved check-ins and goal plans. The file contains your notes in plain text.</p>
+    <p>Download your saved check-ins, activities, and goals. The file contains your notes in plain text.</p>
     <button type="button" id="download-backup" class="save-button">Download backup</button>
     <p id="download-feedback" class="feedback" role="status"></p>
-    <p>Restore adds missing check-ins and goal records. It keeps the records already in this browser.</p>
+    <p>Restore adds missing check-ins and activity records. It keeps the records already in this browser.</p>
     <label for="backup-file">Choose a Checkin backup file</label>
     <input type="file" id="backup-file" accept=".json,application/json">
     <p id="backup-feedback" class="feedback" role="status"></p>

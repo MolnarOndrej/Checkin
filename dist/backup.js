@@ -1,4 +1,5 @@
 import { dayKey, goalKey } from './calendar.js';
+import { isAmount, isDateKey, isGoal, isMeasurement } from './measurements.js';
 
 export const entryPrefix = 'checkin.day.';
 export const pinnedGoalPrefix = 'checkin.pinned.';
@@ -17,22 +18,22 @@ function isDayEntry(value) {
     && value.goals.every((goal) => isRecord(goal) && typeof goal.text === 'string'
       && typeof goal.done === 'boolean'
       && (goal.worked === undefined || typeof goal.worked === 'boolean')
-      && (goal.minutes === undefined || isIntegerIn(goal.minutes, 1, 1440)));
+      && (goal.minutes === undefined || isIntegerIn(goal.minutes, 1, 1440))
+      && (goal.measurement === undefined || (isRecord(goal.measurement) && isMeasurement(goal.measurement)
+        && (goal.measurement.amount === undefined || isAmount(goal.measurement.amount)))));
 }
 
 function isValidRecord(key, value) {
   if (key.startsWith(entryPrefix)) {
-    const date = key.slice(entryPrefix.length);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-    const parsed = new Date(date);
-    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
-      && isDayEntry(value);
+    return isDateKey(key.slice(entryPrefix.length)) && isDayEntry(value);
   }
   return key.startsWith(pinnedGoalPrefix)
     && isRecord(value) && typeof value.text === 'string' && Boolean(goalKey(value))
     && key === pinnedGoalPrefix + goalKey(value)
     && typeof value.pinned === 'boolean'
-    && optionalText(value.plan) && optionalText(value.fallback) && optionalText(value.pickup);
+    && optionalText(value.plan) && optionalText(value.fallback) && optionalText(value.pickup)
+    && (value.measurement === undefined || (isRecord(value.measurement) && isMeasurement(value.measurement)))
+    && (value.goals === undefined || (Array.isArray(value.goals) && value.goals.every(isGoal)));
 }
 
 function parseBackup(text) {
@@ -132,7 +133,7 @@ export function setupBackup({ canRestore, onRestore }) {
       records = parsed.filter(([key]) => localStorage.getItem(key) === null);
       const days = records.filter(([key]) => key.startsWith(entryPrefix)).length;
       const skipped = parsed.length - records.length;
-      const ready = `${countLabel(days, 'check-in')} and ${countLabel(records.length - days, 'goal record')} ready to restore.`;
+      const ready = `${countLabel(days, 'check-in')} and ${countLabel(records.length - days, 'activity record')} ready to restore.`;
       show(`${ready} This browser already has ${countLabel(skipped, 'record')} from the backup.`);
       restore.hidden = records.length === 0;
     } catch {

@@ -1,7 +1,7 @@
 import { goalKey } from './calendar.js';
 import { pinnedGoalPrefix as prefix } from './backup.js';
 
-export function setupPinnedGoals(updateOptions, announcePickup) {
+export function setupPinnedGoals(updateActivities, announcePickup, openTracking) {
   const list = document.getElementById('pinned-list');
   const template = document.getElementById('pinned-goal-card');
   const pinName = document.getElementById('pin-name');
@@ -31,7 +31,7 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
       localStorage.setItem(key, JSON.stringify(goal));
       return goal;
     } catch {
-      feedback.textContent = 'Checkin could not save this goal in your browser.';
+      feedback.textContent = 'Checkin could not save this activity in your browser.';
       return null;
     }
   }
@@ -52,6 +52,9 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
   function renderRow(key, goal) {
     const row = template.content.firstElementChild.cloneNode(true);
     row.querySelector('span').textContent = goal.text;
+    const tracking = row.querySelector('[data-tracking]');
+    tracking.setAttribute('aria-label', `Tracking and goals for ${goal.text}`);
+    tracking.addEventListener('click', () => openTracking(goal.text, tracking));
     const edit = row.querySelector('[data-edit]');
     edit.setAttribute('aria-label', `Plan or pickup note for ${goal.text}`);
     edit.addEventListener('click', () => openEditor(key, goal));
@@ -66,16 +69,16 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
         const key = localStorage.key(index);
         if (!key?.startsWith(prefix)) continue;
         const goal = readGoal(key);
-        if (goal?.pinned) goals.push([key, goal]);
+        if (goal) goals.push([key, goal]);
       }
     } catch {
-      pinFeedback.textContent = 'Checkin could not read your pinned goals.';
+      pinFeedback.textContent = 'Checkin could not read your activities.';
     }
     goals.sort(([, first], [, second]) => first.text.localeCompare(second.text));
-    pinned = new Map(goals);
+    pinned = new Map(goals.filter(([, goal]) => goal.pinned));
     editButtons.clear();
-    list.replaceChildren(...goals.map(([key, goal]) => renderRow(key, goal)));
-    updateOptions(goals.map(([, goal]) => goal.text));
+    list.replaceChildren(...Array.from(pinned, ([key, goal]) => renderRow(key, goal)));
+    updateActivities(goals.map(([, goal]) => goal));
     renderPickupSuggestions();
   }
 
@@ -134,7 +137,7 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
     finishEdit({ plan: '', fallback: '' }, 'Plan dismissed.');
   });
   document.getElementById('unpin-goal').addEventListener('click', () => {
-    finishEdit({ pinned: false }, 'Goal unpinned.');
+    finishEdit({ pinned: false }, 'Activity unpinned.');
   });
   document.getElementById('cancel-goal-edit').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
@@ -151,5 +154,17 @@ export function setupPinnedGoals(updateOptions, announcePickup) {
     recentlyLogged = goals.map((goal) => prefix + goalKey(goal));
     renderPickupSuggestions();
   }
-  return { suggestPickup, refreshGoals: render };
+  function getActivity(text) {
+    try { return readGoal(prefix + goalKey({ text })); } catch { return null; }
+  }
+
+  function saveActivity(text, fields, feedback) {
+    const key = prefix + goalKey({ text });
+    const current = getActivity(text);
+    const saved = saveGoal(key, { text: current?.text ?? text, pinned: current?.pinned ?? false, ...fields }, feedback);
+    if (saved) render();
+    return saved;
+  }
+
+  return { suggestPickup, refreshGoals: render, getActivity, saveActivity };
 }
