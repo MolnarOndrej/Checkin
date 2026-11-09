@@ -139,16 +139,16 @@ button:disabled { cursor: default; }
 }
 .sky-cloud {
   --cloud-distance: 42px;
-  --cloud-opacity: .26;
+  --cloud-opacity: .4;
   opacity: 0;
 }
-.sky-cloud + .sky-cloud { --cloud-distance: 58px; --cloud-opacity: .2; }
+.sky-cloud + .sky-cloud { --cloud-distance: 58px; --cloud-opacity: .34; }
 [data-ambient="clouds"] .sky-cloud {
-  animation: cloud-drift 11.6s linear;
+  animation: cloud-drift var(--cloud-duration) linear;
 }
 @keyframes cloud-drift {
   from { transform: translateX(-24px); opacity: 0; }
-  24%, 64% { opacity: var(--cloud-opacity); }
+  12%, 84% { opacity: var(--cloud-opacity); }
   to { transform: translateX(var(--cloud-distance)); opacity: 0; }
 }
 .firefly {

@@ -40,6 +40,7 @@ let loadedDraft;
 function setupAmbientEffects() {
   const scene = document.querySelector('.hero-scene');
   const owl = scene.querySelector('.sky-owl');
+  const clouds = [...scene.querySelectorAll('.sky-cloud')];
   const effects = ['moon', 'stars', 'meteor', 'owl', 'wind', 'clouds', 'fireflies', 'river'];
   const flightDurations = [6, 7, 8, 9, 10];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -62,18 +63,27 @@ function setupAmbientEffects() {
   function pickEffect() {
     const choices = effects.filter((effect) => effect !== scene.dataset.ambient);
     const effect = choices[Math.floor(Math.random() * choices.length)];
+    let turn = 12_000;
     if (effect === 'owl') prepareOwlFlight();
+    if (effect === 'clouds') {
+      const durations = clouds.map((cloud) => {
+        const duration = 18_000 + Math.round(Math.random() * 5_000);
+        cloud.style.setProperty('--cloud-duration', `${duration}ms`);
+        return duration;
+      });
+      turn = Math.max(...durations) + 400;
+    }
     scene.dataset.ambient = effect;
+    timer = setTimeout(pickEffect, turn);
   }
 
   function updateMotion() {
-    clearInterval(timer);
+    clearTimeout(timer);
     if (reducedMotion.matches) {
       delete scene.dataset.ambient;
       return;
     }
     pickEffect();
-    timer = setInterval(pickEffect, 12_000);
   }
 
   reducedMotion.addEventListener('change', updateMotion);
