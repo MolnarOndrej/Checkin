@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 330" preserveAspectRatio="xMidYMid slice">
+<svg id="landscape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 330" preserveAspectRatio="xMidYMid slice">
   <defs>
     <linearGradient id="sky" x2=".8" y2="1" gradientUnits="objectBoundingBox"><stop stop-color="#171c26"/><stop offset=".62" stop-color="#313552"/><stop offset="1" stop-color="#747389"/></linearGradient>
     <linearGradient id="moon" x2=".2" y2="1"><stop stop-color="#fff1bf"/><stop offset="1" stop-color="#d7e6a8"/></linearGradient>

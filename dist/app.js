@@ -3,6 +3,9 @@ import { celebrate, playOpening } from './celebration.js';
 
 const byId = (id) => document.getElementById(id);
 const grid = byId('calendar');
+const trailRoute = byId('trail-route');
+const trailWaypoints = byId('trail-waypoints');
+const trailLength = trailRoute.getTotalLength();
 const details = byId('details');
 const form = byId('entry-form');
 const hasScore = byId('has-score');
@@ -39,11 +42,27 @@ function announce(message = '', error = false) {
 }
 
 function updateCalendar() {
-  const logged = renderCalendar({ grid, title: byId('calendar-title'), month, today, selected, entryFor });
+  const recordedDays = renderCalendar({ grid, title: byId('calendar-title'), month, today, selected, entryFor });
+  updateTrail(recordedDays);
+  const logged = recordedDays.length;
   byId('next').disabled = month >= monthStart(today);
   byId('logged-count').textContent = `${logged} ${logged === 1 ? 'day' : 'days'} recorded`;
   byId('progress-copy').textContent = month.getTime() === monthStart(today).getTime()
     ? 'On the trail this month' : 'On the trail that month';
+}
+
+function updateTrail(recordedDays) {
+  const lights = recordedDays.map((day) => {
+    // Keep each date at the same spot in shorter months.
+    const progress = (day - 1) / 30;
+    const point = trailRoute.getPointAtLength(trailLength * progress);
+    const light = document.createElementNS(trailRoute.namespaceURI, 'circle');
+    light.setAttribute('cx', point.x);
+    light.setAttribute('cy', point.y);
+    light.setAttribute('r', 2.6 - progress);
+    return light;
+  });
+  trailWaypoints.replaceChildren(...lights);
 }
 
 function updateSummary(entry) {

@@ -30,7 +30,7 @@ export function renderCalendar({ grid, title, month, today, selected, entryFor }
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const cells = Math.max(35, Math.ceil((offset + days) / 7) * 7);
   const fragment = document.createDocumentFragment();
-  let logged = 0;
+  const recordedDays = [];
 
   for (let index = 0; index < cells; index++) {
     const number = index - offset + 1;
@@ -61,7 +61,7 @@ export function renderCalendar({ grid, title, month, today, selected, entryFor }
     button.append(label);
 
     if (entry) {
-      logged++;
+      recordedDays.push(number);
       const mark = document.createElement('span');
       mark.className = 'day-mark';
       mark.setAttribute('aria-hidden', 'true');
@@ -86,5 +86,5 @@ export function renderCalendar({ grid, title, month, today, selected, entryFor }
     fragment.append(button);
   }
   grid.replaceChildren(fragment);
-  return logged;
+  return recordedDays;
 }

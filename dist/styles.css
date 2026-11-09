@@ -44,9 +44,10 @@ button:disabled { cursor: default; }
   border-radius: 22px;
   background: #242835;
 }
-.hero::before, .hero::after { content: ""; position: absolute; inset: 0; z-index: -1; }
-.hero::before { background: url("trail.svg") center / cover; }
-.hero::after { background: linear-gradient(90deg, #171b24 0%, #171b24ee 23%, #171b2466 52%, transparent 74%); }
+.hero-scene, .hero::after { position: absolute; inset: 0; z-index: -1; }
+.hero-scene svg { position: absolute; left: 50%; translate: -50% 0; height: 100%; min-width: 100%; }
+#trail-waypoints { fill: #f7ffc7; filter: drop-shadow(0 0 2px #f5ffb4) drop-shadow(0 0 4px #dcf29c); }
+.hero::after { content: ""; background: linear-gradient(90deg, #171b24 0%, #171b24ee 23%, #171b2466 52%, transparent 74%); }
 .hero-copy { padding: 29px 42px 34px; }
 .eyebrow, .section-label, .hero-tag, .day-tag, .footer { font: 600 11px/1.4 var(--label); letter-spacing: .15em; }
 .eyebrow { margin: 0 0 13px; color: var(--accent); display: flex; align-items: center; gap: 9px; }
@@ -140,7 +141,7 @@ textarea { width: 100%; resize: vertical; }
 .reveal { animation: enter .75s cubic-bezier(.2,.65,.3,1) backwards; }
 .calendar-card { animation-delay: .13s; }
 .journal-card { animation-delay: .24s; }
-.hero::before { animation: scenery-in 1.6s cubic-bezier(.2,.65,.3,1) backwards; }
+.hero-scene { animation: scenery-in 1.6s cubic-bezier(.2,.65,.3,1) backwards; }
 @keyframes enter { from { opacity: 0; transform: translateY(12px); } }
 @keyframes scenery-in { from { opacity: 0; transform: scale(1.075); } }
 
@@ -148,7 +149,7 @@ textarea { width: 100%; resize: vertical; }
   .shell { width: calc(100% - 28px); }
   .dashboard { grid-template-columns: 1fr; }
   .hero-copy { padding-left: 23px; }
-  .hero::before { background-position: 62% center; }
+  .hero-scene svg { left: 62%; translate: -62% 0; }
   .hero-tag { display: none; }
   .card { padding: 17px; }
 }
