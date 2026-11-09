@@ -295,6 +295,47 @@ test('moonlit trail rotates through random effects and the river flows downstrea
   }), { rotating: false, selected: false, rippleVisible: false });
 });
 
+test('Moonlit Trail fireflies hold their position and brightness between turns', async (t) => {
+  const page = await openCheckin(t, captureRotations);
+  await page.setReducedMotion('no-preference');
+  await page.reload();
+  const result = await page.evaluate(async () => {
+    const tick = window.rotationTicks.get(12_000);
+    const fireflies = [...document.querySelectorAll('.firefly')];
+    const frame = () => new Promise(requestAnimationFrame);
+    const sample = () => fireflies.map((firefly) => {
+      const { transform, opacity } = getComputedStyle(firefly);
+      return { transform, opacity };
+    });
+
+    const idle = sample();
+    await frame();
+    const stillIdle = sample();
+    tick(); // River to fireflies.
+    const started = sample();
+    await frame();
+    await frame();
+    const flying = sample();
+    tick(); // Fireflies to river.
+    const stopped = sample();
+    await frame();
+    await frame();
+    const holding = sample();
+    tick(); // River back to fireflies.
+    const resumed = sample();
+    await frame();
+    await frame();
+    return { idle, stillIdle, started, flying, stopped, holding, resumed, movingAgain: sample() };
+  });
+  assert.deepEqual(result.stillIdle, result.idle);
+  assert.deepEqual(result.started, result.idle);
+  assert.notDeepEqual(result.flying, result.started);
+  assert.deepEqual(result.stopped, result.flying);
+  assert.deepEqual(result.holding, result.stopped);
+  assert.deepEqual(result.resumed, result.holding);
+  assert.notDeepEqual(result.movingAgain, result.resumed);
+});
+
 test('the Moonlit Trail motto rotates on the timer and stays the same on refresh', async (t) => {
   const page = await openCheckin(t, captureRotations);
   await page.setViewport(320, 800);

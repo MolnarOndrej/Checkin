@@ -102,14 +102,15 @@ button:disabled { cursor: default; }
 .firefly {
   --flight-x: 16px;
   opacity: .38;
+  animation: firefly-flight 9s ease-in-out -2s infinite paused;
 }
+.firefly:nth-child(2) { --flight-x: -22px; animation-duration: 13s; animation-delay: -7s; }
+.firefly:nth-child(3) { --flight-x: 24px; animation-duration: 11s; animation-delay: -6s; }
+.firefly:nth-child(4) { --flight-x: -16px; animation-duration: 8s; animation-delay: -3s; }
+.firefly:nth-child(5) { --flight-x: 12px; animation-duration: 15s; animation-delay: -10s; }
 [data-ambient="fireflies"] .firefly {
-  animation: firefly-flight 9s ease-in-out -2s infinite;
+  animation-play-state: running;
 }
-[data-ambient="fireflies"] .firefly:nth-child(2) { --flight-x: -22px; animation-duration: 13s; animation-delay: -7s; }
-[data-ambient="fireflies"] .firefly:nth-child(3) { --flight-x: 24px; animation-duration: 11s; animation-delay: -6s; }
-[data-ambient="fireflies"] .firefly:nth-child(4) { --flight-x: -16px; animation-duration: 8s; animation-delay: -3s; }
-[data-ambient="fireflies"] .firefly:nth-child(5) { --flight-x: 12px; animation-duration: 15s; animation-delay: -10s; }
 @keyframes firefly-flight {
   0%, 100% { opacity: .12; transform: translate(0, 0); }
   30% { opacity: .9; transform: translate(var(--flight-x), -11px); }
