@@ -12,7 +12,7 @@ npm start
 
 Open [Checkin](http://127.0.0.1:4173) in your desktop browser. There are no dependencies to install. Keep using the same address and browser profile to access your history. The entries and sound preference are stored in that browser's local storage. Clearing its site data removes those entries.
 
-The opening scene animates when the page loads. Saving a new or changed score triggers a random celebration with sound on by default. Motion follows your system's reduced-motion setting. To clear a day, remove its details, uncheck **Include a score**, and save.
+The opening scene animates when the page loads. Saving a new or changed score triggers a random celebration with sound on by default. Openings, 100% scores, and partial scores each remember their last effect so the same one won't play twice in a row, even after a reload. Colors and motion vary within effects, and a 100% check-in can trigger an extra flourish. Motion follows your system's reduced-motion setting. To clear a day, remove its details, uncheck **Include a score**, and save.
 
 ## Source layout
 

@@ -1,5 +1,6 @@
 const monthFormat = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' });
 const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'full' });
+const svgNamespace = 'http://www.w3.org/2000/svg';
 
 export function dayKey(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -66,7 +67,13 @@ export function renderCalendar({ grid, title, month, today, selected, entryFor }
       mark.setAttribute('aria-hidden', 'true');
       if (entry.score === 100) {
         button.dataset.status = 'full';
-        mark.textContent = '✓';
+        const check = document.createElementNS(svgNamespace, 'svg');
+        check.setAttribute('class', 'icon');
+        check.setAttribute('viewBox', '0 0 24 24');
+        const path = document.createElementNS(svgNamespace, 'use');
+        path.setAttribute('href', '#check');
+        check.append(path);
+        mark.append(check);
       } else if (entry.score !== null) {
         button.dataset.status = 'partial';
         mark.textContent = `${entry.score}%`;
