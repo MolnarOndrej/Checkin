@@ -796,6 +796,7 @@ test('pinned activities remain in the shared picker while time-bound goals have 
       activitiesSeparate: Boolean(find('.activities-card #pin-form')),
       goalsSeparate: Boolean(find('.activities-card + .activity-goals-card #activity-goals-title')),
       weekByCalendar: Boolean(find('.calendar-card #week-goals')),
+      calendarStartsWithMonth: Boolean(find('.calendar-card > :first-child #calendar-title')?.innerText.trim()),
       detailsCollapsed: !find('#details').open,
       options: Array.from(find('#new-goal').list.options, ({ value }) => value),
       sidebar: sidebar.left >= journal.right && Math.abs(sidebar.top - journal.top) < 1,
@@ -828,6 +829,7 @@ test('pinned activities remain in the shared picker while time-bound goals have 
     pickupFocus: 'goal-pickup',
     layout: {
       unchangedOffset: true, formCount: 1, submitCount: 1, activitiesSeparate: true, goalsSeparate: true, weekByCalendar: true,
+      calendarStartsWithMonth: true,
       detailsCollapsed: true, options: ['Guitar', 'Writing'],
       sidebar: true, vertical: true, firstRow: 'Guitar', rowButtons: 2, planIcon: '#pen', trackingIcon: '#tracking-icon',
       trackingLabel: 'Activity settings for Guitar',

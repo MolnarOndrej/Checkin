@@ -134,7 +134,7 @@ button:disabled { cursor: default; }
 @keyframes trail-glow { 30% { transform: scale(3); fill: white; } }
 .hero::after { content: ""; background: linear-gradient(90deg, #171b24 0%, #171b24ee 23%, #171b2466 52%, transparent 74%); }
 .hero-copy { padding: 29px 42px 34px; }
-.eyebrow, .section-label, .hero-tag, .day-tag { font: 600 11px/1.4 var(--label); letter-spacing: .15em; }
+.eyebrow, .hero-tag, .day-tag { font: 600 11px/1.4 var(--label); letter-spacing: .15em; }
 .eyebrow { margin: 0 0 13px; color: var(--accent); display: flex; align-items: center; gap: 9px; }
 .eyebrow span { width: 7px; height: 7px; transform: rotate(45deg); background: var(--accent); box-shadow: 0 0 14px #dcf29780; }
 .hero h1 { font: 400 clamp(58px, 6vw, 86px)/.88 Georgia, serif; letter-spacing: -.07em; margin: 0; }
@@ -168,9 +168,7 @@ button:disabled { cursor: default; }
   55% { opacity: .65; }
   90%, 100% { opacity: .13; transform: translateX(128%); }
 }
-.section-label { color: var(--lilac); display: flex; align-items: center; gap: 8px; }
-.section-label .icon { width: 15px; height: 15px; }
-.calendar-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 10px 0 17px; }
+.calendar-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 17px; }
 .calendar-header h2 { font: 400 clamp(23px, 3vw, 30px)/1 Georgia, serif; letter-spacing: -.035em; margin: 0; }
 .calendar-controls { display: flex; align-items: center; gap: 6px; }
 .calendar-controls button { display: grid; place-items: center; border: 1px solid #383c49; border-radius: 8px; background: var(--surface); height: 32px; }
