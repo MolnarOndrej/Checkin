@@ -12,7 +12,7 @@ const contentTypes = {
   '.svg': 'image/svg+xml',
 };
 
-createServer(async (request, response) => {
+const server = createServer(async (request, response) => {
   const path = (request.url ?? '/').split('?')[0];
   const file = path === '/' ? 'index.html' : path.slice(1);
   if (!['GET', 'HEAD'].includes(request.method)) {
@@ -31,4 +31,6 @@ createServer(async (request, response) => {
     console.error(error);
     response.writeHead(500).end('Could not load the application');
   }
-}).listen(port, host, () => console.log(`Checkin is ready at http://${host}:${port}`));
+});
+
+server.listen(port, host, () => console.log(`Checkin is ready at http://${host}:${server.address().port}`));

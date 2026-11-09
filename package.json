@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:unit": "node --test test/calendar.test.mjs",
+    "test:browser": "node --test test/browser.test.mjs"
   }
 }
