@@ -2,6 +2,8 @@ import { goalKey } from './calendar.js';
 import { pinnedGoalPrefix as prefix } from './backup.js';
 import { setDialogTitle } from './dialog-title.js';
 
+const activityPlanTitle = (text) => `Activity plan for ${text}`;
+
 export function setupPinnedGoals(updateActivities, announcePickup, openTracking) {
   const list = document.getElementById('pinned-list');
   const template = document.getElementById('pinned-activity-card');
@@ -40,7 +42,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
   function openEditor(key, goal, focusPickup = false) {
     editingKey = key;
     editingPickup = focusPickup;
-    setDialogTitle(document.getElementById('activity-editor-title'), `Activity plan for ${goal.text}`);
+    setDialogTitle(document.getElementById('activity-editor-title'), activityPlanTitle(goal.text));
     plan.value = goal.plan ?? '';
     fallback.value = goal.fallback ?? '';
     pickup.value = goal.pickup ?? '';
@@ -57,7 +59,8 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
     tracking.setAttribute('aria-label', `Activity settings for ${goal.text}`);
     tracking.addEventListener('click', () => openTracking(goal.text, tracking));
     const edit = row.querySelector('[data-edit]');
-    edit.setAttribute('aria-label', `Plan or pickup note for ${goal.text}`);
+    edit.title = activityPlanTitle(goal.text);
+    edit.setAttribute('aria-label', edit.title);
     edit.addEventListener('click', () => openEditor(key, goal));
     editButtons.set(key, edit);
     return row;

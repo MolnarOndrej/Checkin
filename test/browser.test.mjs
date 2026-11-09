@@ -870,7 +870,7 @@ test('both editors dismiss via their centered close icon or backdrop and discard
 
   const openEditors = [
     () => document.querySelector('#edit-plan').click(),
-    () => document.querySelector('[aria-label="Plan or pickup note for Guitar"]').click(),
+    () => document.querySelector('[aria-label="Activity plan for Guitar"]').click(),
   ];
   const readPlan = () => document.querySelector('dialog[open] textarea').value;
   const modalIsOpen = () => Boolean(document.querySelector('dialog:modal'));
@@ -923,7 +923,7 @@ test('pinned activities remain in the shared picker while time-bound goals have 
     function pinWithPlan(text, plan, fallback = '', pickup = '') {
       find('#pin-name').value = text;
       find('#pin-form button').click();
-      find(`[aria-label="Plan or pickup note for ${text}"]`).click();
+      find(`[aria-label="Activity plan for ${text}"]`).click();
       find('#activity-plan').value = plan;
       find('#activity-fallback').value = fallback;
       find('#activity-pickup').value = pickup;
@@ -949,6 +949,7 @@ test('pinned activities remain in the shared picker while time-bound goals have 
       firstRow: first.textContent.trim(),
       rowButtons: first.querySelectorAll('button').length,
       planIcon: first.querySelector('[data-edit] use').getAttribute('href'),
+      planTooltip: first.querySelector('[data-edit]').title,
       trackingIcon: first.querySelector('[data-tracking] use').getAttribute('href'),
       trackingLabel: first.querySelector('[data-tracking]').getAttribute('aria-label'),
     };
@@ -977,6 +978,7 @@ test('pinned activities remain in the shared picker while time-bound goals have 
       calendarStartsWithMonth: true,
       detailsCollapsed: true, options: ['Guitar', 'Writing'],
       sidebar: true, vertical: true, firstRow: 'Guitar', rowButtons: 2, planIcon: '#pen', trackingIcon: '#tracking-icon',
+      planTooltip: 'Activity plan for Guitar',
       trackingLabel: 'Activity settings for Guitar',
     },
   });
@@ -984,7 +986,7 @@ test('pinned activities remain in the shared picker while time-bound goals have 
   await page.reload();
   const reloaded = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
-    find('[aria-label="Plan or pickup note for Guitar"]').click();
+    find('[aria-label="Activity plan for Guitar"]').click();
     const guitar = {
       guitarPlan: find('#activity-plan').value,
       fallback: find('#activity-fallback').value,
@@ -993,7 +995,7 @@ test('pinned activities remain in the shared picker while time-bound goals have 
       dialogTitle: document.getElementById(find('#activity-editor').getAttribute('aria-labelledby')).textContent,
     };
     find('#cancel-activity-edit').click();
-    find('[aria-label="Plan or pickup note for Writing"]').click();
+    find('[aria-label="Activity plan for Writing"]').click();
     return {
       ...guitar,
       writingPlan: find('#activity-plan').value,
@@ -1011,19 +1013,19 @@ test('pinned activities remain in the shared picker while time-bound goals have 
   await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
     find('#cancel-activity-edit').click();
-    find('[aria-label="Plan or pickup note for Guitar"]').click();
+    find('[aria-label="Activity plan for Guitar"]').click();
     find('#complete-activity-plan').click();
-    find('[aria-label="Plan or pickup note for Writing"]').click();
+    find('[aria-label="Activity plan for Writing"]').click();
     find('#activity-plan').value = 'After lunch, draft a paragraph.';
     find('#activity-editor button[type="submit"]').click();
-    find('[aria-label="Plan or pickup note for Guitar"]').click();
+    find('[aria-label="Activity plan for Guitar"]').click();
     find('#unpin-activity').click();
   });
   await page.reload();
   const changes = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
-    const openGoal = (name) => find(`[aria-label="Plan or pickup note for ${name}"]`).click();
-    const unpinned = !find('[aria-label="Plan or pickup note for Guitar"]')
+    const openGoal = (name) => find(`[aria-label="Activity plan for ${name}"]`).click();
+    const unpinned = !find('[aria-label="Activity plan for Guitar"]')
       && !Array.from(find('#goal-options').options).some(({ value }) => value === 'Guitar');
     openGoal('Writing');
     const rescheduled = find('#activity-plan').value;
