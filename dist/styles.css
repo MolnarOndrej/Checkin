@@ -53,7 +53,7 @@ button:disabled { cursor: default; }
 [hidden] { display: none !important; }
 .icon-defs { position: absolute; width: 0; height: 0; }
 .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-.shell { width: min(1120px, calc(100% - 72px)); margin: auto; padding-top: 16px; }
+.shell { width: min(1120px, calc(100% - 72px)); margin: auto; padding: 16px 0 18px; }
 .calendar-controls button:hover { background: #2c303b; }
 
 .hero {
@@ -134,7 +134,7 @@ button:disabled { cursor: default; }
 @keyframes trail-glow { 30% { transform: scale(3); fill: white; } }
 .hero::after { content: ""; background: linear-gradient(90deg, #171b24 0%, #171b24ee 23%, #171b2466 52%, transparent 74%); }
 .hero-copy { padding: 29px 42px 34px; }
-.eyebrow, .section-label, .hero-tag, .day-tag, .footer { font: 600 11px/1.4 var(--label); letter-spacing: .15em; }
+.eyebrow, .section-label, .hero-tag, .day-tag { font: 600 11px/1.4 var(--label); letter-spacing: .15em; }
 .eyebrow { margin: 0 0 13px; color: var(--accent); display: flex; align-items: center; gap: 9px; }
 .eyebrow span { width: 7px; height: 7px; transform: rotate(45deg); background: var(--accent); box-shadow: 0 0 14px #dcf29780; }
 .hero h1 { font: 400 clamp(58px, 6vw, 86px)/.88 Georgia, serif; letter-spacing: -.07em; margin: 0; }
@@ -263,9 +263,6 @@ dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
 .week-progress ul, .week-progress p { margin: 4px 0 0; color: var(--muted); }
 .week-progress ul { padding-left: 16px; }
 .week-progress ul:empty { display: none; }
-.footer { padding: 15px 2px 18px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 9px; }
-.footer span:last-child { display: flex; align-items: center; gap: 5px; letter-spacing: 0; font: 12px/1 "Segoe UI", sans-serif; }
-.footer .icon { width: 13px; height: 13px; }
 
 #effects { position: fixed; inset: 0; z-index: 10; width: 100%; height: 100%; pointer-events: none; }
 .reveal { animation: enter .75s cubic-bezier(.2,.65,.3,1) backwards; }

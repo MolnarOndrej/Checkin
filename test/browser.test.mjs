@@ -196,9 +196,11 @@ test('partial work counts without a daily score and survives reload', async (t) 
   const page = await openCheckin(t);
   const layout = await page.evaluate(() => ({
     hasHeader: Boolean(document.querySelector('.shell > header, #sound')),
+    hasFooter: Boolean(document.querySelector('.shell > footer')),
     heroTop: document.querySelector('.hero').getBoundingClientRect().top,
   }));
   assert.equal(layout.hasHeader, false);
+  assert.equal(layout.hasFooter, false);
   assert.ok(layout.heroTop > 0 && layout.heroTop <= 24);
 
   const saved = await page.evaluate(() => {
