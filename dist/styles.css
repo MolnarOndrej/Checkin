@@ -53,13 +53,8 @@ button:disabled { cursor: default; }
 [hidden] { display: none !important; }
 .icon-defs { position: absolute; width: 0; height: 0; }
 .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-.shell { width: min(1120px, calc(100% - 72px)); margin: auto; }
-.topbar { height: 77px; display: flex; align-items: center; justify-content: space-between; }
-.wordmark { display: flex; align-items: center; gap: 11px; font-size: 24px; font-weight: 750; letter-spacing: -.05em; }
-.wordmark span { margin-left: -11px; color: var(--accent); }
-.sound { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 30px; background: #1e2028; padding: 8px 13px; color: #d7d7df; font-size: 13px; }
-.sound .icon { width: 16px; height: 16px; color: var(--accent); }
-.sound:hover, .calendar-controls button:hover { background: #2c303b; }
+.shell { width: min(1120px, calc(100% - 72px)); margin: auto; padding-top: 16px; }
+.calendar-controls button:hover { background: #2c303b; }
 
 .hero {
   position: relative;

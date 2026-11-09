@@ -20,9 +20,7 @@ const goalList = byId('goal-list');
 const feedback = byId('feedback');
 const complete = byId('complete');
 const save = byId('save');
-const sound = byId('sound');
 const entryPrefix = 'checkin.day.';
-const soundKey = 'checkin.sound';
 const cachedEntries = new Map();
 let today = new Date();
 let selected = today;
@@ -367,19 +365,7 @@ function navigateMonth(offset, button) {
   if (button.disabled) byId('today').focus();
 }
 
-function updateSound() {
-  sound.setAttribute('aria-pressed', String(!muted));
-  sound.querySelector('use').setAttribute('href', muted ? '#sound-off' : '#sound-on');
-  sound.querySelector('span').textContent = muted ? 'Sound off' : 'Sound on';
-}
-
-try { muted = localStorage.getItem(soundKey) === 'off'; } catch {}
-updateSound();
-sound.addEventListener('click', () => {
-  muted = !muted;
-  updateSound();
-  try { localStorage.setItem(soundKey, muted ? 'off' : 'on'); } catch {}
-});
+try { muted = localStorage.getItem('checkin.sound') === 'off'; } catch {}
 
 grid.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-day]');
