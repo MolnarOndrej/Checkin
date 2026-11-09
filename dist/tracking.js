@@ -26,7 +26,7 @@ export function renderGoals(activities, date, entriesBetween, openTracking) {
     name.type = 'button';
     name.className = 'text-button';
     name.textContent = activity.text;
-    name.setAttribute('aria-label', `Tracking and goals for ${activity.text}`);
+    name.setAttribute('aria-label', `Goal settings for ${activity.text}`);
     name.setAttribute('aria-haspopup', 'dialog');
     name.addEventListener('click', () => openTracking(activity.text, name));
     const value = document.createElement('strong');

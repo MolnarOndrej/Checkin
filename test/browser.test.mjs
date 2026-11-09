@@ -161,7 +161,7 @@ test('backup restores missing check-ins and goal plans without overwriting saved
   });
 });
 
-test('the Goals panel fades and slides in with the check-in on refresh', async (t) => {
+test('the Activities panel fades and slides in with the check-in on refresh', async (t) => {
   const page = await openCheckin(t, () => {
     document.addEventListener('DOMContentLoaded', () => {
       for (const animation of document.getAnimations()) {
@@ -175,7 +175,7 @@ test('the Goals panel fades and slides in with the check-in on refresh', async (
   await page.setReducedMotion('no-preference');
   await page.reload();
   assert.deepEqual(await page.evaluate(() => {
-    return ['.journal-card', '.goals-card'].map((selector) => {
+    return ['.journal-card', '.activities-card'].map((selector) => {
       const panel = document.querySelector(selector);
       const animation = panel.getAnimations().find(({ animationName }) => animationName === 'enter');
       const { delay, duration } = animation.effect.getTiming();
@@ -192,7 +192,7 @@ test('the Goals panel fades and slides in with the check-in on refresh', async (
   await page.setReducedMotion('reduce');
   await page.reload();
   assert.deepEqual(await page.evaluate(() => {
-    const panel = document.querySelector('.goals-card');
+    const panel = document.querySelector('.activities-card');
     const { opacity, transform } = getComputedStyle(panel);
     return { opacity, transform, animations: panel.getAnimations().length };
   }), { opacity: '1', transform: 'none', animations: 0 });
@@ -766,7 +766,7 @@ test('both editors dismiss via their centered close icon or backdrop and discard
   }
 });
 
-test('the check-in stays focused while pinned goals remain available in the shared picker', async (t) => {
+test('pinned activities remain in the shared picker while time-bound goals have their own panel', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(1280, 900);
   await page.setReducedMotion('reduce');
@@ -786,14 +786,15 @@ test('the check-in stays focused while pinned goals remain available in the shar
     }
     pinWithPlan('Guitar', 'After dinner, play the chorus.', 'If I get home late, play it once.', 'Start at bar 9.');
     pinWithPlan('Writing', 'After coffee, draft a paragraph.');
-    const sidebar = find('.goals-card').getBoundingClientRect();
+    const sidebar = find('.activities-card').getBoundingClientRect();
     const journal = panel.getBoundingClientRect();
     const [first, second] = find('#pinned-list').children;
     const layout = {
       unchangedOffset: saveOffset() === initialOffset,
       formCount: panel.querySelectorAll('form').length,
       submitCount: panel.querySelectorAll('[type="submit"]').length,
-      goalsSeparate: Boolean(find('.goals-card #pin-form')),
+      activitiesSeparate: Boolean(find('.activities-card #pin-form')),
+      goalsSeparate: Boolean(find('.activities-card + .activity-goals-card #activity-goals-title')),
       weekByCalendar: Boolean(find('.calendar-card #week-goals')),
       detailsCollapsed: !find('#details').open,
       options: Array.from(find('#new-goal').list.options, ({ value }) => value),
@@ -803,6 +804,7 @@ test('the check-in stays focused while pinned goals remain available in the shar
       rowButtons: first.querySelectorAll('button').length,
       planIcon: first.querySelector('[data-edit] use').getAttribute('href'),
       trackingIcon: first.querySelector('[data-tracking] use').getAttribute('href'),
+      trackingLabel: first.querySelector('[data-tracking]').getAttribute('aria-label'),
     };
     find('#new-goal').value = layout.options[1];
     find('#add-goal').click();
@@ -825,9 +827,10 @@ test('the check-in stays focused while pinned goals remain available in the shar
     rows: 1, progress: 'worked', workMark: null, feedback: 'Next step and note saved.',
     pickupFocus: 'goal-pickup',
     layout: {
-      unchangedOffset: true, formCount: 1, submitCount: 1, goalsSeparate: true, weekByCalendar: true,
+      unchangedOffset: true, formCount: 1, submitCount: 1, activitiesSeparate: true, goalsSeparate: true, weekByCalendar: true,
       detailsCollapsed: true, options: ['Guitar', 'Writing'],
       sidebar: true, vertical: true, firstRow: 'Guitar', rowButtons: 2, planIcon: '#pen', trackingIcon: '#tracking-icon',
+      trackingLabel: 'Activity settings for Guitar',
     },
   });
 
@@ -899,7 +902,7 @@ test('the check-in stays focused while pinned goals remain available in the shar
   await page.setViewport(360, 800);
   assert.equal(await page.evaluate(() => {
     const journal = document.querySelector('.journal-card').getBoundingClientRect();
-    const sidebar = document.querySelector('.goals-card').getBoundingClientRect();
+    const sidebar = document.querySelector('.activities-card').getBoundingClientRect();
     return sidebar.top >= journal.bottom && sidebar.left === journal.left && sidebar.right === journal.right;
   }), true);
 });

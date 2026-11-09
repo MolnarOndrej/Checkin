@@ -53,7 +53,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
     const row = template.content.firstElementChild.cloneNode(true);
     row.querySelector('span').textContent = goal.text;
     const tracking = row.querySelector('[data-tracking]');
-    tracking.setAttribute('aria-label', `Tracking and goals for ${goal.text}`);
+    tracking.setAttribute('aria-label', `Activity settings for ${goal.text}`);
     tracking.addEventListener('click', () => openTracking(goal.text, tracking));
     const edit = row.querySelector('[data-edit]');
     edit.setAttribute('aria-label', `Plan or pickup note for ${goal.text}`);

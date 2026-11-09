@@ -47,7 +47,7 @@ export function createActivityRow(activity, { saved, getActivity, openTracking, 
     minutes.setAttribute('aria-label', `Optional minutes for ${text || 'activity'}`);
     amount.setAttribute('aria-label', `Optional ${measurement?.unit ?? 'amount'} for ${text || 'activity'}`);
     tracking.disabled = !text;
-    tracking.setAttribute('aria-label', `Tracking and goals for ${text || 'activity'}`);
+    tracking.setAttribute('aria-label', text ? `Activity settings for ${text}` : 'Activity settings');
   }
 
   function setMeasurement(value) {

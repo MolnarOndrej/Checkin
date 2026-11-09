@@ -138,20 +138,22 @@
           <button type="button" id="edit-plan" class="text-button" hidden>Previous plan</button>
         </section>
 
-        <section class="card goals-card reveal" aria-labelledby="pinned-title">
-          <h2 id="pinned-title">Activities</h2>
-          <form id="pin-form">
-            <input id="pin-name" type="text" maxlength="140" list="recent-goals" aria-label="Activity to pin" placeholder="Activity name">
-            <button type="submit" class="save-button">Pin</button>
-          </form>
-          <p id="pin-feedback" class="feedback" role="status"></p>
-          <ul id="pinned-list"></ul>
-          <section class="activity-goals" aria-labelledby="activity-goals-title">
+        <div class="dashboard-sidebar">
+          <section class="card activities-card reveal" aria-labelledby="pinned-title">
+            <h2 id="pinned-title">Activities</h2>
+            <form id="pin-form">
+              <input id="pin-name" type="text" maxlength="140" list="recent-goals" aria-label="Activity to pin" placeholder="Activity name">
+              <button type="submit" class="save-button">Pin</button>
+            </form>
+            <p id="pin-feedback" class="feedback" role="status"></p>
+            <ul id="pinned-list"></ul>
+          </section>
+          <section class="card activity-goals-card reveal" aria-labelledby="activity-goals-title">
             <h2 id="activity-goals-title">Goals</h2>
-            <p id="activity-goals-empty" class="tracking-hint">Open an activity’s tracking settings to set a goal.</p>
+            <p id="activity-goals-empty" class="tracking-hint">Open Activity settings to set a goal.</p>
             <ul id="activity-goals-list"></ul>
           </section>
-        </section>
+        </div>
       </div>
       <button type="button" id="open-backup" class="text-button" aria-haspopup="dialog">Backup &amp; restore</button>
     </main>
@@ -162,7 +164,7 @@
     <div class="goal-row">
       <div class="activity-row-header">
         <input class="activity-input" type="text" maxlength="140" aria-label="Activity name">
-        <button type="button" class="icon-button" data-tracking aria-haspopup="dialog" title="Tracking and goals">
+        <button type="button" class="icon-button" data-tracking aria-haspopup="dialog" title="Activity settings">
           <svg class="icon" aria-hidden="true"><use href="#tracking-icon"/></svg>
         </button>
         <button type="button" class="icon-button" data-remove aria-label="Remove activity" title="Remove activity">
@@ -196,7 +198,7 @@
   <template id="pinned-goal-card">
     <li class="pinned-goal">
       <span class="activity-name"></span>
-      <button type="button" data-tracking class="icon-button" aria-haspopup="dialog" title="Tracking and goals">
+      <button type="button" data-tracking class="icon-button" aria-haspopup="dialog" title="Activity settings">
         <svg class="icon" aria-hidden="true"><use href="#tracking-icon"/></svg>
       </button>
       <button type="button" data-edit class="icon-button" aria-haspopup="dialog" title="Plan or pickup note">
