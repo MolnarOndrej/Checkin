@@ -110,6 +110,9 @@ export async function openBrowser(t) {
     setReducedMotion: (value) => page('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-reduced-motion', value }],
     }),
+    setViewport: (width, height) => page('Emulation.setDeviceMetricsOverride', {
+      width, height, deviceScaleFactor: 1, mobile: false,
+    }),
     async evaluate(action) {
       const { result, exceptionDetails } = await page('Runtime.evaluate', {
         expression: `(${action})()`, returnByValue: true, awaitPromise: true,

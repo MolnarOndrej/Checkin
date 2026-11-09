@@ -2,7 +2,7 @@ import { goalKey } from './calendar.js';
 
 const prefix = 'checkin.pinned.';
 
-export function setupPinnedGoals(stageGoal) {
+export function setupPinnedGoals(updateOptions, announcePickup) {
   const list = document.getElementById('pinned-list');
   const template = document.getElementById('pinned-goal-card');
   const pinName = document.getElementById('pin-name');
@@ -51,16 +51,12 @@ export function setupPinnedGoals(stageGoal) {
 
   function renderCard(key, goal) {
     const card = template.content.firstElementChild.cloneNode(true);
-    card.querySelector('h4').textContent = goal.text;
+    card.querySelector('h3').textContent = goal.text;
     for (const field of ['plan', 'fallback', 'pickup']) {
       const line = card.querySelector(`[data-${field}]`);
       line.hidden = !goal[field];
       line.querySelector('span').textContent = goal[field] ?? '';
     }
-
-    const stage = card.querySelector('[data-stage]');
-    stage.setAttribute('aria-label', `Worked on ${goal.text}`);
-    stage.addEventListener('click', () => stageGoal(goal.text).focus());
 
     const edit = card.querySelector('[data-edit]');
     edit.setAttribute('aria-label', `Plan or pickup note for ${goal.text}`);
@@ -95,6 +91,7 @@ export function setupPinnedGoals(stageGoal) {
     pinned = new Map(goals);
     editButtons.clear();
     list.replaceChildren(...goals.map(([key, goal]) => renderCard(key, goal)));
+    updateOptions(goals.map(([, goal]) => goal.text));
     renderPickupSuggestions();
   }
 
@@ -130,7 +127,8 @@ export function setupPinnedGoals(stageGoal) {
   function finishEdit(fields, message) {
     if (!saveGoal(editingKey, fields, editorFeedback)) return;
     render();
-    pinFeedback.textContent = message;
+    if (editingPickup) announcePickup(message);
+    else pinFeedback.textContent = message;
     dialog.close();
   }
 
@@ -153,8 +151,10 @@ export function setupPinnedGoals(stageGoal) {
   });
   document.getElementById('cancel-goal-edit').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
-    const suggestion = editingPickup ? suggestionButtons.get(editingKey) : null;
-    (suggestion ?? editButtons.get(editingKey) ?? pinName).focus();
+    const target = editingPickup
+      ? suggestionButtons.get(editingKey) ?? document.getElementById('save')
+      : editButtons.get(editingKey) ?? pinName;
+    target.focus();
   });
   window.addEventListener('storage', (event) => {
     if (event.key === null || event.key.startsWith(prefix)) render();

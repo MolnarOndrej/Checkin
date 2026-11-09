@@ -88,7 +88,7 @@ test('partial work counts without a daily score and survives reload', async (t) 
   });
   assert.deepEqual(saved, {
     validation: 'Enter whole minutes from 1 to 1440, or leave minutes blank.',
-    feedback: 'You put 20 min into “Guitar”. Check-in saved.',
+    feedback: 'Check-in saved.',
     workMark: 'work',
     week: 'Guitar · 1 day',
     glowed: true,
@@ -100,7 +100,7 @@ test('partial work counts without a daily score and survives reload', async (t) 
     const state = {
       progress: find('[aria-label="Progress for Guitar"]').value,
       minutes: find('[aria-label="Optional minutes for Guitar"]').valueAsNumber,
-      hasScore: find('#has-score').checked,
+      score: find('#score').value,
       summary: find('#journal-copy').textContent,
       week: find('#week-goals').textContent,
     };
@@ -108,7 +108,7 @@ test('partial work counts without a daily score and survives reload', async (t) 
     return { ...state, feedback: find('#feedback').textContent, glowed: Boolean(find('.trail-glow')) };
   });
   assert.deepEqual(reloaded, {
-    progress: 'worked', minutes: 20, hasScore: false, summary: 'You put 20 min into “Guitar”.',
+    progress: 'worked', minutes: 20, score: '', summary: 'You put 20 min into “Guitar”.',
     week: 'Guitar · 1 day', feedback: 'Check-in saved.', glowed: false,
   });
 });
@@ -141,14 +141,57 @@ test('legacy scores, notes, and checklist entries load and can still be edited',
     score: 75, note: 'Synthetic test note', guitar: 'done', writing: 'open', week: ['Guitar · 1 day'],
   });
 
-  await page.evaluate(() => document.querySelector('#complete').click());
+  const staged = await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    find('#complete').click();
+    return {
+      score: find('#score').valueAsNumber,
+      writing: find('[aria-label="Progress for Writing"]').value,
+      week: find('#week-goals').textContent,
+      focus: document.activeElement.id,
+    };
+  });
+  assert.deepEqual(staged, { score: 100, writing: 'done', week: 'Guitar · 1 day', focus: 'save' });
+  await page.evaluate(() => document.querySelector('#save').click());
   await page.reload();
   assert.deepEqual(await page.evaluate(readEntry), {
     ...entry, score: 100, writing: 'done', week: ['Guitar · 1 day', 'Writing · 1 day'],
   });
 });
 
-test('an older check-in plan still loads and can be edited after logging new work', async (t) => {
+test('an optional score can be saved as zero or cleared from a narrow check-in', async (t) => {
+  const page = await openCheckin(t);
+  await page.setViewport(360, 800);
+  assert.deepEqual(await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    const save = find('#save');
+    const { left, right } = save.getBoundingClientRect();
+    const score = find('#score');
+    score.value = '101';
+    save.click();
+    const error = find('#feedback').textContent;
+    const scoreFocused = document.activeElement === score && find('#details').open;
+    score.value = '0';
+    save.click();
+    return { fits: left >= 0 && right <= innerWidth, error, scoreFocused, mark: find('[data-selected] .day-mark').textContent };
+  }), {
+    fits: true, error: 'Enter a whole score from 0 to 100, or leave it blank.', scoreFocused: true,
+    mark: '0%',
+  });
+
+  await page.reload();
+  assert.deepEqual(await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    const score = find('#score');
+    const reloaded = score.value;
+    find('#details summary').click();
+    score.value = '';
+    find('#save').click();
+    return { reloaded, feedback: find('#feedback').textContent, mark: find('[data-selected]').dataset.status ?? null };
+  }), { reloaded: '0', feedback: 'Check-in cleared.', mark: null });
+});
+
+test('an older plan can be edited without leaving the selected date or losing its draft', async (t) => {
   const page = await openCheckin(t);
   await page.evaluate(() => {
     const today = new Date();
@@ -156,38 +199,79 @@ test('an older check-in plan still loads and can be edited after logging new wor
     const month = String(past.getMonth() + 1).padStart(2, '0');
     const day = String(past.getDate()).padStart(2, '0');
     localStorage.setItem(`checkin.day.${past.getFullYear()}-${month}-${day}`, JSON.stringify({
-      score: null, notes: '', goals: [{ text: 'Writing', done: false, worked: true }],
+      score: 40, notes: 'Older note', goals: [{ text: 'Writing', done: false, worked: true }],
       nextPlan: 'After coffee, write for 15 minutes with music.',
     }));
   });
   await page.reload();
   const backdated = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
-    const reminder = find('#plan-preview').textContent;
-    const suggestion = find('#recent-goals option').value;
+    const previousDay = find('#selected-date').textContent;
+    const suggestion = find('#goal-options option').value;
     const emptyWeek = find('#week-empty').textContent;
-    find('#edit-plan').click();
-    const editingDay = find('#day-tag').textContent;
-    const editingPlan = document.activeElement.id;
-    const week = find('#week-goals').textContent;
-    find('#next-plan').value = 'After coffee, outline the next chapter.';
-    find('#next-time button[type="submit"]').click();
-    find('#today').click();
     find('#new-goal').value = suggestion;
+    find('#add-goal').click();
+    find('#details summary').click();
+    find('#notes').value = 'Draft for today';
+    find('#edit-plan').click();
+    const initial = {
+      reminder: find('#next-plan').value,
+      modal: find('#plan-editor').matches(':modal'),
+      earlierDate: find('#plan-date').textContent !== previousDay,
+      focus: document.activeElement.id,
+    };
+    find('#next-plan').value = 'After coffee, outline the next chapter.';
+    find('#plan-editor button[type="submit"]').click();
+    const draft = {
+      sameDay: find('#selected-date').textContent === previousDay,
+      notes: find('#notes').value,
+      work: find('[aria-label="Progress for Writing"]').value,
+      week: find('#week-empty').textContent,
+    };
     find('#save').click();
-    return { reminder, suggestion, emptyWeek, editingDay, editingPlan, week, updated: find('#plan-preview').textContent };
+    return { initial, suggestion, emptyWeek, draft };
   });
   assert.deepEqual(backdated, {
-    reminder: 'After coffee, write for 15 minutes with music.', suggestion: 'Writing',
-    emptyWeek: 'No goal work logged this week.', editingDay: 'PAST DAY', editingPlan: 'next-plan',
-    week: 'Writing · 1 day', updated: 'After coffee, outline the next chapter.',
+    initial: {
+      reminder: 'After coffee, write for 15 minutes with music.', modal: true, earlierDate: true, focus: 'next-plan',
+    },
+    suggestion: 'Writing', emptyWeek: 'No goal work logged this week.',
+    draft: { sameDay: true, notes: 'Draft for today', work: 'worked', week: 'No goal work logged this week.' },
+  });
+  await page.reload();
+  assert.deepEqual(await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    const notes = find('#notes').value;
+    find('#edit-plan').click();
+    const plan = find('#next-plan').value;
+    const date = find('#plan-date').textContent;
+    find('#next-plan').value = 'Discard this draft';
+    find('#cancel-plan-edit').click();
+    const day = new Date(date);
+    if (day.getMonth() !== new Date().getMonth()) find('#previous').click();
+    find(`[data-day="${day.getDate()}"]`).click();
+    find('#edit-plan').click();
+    const previousPlan = find('#next-plan').value;
+    find('#cancel-plan-edit').click();
+    return {
+      notes, plan, previousPlan, previousNotes: find('#notes').value, previousScore: find('#score').valueAsNumber,
+      previousWork: find('[aria-label="Progress for Writing"]').value,
+    };
+  }), {
+    notes: 'Draft for today', plan: 'After coffee, outline the next chapter.',
+    previousPlan: 'After coffee, outline the next chapter.', previousNotes: 'Older note',
+    previousScore: 40, previousWork: 'worked',
   });
 });
 
-test('pinned goals keep separate plans and notes and stage work without duplicates', async (t) => {
+test('the check-in stays focused while pinned goals remain available in the shared picker', async (t) => {
   const page = await openCheckin(t);
+  await page.setViewport(1280, 900);
   const staged = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
+    const panel = find('.journal-card');
+    const saveOffset = () => find('#save').offsetTop;
+    const initialOffset = saveOffset();
     function pinWithPlan(text, plan, fallback = '', pickup = '') {
       find('#pin-name').value = text;
       find('#pin-form button').click();
@@ -199,8 +283,19 @@ test('pinned goals keep separate plans and notes and stage work without duplicat
     }
     pinWithPlan('Guitar', 'After dinner, play the chorus.', 'If I get home late, play it once.', 'Start at bar 9.');
     pinWithPlan('Writing', 'After coffee, draft a paragraph.');
-    find('[aria-label="Worked on Writing"]').click();
-    find('[aria-label="Worked on Writing"]').click();
+    const layout = {
+      unchangedOffset: saveOffset() === initialOffset,
+      formCount: panel.querySelectorAll('form').length,
+      submitCount: panel.querySelectorAll('[type="submit"]').length,
+      goalsSeparate: Boolean(find('.goals-card #pin-form')),
+      weekByCalendar: Boolean(find('.calendar-card #week-goals')),
+      detailsCollapsed: !find('#details').open,
+      options: Array.from(find('#new-goal').list.options, ({ value }) => value),
+    };
+    find('#new-goal').value = layout.options[1];
+    find('#add-goal').click();
+    find('#new-goal').value = 'writing';
+    find('#add-goal').click();
     const beforeSave = {
       rows: find('#goal-list').childElementCount,
       progress: find('[aria-label="Progress for Writing"]').value,
@@ -212,18 +307,22 @@ test('pinned goals keep separate plans and notes and stage work without duplicat
     const pickupFocus = document.activeElement.id;
     find('#goal-pickup').value = 'Continue the opening paragraph.';
     find('#goal-editor button[type="submit"]').click();
-    return { ...beforeSave, feedback: find('#feedback').textContent, pickupFocus };
+    return { ...beforeSave, layout, feedback: find('#feedback').textContent, pickupFocus };
   });
   assert.deepEqual(staged, {
-    rows: 1, progress: 'worked', workMark: null, feedback: 'You made time for “Writing”. Check-in saved.',
+    rows: 1, progress: 'worked', workMark: null, feedback: 'Next step and note saved.',
     pickupFocus: 'goal-pickup',
+    layout: {
+      unchangedOffset: true, formCount: 1, submitCount: 1, goalsSeparate: true, weekByCalendar: true,
+      detailsCollapsed: true, options: ['Guitar', 'Writing'],
+    },
   });
 
   await page.reload();
   const reloaded = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
-    const guitar = find('[aria-label="Worked on Guitar"]').closest('article');
-    const writing = find('[aria-label="Worked on Writing"]').closest('article');
+    const guitar = find('[aria-label="Plan or pickup note for Guitar"]').closest('article');
+    const writing = find('[aria-label="Plan or pickup note for Writing"]').closest('article');
     return {
       guitarPlan: guitar.querySelector('[data-plan] span').textContent,
       fallback: guitar.querySelector('[data-fallback] span').textContent,
@@ -251,11 +350,12 @@ test('pinned goals keep separate plans and notes and stage work without duplicat
   await page.reload();
   const changes = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
-    const unpinned = !find('[aria-label="Worked on Guitar"]');
+    const unpinned = !find('[aria-label="Plan or pickup note for Guitar"]')
+      && !Array.from(find('#goal-options').options).some(({ value }) => value === 'Guitar');
     const rescheduled = find('[data-plan] span').textContent;
     find('#pin-name').value = 'Guitar';
     find('#pin-form button').click();
-    const guitar = find('[aria-label="Worked on Guitar"]').closest('article');
+    const guitar = find('[aria-label="Plan or pickup note for Guitar"]').closest('article');
     find('[aria-label="Plan or pickup note for Writing"]').click();
     find('#dismiss-goal-plan').click();
     return {
@@ -263,7 +363,7 @@ test('pinned goals keep separate plans and notes and stage work without duplicat
       guitarPlanHidden: guitar.querySelector('[data-plan]').hidden,
       guitarFallbackHidden: guitar.querySelector('[data-fallback]').hidden,
       pickup: guitar.querySelector('[data-pickup] span').textContent,
-      writingPlanHidden: find('[aria-label="Worked on Writing"]').closest('article').querySelector('[data-plan]').hidden,
+      writingPlanHidden: find('[aria-label="Plan or pickup note for Writing"]').closest('article').querySelector('[data-plan]').hidden,
     };
   });
   assert.deepEqual(changes, {

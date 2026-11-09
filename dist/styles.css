@@ -190,9 +190,9 @@ button:disabled { cursor: default; }
 
 .journal-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .day-tag { border: 1px solid #454e3e; color: var(--accent); background: #30372f; padding: 4px 7px; border-radius: 5px; font-size: 9px; letter-spacing: .1em; }
-.selected-date { color: var(--muted); font-size: 13px; margin: 17px 0 4px; }
-.journal-card h2 { font: 400 clamp(29px, 4vw, 43px)/1.08 Georgia, serif; letter-spacing: -.045em; margin: 0; }
-.journal-copy { font-size: 13px; color: #bcbdc9; line-height: 1.45; margin: 8px 0 18px; overflow-wrap: anywhere; }
+.selected-date { color: var(--muted); font-size: 13px; margin: 6px 0 16px; }
+.journal-card h2 { font: 400 clamp(24px, 3.5vw, 34px)/1.08 Georgia, serif; letter-spacing: -.035em; margin: 0; }
+.journal-copy { font-size: 13px; color: #bcbdc9; line-height: 1.45; margin: -8px 0 16px; overflow-wrap: anywhere; }
 .primary { border: 0; border-radius: 9px; background: var(--accent); color: #212919; display: flex; align-items: center; gap: 9px; text-align: left; padding: 12px; font-size: 14px; font-weight: 750; box-shadow: 0 3px 0 #9aaa6b; transition: background .15s, transform .15s; }
 .primary:hover { background: #e9ffb1; transform: translateY(-1px); }
 .primary:active { transform: translateY(2px); box-shadow: 0 1px 0 #9aaa6b; }
@@ -206,12 +206,9 @@ summary .chevron { margin-left: auto; }
 details[open] summary .chevron { transform: rotate(180deg); }
 form, .detail-fields { display: grid; gap: 10px; font-size: 13px; }
 .detail-fields { padding: 12px; border-top: 1px solid #363a47; }
-form input[type="checkbox"], form input[type="range"] { accent-color: var(--accent); }
-form input[type="range"] { width: 100%; margin: 0 0 2px; cursor: pointer; }
-.score-heading, .score-heading label { display: flex; align-items: center; gap: 6px; }
-.score-heading { justify-content: space-between; }
+.score-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 form input[type="text"], form input[type="number"], form select, textarea { background: #1a1c24; border: 1px solid #3a3e4c; border-radius: 6px; color: var(--text); padding: 7px 8px; min-width: 0; font: inherit; }
-.score-value input { width: 62px; }
+.score-field input { width: 78px; }
 fieldset { min-width: 0; margin: 1px 0; padding: 0; border: 0; }
 fieldset legend { padding: 0; margin-bottom: 6px; }
 .goal-add { display: flex; gap: 6px; }
@@ -220,30 +217,32 @@ fieldset legend { padding: 0; margin-bottom: 6px; }
 .goal-row input[type="text"] { grid-column: 1 / -1; grid-row: 1; padding-right: 38px; }
 .goal-row button { grid-column: 2; grid-row: 1; justify-self: end; margin: 3px; }
 .goal-row select { grid-row: 2; }
-.goal-add button, .goal-row button, .save-button, #edit-plan { border: 1px solid #4a4e5f; background: #303443; border-radius: 6px; padding: 4px 9px; }
+.goal-add button, .goal-row button, .save-button { border: 1px solid #4a4e5f; background: #303443; border-radius: 6px; padding: 4px 9px; }
 .goal-add button:hover, .goal-row button:hover, .save-button:hover { background: #44485b; }
-.notes-label span { color: var(--muted); font-size: 11px; margin-left: 3px; }
+.optional { color: var(--muted); font-size: 11px; margin-left: 3px; }
 textarea { width: 100%; resize: vertical; }
 .save-button { padding: 8px; font-weight: 650; }
 .feedback { color: var(--accent); font-size: 13px; margin: 0; overflow-wrap: anywhere; }
 .feedback:empty { position: absolute; }
 .feedback[data-error] { color: var(--gold); }
-.plan-reminder { padding: 10px 12px; border-left: 2px solid var(--accent); background: var(--surface); font-size: 13px; overflow-wrap: anywhere; }
-.plan-reminder strong, .plan-reminder span { display: block; }
-.plan-reminder span { margin: 4px 0 8px; }
-.pinned-goals { margin-bottom: 18px; }
-.pinned-goals h3, .pinned-goal h4 { font-size: 13px; margin: 0 0 6px; }
-#pin-form { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
-.pinned-goal { padding: 10px; margin-bottom: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow-wrap: anywhere; }
+.text-button { margin-top: 12px; border: 0; padding: 0; background: none; color: var(--lilac); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+.text-button:hover { color: var(--accent); }
+.goals-card { grid-column: 1 / -1; }
+.goals-card h2 { font: 400 24px Georgia, serif; margin: 0 0 10px; }
+.pinned-goal h3 { font-size: 13px; margin: 0 0 6px; }
+#pin-form { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; max-width: 360px; }
+#pinned-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+#pinned-list:not(:empty) { margin-top: 10px; }
+.pinned-goal { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow-wrap: anywhere; }
 .pinned-goal p { margin: 0 0 6px; color: #bcbdc9; font-size: 12px; line-height: 1.5; }
 .pinned-goal p strong { color: var(--text); margin-right: 3px; }
 .goal-actions { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .goal-actions[hidden] { display: none; }
-.pinned-goal [data-stage] { color: var(--accent); }
 #pin-feedback:not(:empty) { margin-top: 6px; }
-#goal-editor { width: min(420px, calc(100% - 28px)); padding: 20px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; }
-#goal-editor::backdrop { background: #11121bbb; }
-#goal-editor h2 { margin: 0 0 4px; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
+dialog { width: min(420px, calc(100% - 28px)); padding: 20px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; }
+dialog::backdrop { background: #11121bbb; }
+dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
+#plan-date { margin: 0 0 4px; color: var(--muted); }
 #goal-editor label span { color: var(--muted); font-size: 11px; }
 .week-progress { display: flex; gap: 10px; align-items: flex-start; margin-top: 17px; padding-top: 15px; border-top: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
 .progress-icon { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 8px; color: var(--lilac); background: #353045; flex: none; }

@@ -8,12 +8,12 @@ const trailRoute = byId('trail-route');
 const trailWaypoints = byId('trail-waypoints');
 const trailLength = trailRoute.getTotalLength();
 const details = byId('details');
-const nextTime = byId('next-time');
+const editPlan = byId('edit-plan');
+const planEditor = byId('plan-editor');
+const planFeedback = byId('plan-feedback');
 const nextPlan = byId('next-plan');
 const form = byId('entry-form');
-const hasScore = byId('has-score');
 const score = byId('score');
-const range = byId('score-range');
 const notes = byId('notes');
 const newGoal = byId('new-goal');
 const goalList = byId('goal-list');
@@ -29,6 +29,8 @@ let selected = today;
 let month = monthStart(today);
 let muted = false;
 let displayedPlanKey;
+let editingPlanKey;
+let pinnedNames = [];
 
 function entryFor(key) {
   try {
@@ -89,6 +91,15 @@ function updateWeek() {
   }));
 }
 
+function updateGoalOptions() {
+  const options = new Map(pinnedNames.map((text) => [goalKey({ text }), new Option(text)]));
+  for (const option of byId('recent-goals').options) {
+    const name = goalKey({ text: option.value });
+    if (!options.has(name)) options.set(name, new Option(option.value));
+  }
+  byId('goal-options').replaceChildren(...options.values());
+}
+
 function updatePlanAndSuggestions(entry) {
   const key = dayKey(selected);
   const keys = new Set(cachedEntries.keys());
@@ -100,16 +111,14 @@ function updatePlanAndSuggestions(entry) {
   } catch {}
 
   const suggestions = new Map();
-  let plan = entry?.nextPlan;
-  displayedPlanKey = plan ? key : null;
-  let lookForPlan = key === dayKey(today) && !plan;
+  displayedPlanKey = entry?.nextPlan ? key : null;
+  let lookForPlan = key === dayKey(today) && !displayedPlanKey;
   for (const previousKey of Array.from(keys).sort().reverse()) {
     if (previousKey >= key) continue;
     const previous = entryFor(previousKey);
     if (!previous) continue;
     if (lookForPlan && previous.nextPlan) {
-      plan = previous.nextPlan;
-      displayedPlanKey = plan ? previousKey : null;
+      displayedPlanKey = previousKey;
       lookForPlan = false;
     }
     for (const goal of previous.goals) {
@@ -119,8 +128,8 @@ function updatePlanAndSuggestions(entry) {
     if (suggestions.size === 20 && !lookForPlan) break;
   }
   byId('recent-goals').replaceChildren(...Array.from(suggestions.values(), (text) => new Option(text)));
-  byId('plan-reminder').hidden = !plan;
-  byId('plan-preview').textContent = plan ?? '';
+  updateGoalOptions();
+  editPlan.hidden = !displayedPlanKey;
 }
 
 function updateSummary(entry) {
@@ -128,22 +137,13 @@ function updateSummary(entry) {
   const tag = byId('day-tag');
   tag.textContent = isToday ? 'TODAY' : 'PAST DAY';
   byId('selected-date').textContent = dateLabel(selected);
-  const title = byId('journal-title');
   const copy = byId('journal-copy');
   const worked = entry?.goals.filter(goalHasWork) ?? [];
-  if (worked.length) {
-    title.textContent = 'Work logged.';
-    copy.textContent = describeWork(worked);
-  } else if (entry?.score != null) {
-    title.textContent = 'Day remembered.';
-    copy.textContent = `Daily score: ${entry.score}%.`;
-  } else if (entry) {
-    title.textContent = 'Day remembered.';
-    copy.textContent = 'Your check-in is saved.';
-  } else {
-    title.textContent = 'How did it go?';
-    copy.textContent = 'Record the time or effort you put into your goals.';
+  copy.textContent = worked.length ? describeWork(worked) : '';
+  if (entry?.score != null) {
+    copy.textContent += `${worked.length ? ' ' : ''}Daily score: ${entry.score}%.`;
   }
+  copy.hidden = !copy.textContent;
 }
 
 function describeWork(goals) {
@@ -216,11 +216,11 @@ function stageGoal(text) {
   return status;
 }
 
-function readGoals(allDone) {
+function readGoals() {
   return Array.from(goalList.children, (row) => {
     const [text, duration] = row.querySelectorAll('input');
     const status = row.querySelector('select').value;
-    const goal = { text: text.value.trim(), done: allDone || status === 'done' };
+    const goal = { text: text.value.trim(), done: status === 'done' };
     if (!goal.done && status === 'worked') goal.worked = true;
     if (duration.value) goal.minutes = duration.valueAsNumber;
     return goal;
@@ -228,11 +228,8 @@ function readGoals(allDone) {
 }
 
 function loadForm(entry) {
-  hasScore.checked = entry?.score != null;
-  score.value = range.value = entry?.score ?? 80;
+  score.value = entry?.score ?? '';
   notes.value = entry?.notes ?? '';
-  nextPlan.value = entry?.nextPlan ?? '';
-  nextTime.hidden = !entry?.nextPlan;
   newGoal.value = '';
   goalList.replaceChildren();
   entry?.goals.forEach(addGoalRow);
@@ -243,7 +240,6 @@ function viewDate(date, focusCalendar = false) {
   selected = date;
   month = monthStart(date);
   details.open = false;
-  nextTime.open = false;
   const entry = entryFor(dayKey(date));
   loadForm(entry);
   updateSummary(entry);
@@ -255,7 +251,16 @@ function viewDate(date, focusCalendar = false) {
   if (focusCalendar) grid.querySelector('[data-selected]')?.focus();
 }
 
-function saveEntry(percentage, allDone, source) {
+function hasEntryContent(entry) {
+  return entry.score != null || entry.notes || entry.goals.length || entry.nextPlan;
+}
+
+function persistEntry(key, entry) {
+  if (hasEntryContent(entry)) localStorage.setItem(entryPrefix + key, JSON.stringify(entry));
+  else localStorage.removeItem(entryPrefix + key);
+}
+
+function saveEntry(percentage) {
   commitNewGoal();
   const invalidDuration = goalList.querySelector('input[type="number"]:invalid');
   if (invalidDuration) {
@@ -263,23 +268,22 @@ function saveEntry(percentage, allDone, source) {
     invalidDuration.focus();
     return;
   }
-  const origin = source.getBoundingClientRect();
+  const origin = save.getBoundingClientRect();
   const key = dayKey(selected);
   const previous = entryFor(key);
   const entry = {
     score: percentage,
     notes: notes.value.trim(),
-    goals: readGoals(allDone),
+    goals: readGoals(),
   };
-  if (nextPlan.value.trim()) entry.nextPlan = nextPlan.value.trim();
-  const hasContent = percentage !== null || entry.notes || entry.goals.length || entry.nextPlan;
+  if (previous?.nextPlan) entry.nextPlan = previous.nextPlan;
+  const hasContent = hasEntryContent(entry);
   if (!hasContent && !previous) {
-    announce('Add a goal, a note, a score, or a plan to save this day.', true);
+    announce('Add a goal, a note, or a score to save this day.', true);
     return;
   }
   try {
-    if (hasContent) localStorage.setItem(entryPrefix + key, JSON.stringify(entry));
-    else localStorage.removeItem(entryPrefix + key);
+    persistEntry(key, entry);
   } catch {
     announce('Checkin could not save to this browser. Your edits are still here.', true);
     return;
@@ -293,15 +297,10 @@ function saveEntry(percentage, allDone, source) {
   updateWeek();
   updatePlanAndSuggestions(savedEntry);
   loadForm(savedEntry);
-  if (nextTime.hidden && nextTime.contains(source)) save.focus();
   const loggedGoals = Array.from(newWork.values());
   suggestPickup(loggedGoals);
-  if (newWork.size) {
-    announce(`${describeWork(loggedGoals)} Check-in saved.`);
-    celebrate(origin, muted);
-  } else {
-    announce(hasContent ? 'Check-in saved.' : 'Check-in cleared.');
-  }
+  announce(hasContent ? 'Check-in saved.' : 'Check-in cleared.');
+  if (newWork.size) celebrate(origin, muted);
 }
 
 function navigateMonth(offset, button) {
@@ -339,14 +338,6 @@ byId('today').addEventListener('click', () => {
   if (dayKey(selected) !== dayKey(now)) viewDate(now);
 });
 
-range.addEventListener('input', () => {
-  score.value = range.value;
-  hasScore.checked = true;
-});
-score.addEventListener('input', () => {
-  hasScore.checked = true;
-  if (score.value !== '' && score.validity.valid) range.value = score.value;
-});
 byId('add-goal').addEventListener('click', () => (commitNewGoal() ?? newGoal).focus());
 newGoal.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.isComposing) {
@@ -354,29 +345,54 @@ newGoal.addEventListener('keydown', (event) => {
     commitNewGoal()?.focus();
   }
 });
-complete.addEventListener('click', () => saveEntry(100, true, complete));
-byId('edit-plan').addEventListener('click', () => {
-  if (displayedPlanKey !== dayKey(selected)) {
-    const [year, month, day] = displayedPlanKey.split('-').map(Number);
-    viewDate(new Date(year, month - 1, day));
+complete.addEventListener('click', () => {
+  commitNewGoal();
+  for (const status of goalList.querySelectorAll('select')) status.value = 'done';
+  score.value = '100';
+  announce('Ready to save with a score of 100%.');
+  save.focus();
+});
+editPlan.addEventListener('click', () => {
+  editingPlanKey = displayedPlanKey;
+  const [year, month, day] = editingPlanKey.split('-').map(Number);
+  byId('plan-date').textContent = dateLabel(new Date(year, month - 1, day));
+  nextPlan.value = entryFor(editingPlanKey)?.nextPlan ?? '';
+  planFeedback.textContent = '';
+  planEditor.showModal();
+});
+byId('cancel-plan-edit').addEventListener('click', () => planEditor.close());
+byId('plan-editor-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const entry = { ...(entryFor(editingPlanKey) ?? { score: null, notes: '', goals: [] }) };
+  const plan = nextPlan.value.trim();
+  if (plan) entry.nextPlan = plan;
+  else delete entry.nextPlan;
+  try {
+    persistEntry(editingPlanKey, entry);
+  } catch {
+    planFeedback.textContent = 'Checkin could not save this plan. Your edits are still here.';
+    return;
   }
-  nextTime.open = true;
-  nextPlan.focus();
+  updateCalendar();
+  updatePlanAndSuggestions(entryFor(dayKey(selected)));
+  planEditor.close();
+  (editPlan.hidden ? save : editPlan).focus();
+  announce(plan ? 'Plan saved.' : 'Plan cleared.');
 });
 form.addEventListener('submit', (event) => {
   event.preventDefault();
-  if (hasScore.checked && (score.value === '' || !score.validity.valid)) {
-    announce('Enter a score from 0 to 100, or uncheck Include a score.', true);
+  if (!score.validity.valid) {
+    announce('Enter a whole score from 0 to 100, or leave it blank.', true);
     details.open = true;
     score.focus();
     return;
   }
-  saveEntry(hasScore.checked ? score.valueAsNumber : null, false, event.submitter ?? save);
+  saveEntry(score.value === '' ? null : score.valueAsNumber);
 });
 
-const suggestPickup = setupPinnedGoals((text) => {
-  announce(`“${text}” is ready to log for this day.`);
-  return stageGoal(text);
-});
+const suggestPickup = setupPinnedGoals((names) => {
+  pinnedNames = names;
+  updateGoalOptions();
+}, announce);
 viewDate(today);
 playOpening();
