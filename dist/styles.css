@@ -269,7 +269,7 @@ dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
 #effects { position: fixed; inset: 0; z-index: 10; width: 100%; height: 100%; pointer-events: none; }
 .reveal { animation: enter .75s cubic-bezier(.2,.65,.3,1) backwards; }
 .calendar-card { animation-delay: .13s; }
-.journal-card { animation-delay: .24s; }
+.journal-card, .goals-card { animation-delay: .24s; }
 @keyframes enter { from { opacity: 0; transform: translateY(12px); } }
 
 @media (min-width: 1040px) {

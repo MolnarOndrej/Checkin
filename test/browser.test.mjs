@@ -26,6 +26,43 @@ function captureRotations() {
   window.clearInterval = (delay) => ticks.delete(delay);
 }
 
+test('the Goals panel fades and slides in with the check-in on refresh', async (t) => {
+  const page = await openCheckin(t, () => {
+    document.addEventListener('DOMContentLoaded', () => {
+      for (const animation of document.getAnimations()) {
+        if (animation.animationName === 'enter') {
+          animation.pause();
+          animation.currentTime = 0;
+        }
+      }
+    });
+  });
+  await page.setReducedMotion('no-preference');
+  await page.reload();
+  assert.deepEqual(await page.evaluate(() => {
+    return ['.journal-card', '.goals-card'].map((selector) => {
+      const panel = document.querySelector(selector);
+      const animation = panel.getAnimations().find(({ animationName }) => animationName === 'enter');
+      const { delay, duration } = animation.effect.getTiming();
+      const sample = () => {
+        const { opacity, transform } = getComputedStyle(panel);
+        return { opacity: Number(opacity), y: new DOMMatrix(transform === 'none' ? undefined : transform).m42 };
+      };
+      const start = sample();
+      animation.currentTime = delay + duration;
+      return { delay, duration, start, end: sample() };
+    });
+  }), Array(2).fill({ delay: 240, duration: 750, start: { opacity: 0, y: 12 }, end: { opacity: 1, y: 0 } }));
+
+  await page.setReducedMotion('reduce');
+  await page.reload();
+  assert.deepEqual(await page.evaluate(() => {
+    const panel = document.querySelector('.goals-card');
+    const { opacity, transform } = getComputedStyle(panel);
+    return { opacity, transform, animations: panel.getAnimations().length };
+  }), { opacity: '1', transform: 'none', animations: 0 });
+});
+
 test('ambient effects run at different rhythms without moving the landscape', async (t) => {
   const page = await openCheckin(t);
   await page.setReducedMotion('no-preference');
