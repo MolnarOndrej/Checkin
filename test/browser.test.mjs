@@ -725,15 +725,22 @@ test('wind hands off to longer, randomly paced cloud drifts on desktop and mobil
 test('the Moonlit Trail motto rotates on the timer and stays the same on refresh', async (t) => {
   const page = await openCheckin(t, captureRotations);
   await page.setViewport(320, 800);
+  const ambientTitles = await page.evaluate(() => {
+    const title = document.querySelector('#page-title');
+    const first = title.textContent;
+    for (let tick = 0; tick < 24; tick++) window.ambientTurn.run();
+    return { first, afterAmbientTicks: title.textContent };
+  });
+  assert.equal(ambientTitles.first, 'Let effort lead.');
+  assert.equal(ambientTitles.afterAmbientTicks, ambientTitles.first);
+
+  await page.setReducedMotion('reduce');
   const result = await page.evaluate(() => {
     const title = document.querySelector('#page-title');
     const lines = [...title.querySelectorAll('span, em')];
     const heroRight = title.closest('.hero').getBoundingClientRect().right;
     const readTitle = () => lines.map((line) => line.textContent).join(' ');
     const first = readTitle();
-    const ambientTick = () => window.ambientTurn.run();
-    for (let tick = 0; tick < 24; tick++) ambientTick();
-    const afterAmbientTicks = readTitle();
     const mottoTick = window.rotationTicks.get(300_000);
     const mottos = [];
     for (let tick = 0; tick < 10; tick++) {
@@ -744,10 +751,9 @@ test('the Moonlit Trail motto rotates on the timer and stays the same on refresh
       });
       mottoTick();
     }
-    return { first, afterAmbientTicks, mottos, afterCycle: readTitle() };
+    return { first, mottos, afterCycle: readTitle(), animations: title.getAnimations().length };
   });
-  assert.equal(result.first, 'Let effort lead.');
-  assert.equal(result.afterAmbientTicks, result.first);
+  assert.equal(result.animations, 0);
   assert.equal(result.mottos[1].text, 'The way forward.');
   assert.equal(new Set(result.mottos.map(({ text }) => text)).size, 10);
   assert.deepEqual(result.mottos.filter(({ fits }) => !fits), []);
@@ -766,6 +772,37 @@ test('the Moonlit Trail motto rotates on the timer and stays the same on refresh
   await page.navigate('about:blank');
   await page.navigate(url);
   assert.equal(await page.evaluate(readMotto), result.first);
+});
+
+test('the page title fades out before changing mottos and fades back in', async (t) => {
+  const page = await openCheckin(t, captureRotations);
+  await page.setReducedMotion('no-preference');
+  const result = await page.evaluate(async () => {
+    const title = document.querySelector('#page-title');
+    const readTitle = () => ({ text: title.textContent, opacity: Number(getComputedStyle(title).opacity) });
+    const before = readTitle();
+    const rotation = window.rotationTicks.get(300_000)();
+    const [fadeOut] = title.getAnimations();
+    fadeOut.currentTime = fadeOut.effect.getTiming().duration / 2;
+    const fadingOut = readTitle();
+    fadeOut.finish();
+    await rotation;
+    const [fadeIn] = title.getAnimations();
+    fadeIn.currentTime = 0;
+    const swapped = readTitle();
+    fadeIn.currentTime = fadeIn.effect.getTiming().duration / 2;
+    const fadingIn = readTitle();
+    fadeIn.finish();
+    return { before, fadingOut, swapped, fadingIn, after: readTitle() };
+  });
+
+  assert.deepEqual(result.before, { text: 'Let effort lead.', opacity: 1 });
+  assert.equal(result.fadingOut.text, result.before.text);
+  assert.ok(result.fadingOut.opacity > 0 && result.fadingOut.opacity < 1);
+  assert.deepEqual(result.swapped, { text: 'The way forward.', opacity: 0 });
+  assert.equal(result.fadingIn.text, result.swapped.text);
+  assert.ok(result.fadingIn.opacity > 0 && result.fadingIn.opacity < 1);
+  assert.deepEqual(result.after, { text: result.swapped.text, opacity: 1 });
 });
 
 test('partial work counts without a daily score and survives reload', async (t) => {

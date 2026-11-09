@@ -94,6 +94,7 @@ function setupTrailMottos() {
   const title = byId('page-title');
   const firstLine = title.querySelector('span');
   const secondLine = title.querySelector('em');
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const mottos = [
     [firstLine.textContent, secondLine.textContent],
     ['One step', 'at a time.'],
@@ -125,9 +126,17 @@ function setupTrailMottos() {
   }
 
   showMotto();
-  setInterval(() => {
+  setInterval(async () => {
+    const fadeOut = reducedMotion.matches ? null : title.animate(
+      { opacity: [1, 0] }, { duration: 300, easing: 'ease-in-out', fill: 'forwards' },
+    );
+    if (fadeOut) await fadeOut.finished;
     index = (index + 1) % mottos.length;
     showMotto();
+    fadeOut?.cancel();
+    if (fadeOut && !reducedMotion.matches) {
+      title.animate({ opacity: [0, 1] }, { duration: 450, easing: 'ease-in-out' });
+    }
   }, 5 * 60 * 1000);
 }
 
