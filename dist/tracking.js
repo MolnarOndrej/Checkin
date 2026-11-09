@@ -8,7 +8,12 @@ const byId = (id) => document.getElementById(id);
 const todayKey = () => dayKey(new Date());
 const goalLabel = (goal) => formatQuantity(goal.amount, goalUnit(goal));
 
-export function renderGoals(activities, date, entriesBetween, openTracking) {
+function show(feedback, message, error = false) {
+  feedback.textContent = message;
+  feedback.toggleAttribute('data-error', error);
+}
+
+export function renderGoals(activities, date, entriesBetween, openGoalSettings) {
   const key = dayKey(date);
   const today = todayKey();
   const list = byId('activity-goals-list');
@@ -28,7 +33,7 @@ export function renderGoals(activities, date, entriesBetween, openTracking) {
     name.textContent = activity.text;
     name.setAttribute('aria-label', `Goal settings for ${activity.text}`);
     name.setAttribute('aria-haspopup', 'dialog');
-    name.addEventListener('click', () => openTracking(activity.text, name));
+    name.addEventListener('click', () => openGoalSettings(activity.text, name));
     const value = document.createElement('strong');
     const period = document.createElement('small');
     item.append(name, value);
@@ -54,30 +59,17 @@ export function renderGoals(activities, date, entriesBetween, openTracking) {
   byId('activity-goals-empty').hidden = items.length > 0;
 }
 
-export function setupTracking({ getActivity, saveActivity, selectedDate }) {
-  const dialog = byId('tracking-editor');
+export function setupTracking({ getActivity, saveActivity }) {
+  const dialog = byId('activity-settings');
   const measurementForm = byId('measurement-form');
   const mode = byId('measurement-mode');
   const unit = byId('measurement-unit');
   const factor = byId('measurement-factor');
   const minutes = byId('measurement-minutes');
   const measurementFeedback = byId('measurement-feedback');
-  const goalForm = byId('activity-goal-form');
-  const metric = byId('activity-goal-metric');
-  const amount = byId('activity-goal-amount');
-  const goalUnitInput = byId('activity-goal-unit');
-  const repeat = byId('activity-goal-repeat');
-  const start = byId('activity-goal-start');
-  const end = byId('activity-goal-end');
-  const goalFeedback = byId('activity-goal-feedback');
   let activityName;
   let opener;
   let factorUnit;
-
-  function show(feedback, message, error = false) {
-    feedback.textContent = message;
-    feedback.toggleAttribute('data-error', error);
-  }
 
   function updateMeasurementFields() {
     const custom = mode.value === 'custom';
@@ -87,6 +79,68 @@ export function setupTracking({ getActivity, saveActivity, selectedDate }) {
     factor.disabled = !custom || standardDistance;
     unit.required = custom;
   }
+
+  mode.addEventListener('change', updateMeasurementFields);
+  unit.addEventListener('input', () => {
+    const current = unitKey(unit.value);
+    if (current !== factorUnit) factor.value = '';
+    factorUnit = current;
+    updateMeasurementFields();
+  });
+  byId('close-activity-settings').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => {
+    const replacement = Array.from(document.querySelectorAll('#pinned-list [data-tracking]'))
+      .find((button) => button.getAttribute('aria-label') === opener?.getAttribute('aria-label'));
+    (opener?.isConnected ? opener : replacement ?? byId('new-goal')).focus();
+  });
+
+  measurementForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    let measurement;
+    if (mode.value === 'custom') {
+      measurement = { unit: unit.value.trim(), trackMinutes: minutes.checked };
+      if (!factor.disabled && factor.value !== '') measurement.metersPerUnit = factor.valueAsNumber;
+      if (!isMeasurement(measurement)) {
+        show(measurementFeedback, 'Enter a unit and a positive distance per unit, or leave distance blank.', true);
+        return;
+      }
+    }
+    if (saveActivity(activityName, { measurement }, measurementFeedback)) {
+      show(measurementFeedback, 'Activity settings saved.');
+    }
+  });
+
+  return function openTracking(text, trigger) {
+    activityName = text;
+    opener = trigger;
+    const measurement = getActivity(text)?.measurement;
+    byId('activity-settings-title').textContent = text;
+    mode.value = measurement ? 'custom' : 'minutes';
+    unit.value = measurement?.unit ?? '';
+    factorUnit = unitKey(unit.value);
+    factor.value = measurement?.metersPerUnit ?? '';
+    minutes.checked = measurement?.trackMinutes ?? true;
+    show(measurementFeedback, '');
+    updateMeasurementFields();
+    dialog.showModal();
+  };
+}
+
+export function setupGoalSettings({ getActivity, saveActivity, activityNames, selectedDate }) {
+  const dialog = byId('goal-settings');
+  const addGoal = byId('open-goal-settings');
+  const activity = byId('goal-activity');
+  const details = byId('new-activity-goal');
+  const summary = details.querySelector('summary');
+  const goalForm = byId('activity-goal-form');
+  const metric = byId('activity-goal-metric');
+  const amount = byId('activity-goal-amount');
+  const goalUnitInput = byId('activity-goal-unit');
+  const repeat = byId('activity-goal-repeat');
+  const start = byId('activity-goal-start');
+  const end = byId('activity-goal-end');
+  const goalFeedback = byId('activity-goal-feedback');
+  let opener;
 
   function updateGoalFields() {
     const custom = metric.value === 'amount';
@@ -115,6 +169,7 @@ export function setupTracking({ getActivity, saveActivity, selectedDate }) {
 
   function renderGoalList() {
     const today = todayKey();
+    const activityName = activity.value.trim();
     const goals = getActivity(activityName)?.goals ?? [];
     const list = byId('tracking-goals-list');
     list.replaceChildren(...goals.filter((goal) => !goal.stoppedOn && (!goal.end || goal.end >= today))
@@ -140,7 +195,7 @@ export function setupTracking({ getActivity, saveActivity, selectedDate }) {
           const updated = latest.map((saved) => saved.id === goal.id ? { ...saved, stoppedOn: todayKey() } : saved);
           if (saveActivity(activityName, { goals: updated }, goalFeedback)) {
             renderGoalList();
-            byId('new-activity-goal').querySelector('summary').focus();
+            summary.focus();
             show(goalFeedback, goal.start > today ? 'Scheduled goal canceled.' : 'Goal ended. Past progress is saved.');
           }
         });
@@ -149,44 +204,40 @@ export function setupTracking({ getActivity, saveActivity, selectedDate }) {
       }));
   }
 
-  mode.addEventListener('change', updateMeasurementFields);
-  unit.addEventListener('input', () => {
-    const current = unitKey(unit.value);
-    if (current !== factorUnit) factor.value = '';
-    factorUnit = current;
-    updateMeasurementFields();
+  function updateGoalActivity() {
+    goalUnitInput.value = getActivity(activity.value)?.measurement?.unit ?? '';
+    show(goalFeedback, '');
+    updateGoalFields();
+    renderGoalList();
+  }
+
+  activity.addEventListener('input', updateGoalActivity);
+  activity.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.isComposing || details.open) return;
+    event.preventDefault();
+    details.open = true;
+    metric.focus();
   });
   metric.addEventListener('change', updateGoalFields);
   goalUnitInput.addEventListener('input', updateGoalFields);
   repeat.addEventListener('change', updateGoalFields);
   start.addEventListener('change', updateGoalFields);
-  byId('close-tracking').addEventListener('click', () => dialog.close());
+  addGoal.addEventListener('click', () => openGoalSettings('', addGoal));
+  byId('close-goal-settings').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
-    const replacement = Array.from(document.querySelectorAll('#pinned-list [data-tracking], #activity-goals-list button'))
+    const replacement = Array.from(document.querySelectorAll('#activity-goals-list button'))
       .find((button) => button.getAttribute('aria-label') === opener?.getAttribute('aria-label'));
-    (opener?.isConnected ? opener : replacement ?? byId('new-goal')).focus();
-  });
-
-  measurementForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    let measurement;
-    if (mode.value === 'custom') {
-      measurement = { unit: unit.value.trim(), trackMinutes: minutes.checked };
-      if (!factor.disabled && factor.value !== '') measurement.metersPerUnit = factor.valueAsNumber;
-      if (!isMeasurement(measurement)) {
-        show(measurementFeedback, 'Enter a unit and a positive distance per unit, or leave distance blank.', true);
-        return;
-      }
-    }
-    if (saveActivity(activityName, { measurement }, measurementFeedback)) {
-      if (!goalUnitInput.value) goalUnitInput.value = measurement?.unit ?? '';
-      updateGoalFields();
-      show(measurementFeedback, 'Tracking saved.');
-    }
+    (opener?.isConnected ? opener : replacement ?? addGoal).focus();
   });
 
   goalForm.addEventListener('submit', (event) => {
     event.preventDefault();
+    const activityName = activity.value.trim();
+    if (!activityName) {
+      show(goalFeedback, 'Choose or enter an activity for this goal.', true);
+      activity.focus();
+      return;
+    }
     const goal = {
       id: crypto.randomUUID(),
       metric: metric.value,
@@ -214,32 +265,23 @@ export function setupTracking({ getActivity, saveActivity, selectedDate }) {
     if (saveActivity(activityName, { goals: [...existing, goal] }, goalFeedback)) {
       renderGoalList();
       amount.value = '';
-      const add = byId('new-activity-goal');
-      add.open = false;
-      add.querySelector('summary').focus();
+      details.open = false;
+      summary.focus();
       show(goalFeedback, 'Goal created.');
     }
   });
 
-  return function openTracking(text, trigger) {
-    activityName = text;
+  function openGoalSettings(text, trigger) {
     opener = trigger;
-    const measurement = getActivity(text)?.measurement;
-    byId('tracking-title').textContent = text;
-    mode.value = measurement ? 'custom' : 'minutes';
-    unit.value = measurement?.unit ?? '';
-    factorUnit = unitKey(unit.value);
-    factor.value = measurement?.metersPerUnit ?? '';
-    minutes.checked = measurement?.trackMinutes ?? true;
     goalForm.reset();
+    activity.value = text;
     start.value = dayKey(selectedDate());
-    goalUnitInput.value = measurement?.unit ?? '';
-    byId('new-activity-goal').open = false;
-    show(measurementFeedback, '');
-    show(goalFeedback, '');
-    updateMeasurementFields();
-    updateGoalFields();
-    renderGoalList();
+    details.open = !text;
+    const options = new Map(activityNames().filter(Boolean).map((name) => [goalKey({ text: name }), name]));
+    byId('goal-activity-options').replaceChildren(...Array.from(options.values()).sort().map((name) => new Option(name)));
+    updateGoalActivity();
     dialog.showModal();
-  };
+  }
+
+  return openGoalSettings;
 }

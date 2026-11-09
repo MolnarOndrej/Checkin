@@ -217,7 +217,7 @@ details[open] summary .chevron { transform: rotate(180deg); }
 form, .detail-fields { display: grid; gap: 10px; font-size: 13px; }
 .detail-fields { padding: 12px; border-top: 1px solid #363a47; }
 .score-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-form input[type="text"], form input[type="number"], form input[type="date"], form select, textarea { background: #1a1c24; border: 1px solid #3a3e4c; border-radius: 6px; color: var(--text); padding: 7px 8px; min-width: 0; font: inherit; }
+form input[type="text"], #goal-activity, form input[type="number"], form input[type="date"], form select, textarea { background: #1a1c24; border: 1px solid #3a3e4c; border-radius: 6px; color: var(--text); padding: 7px 8px; min-width: 0; font: inherit; }
 .score-field input { width: 78px; }
 fieldset { min-width: 0; margin: 1px 0; padding: 0; border: 0; }
 fieldset legend { padding: 0; margin-bottom: 6px; }
@@ -249,8 +249,8 @@ textarea { width: 100%; resize: vertical; }
 .pinned-activity + .pinned-activity { border-top: 1px solid var(--line); }
 .pinned-activity .icon-button, .dialog-header .icon-button, .activity-row-header .icon-button { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--lilac); }
 .pinned-activity .icon-button:hover, .dialog-header .icon-button:hover, .activity-row-header .icon-button:hover { background: var(--surface); color: var(--accent); }
-.goal-actions { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
-.goal-actions[hidden] { display: none; }
+.editor-actions { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.editor-actions[hidden] { display: none; }
 #pin-feedback:not(:empty) { margin-top: 6px; }
 dialog { width: min(420px, calc(100% - 28px)); padding: 20px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; }
 dialog::backdrop { background: #11121bbb; }
@@ -287,7 +287,8 @@ dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
 #activity-goals-list li, #tracking-goals-list li { display: grid; gap: 5px; padding: 9px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; background: var(--surface); font-size: 13px; overflow-wrap: anywhere; }
 #activity-goals-list .text-button, #tracking-goals-list .text-button { justify-self: start; text-align: left; margin: 0; }
 #activity-goals-list progress { width: 100%; height: 8px; }
-#tracking-editor { width: min(465px, calc(100% - 28px)); max-height: calc(100dvh - 28px); }
+#open-goal-settings { margin-top: 9px; font-size: 13px; }
+#activity-settings, #goal-settings { width: min(465px, calc(100% - 28px)); max-height: calc(100dvh - 28px); }
 .tracking-section { display: grid; gap: 10px; border-top: 1px solid var(--line); margin-top: 15px; padding-top: 13px; }
 .tracking-section h3 { font-size: 14px; margin: 0; }
 #tracking-goals-list:empty { display: none; }

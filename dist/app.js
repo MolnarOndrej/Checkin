@@ -4,7 +4,7 @@ import { setupPinnedGoals } from './pinned-goals.js';
 import { entryPrefix, setupBackup } from './backup.js';
 import { createActivityRow } from './activity-row.js';
 import { measurementSummary } from './measurements.js';
-import { renderGoals, setupTracking } from './tracking.js';
+import { renderGoals, setupGoalSettings, setupTracking } from './tracking.js';
 
 const byId = (id) => document.getElementById(id);
 const grid = byId('calendar');
@@ -176,7 +176,7 @@ function updateActivityGoals() {
   renderGoals(activities, selected, (start, end) => Array.from(entryKeys())
     .filter((key) => key >= start && key <= end)
     .map(entryFor)
-    .filter(Boolean), openActivityTracking);
+    .filter(Boolean), (text, trigger) => openGoalSettings(text, trigger));
 }
 
 function updateGoalOptions() {
@@ -441,7 +441,15 @@ const { suggestPickup, refreshGoals, getActivity, saveActivity } = setupPinnedGo
   updateActivityGoals();
   for (const row of goalList.children) activityRows.get(row).refreshMeasurement();
 }, announce, openActivityTracking);
-const openTracking = setupTracking({ getActivity, saveActivity, selectedDate: () => selected });
+const openTracking = setupTracking({ getActivity, saveActivity });
+const openGoalSettings = setupGoalSettings({
+  getActivity, saveActivity, selectedDate: () => selected,
+  activityNames: () => [
+    ...Array.from(byId('goal-options').options, ({ value }) => value),
+    ...Array.from(goalList.querySelectorAll('.activity-input'), ({ value }) => value.trim()),
+    ...activities.map(({ text }) => text),
+  ],
+});
 window.addEventListener('storage', (event) => {
   if (event.key === null || event.key.startsWith(entryPrefix)) updateActivityGoals();
 });

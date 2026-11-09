@@ -426,15 +426,24 @@ test('daily lap lengths and durations persist while a distance goal spans a chan
     set('#measurement-unit', 'laps');
     set('#measurement-factor', '400');
     click('#measurement-form button');
-    click('#new-activity-goal summary');
+    const activitySettings = find('#activity-settings');
+    const settingsCopy = {
+      hasGoalControls: /\bgoals?\b/i.test(activitySettings.textContent),
+      saveLabel: find('#measurement-form button').textContent,
+    };
+    click('#close-activity-settings');
+    click('#open-goal-settings');
+    const goalOptions = Array.from(find('#goal-activity-options').options, ({ value }) => value);
+    set('#goal-activity', 'Running');
     set('#activity-goal-metric', 'amount');
+    const defaultGoalUnit = find('#activity-goal-unit').value;
     set('#activity-goal-amount', '2');
     set('#activity-goal-unit', 'km');
     set('#activity-goal-repeat', 'range');
     set('#activity-goal-start', '2026-11-09');
     set('#activity-goal-end', '2026-11-11');
     click('#activity-goal-form button');
-    click('#close-tracking');
+    click('#close-goal-settings');
 
     click('[data-day="9"]');
     addRunning();
@@ -456,15 +465,16 @@ test('daily lap lengths and durations persist while a distance goal spans a chan
     click('#pinned-list [data-tracking]');
     set('#measurement-unit', 'km');
     click('#measurement-form button');
-    click('#close-tracking');
+    click('#close-activity-settings');
     click('#today');
     addRunning();
     set('[data-amount]', '0.6');
     click('#save');
-    return { preview, firstProgress, secondProgress, completed: progress() };
+    return { settingsCopy, goalOptions, defaultGoalUnit, preview, firstProgress, secondProgress, completed: progress() };
   });
   assert.deepEqual(saved, {
-    preview: '400 m · 12:30 min/km', firstProgress: '0.4 / 2 km',
+    settingsCopy: { hasGoalControls: false, saveLabel: 'Save activity settings' },
+    goalOptions: ['Running'], defaultGoalUnit: 'laps', preview: '400 m · 12:30 min/km', firstProgress: '0.4 / 2 km',
     secondProgress: '1.4 / 2 km', completed: '2 / 2 km',
   });
 
@@ -489,16 +499,17 @@ test('daily lap lengths and durations persist while a distance goal spans a chan
   await page.setViewport(360, 720);
   assert.deepEqual(await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
-    find('.goal-row [data-tracking]').click();
-    find('#new-activity-goal summary').click();
-    const dialog = find('#tracking-editor');
+    find('#activity-goals-list button').click();
+    find('#goal-activity').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+    const dialog = find('#goal-settings');
     const rect = dialog.getBoundingClientRect();
     return {
       withinViewport: rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
       fitsWidth: dialog.scrollWidth === dialog.clientWidth,
       visible: dialog.matches(':modal'),
+      editing: document.activeElement.id === 'activity-goal-metric',
     };
-  }), { withinViewport: true, fitsWidth: true, visible: true });
+  }), { withinViewport: true, fitsWidth: true, visible: true, editing: true });
 });
 
 test('a weekly days goal counts a check-in with no amount and preserves progress when replaced', async (t) => {
@@ -516,11 +527,12 @@ test('a weekly days goal counts a check-in with no amount and preserves progress
     click('[data-day="9"]');
     find('#new-goal').value = 'Strength';
     click('#add-goal');
-    click('.goal-row [data-tracking]');
-    click('#new-activity-goal summary');
+    click('#open-goal-settings');
+    find('#goal-activity').value = 'Strength';
+    find('#goal-activity').dispatchEvent(new Event('input'));
     find('#activity-goal-amount').value = '3';
     click('#activity-goal-form button');
-    click('#close-tracking');
+    click('#close-goal-settings');
     click('#save');
     const first = progress();
     click('#today');
@@ -531,20 +543,21 @@ test('a weekly days goal counts a check-in with no amount and preserves progress
     const overlap = find('#activity-goal-feedback').textContent;
     click('#tracking-goals-list button');
     click('#activity-goal-form button');
-    click('#close-tracking');
+    click('#close-goal-settings');
     const replacement = progress();
     click('[data-day="9"]');
     const historical = progress();
 
     find('#new-goal').value = 'Reading';
     click('#add-goal');
-    document.querySelectorAll('.goal-row [data-tracking]')[1].click();
-    click('#new-activity-goal summary');
+    click('#open-goal-settings');
+    find('#goal-activity').value = 'Reading';
+    find('#goal-activity').dispatchEvent(new Event('input'));
     find('#activity-goal-repeat').value = 'week';
     find('#activity-goal-repeat').dispatchEvent(new Event('change'));
     find('#activity-goal-amount').value = '3';
     click('#activity-goal-form button');
-    click('#close-tracking');
+    click('#close-goal-settings');
     return {
       first, overlap, replacement, historical,
       oneWeek: Array.from(document.querySelectorAll('#activity-goals-list small'), (item) => item.textContent),

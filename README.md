@@ -6,7 +6,7 @@ Pin recurring activities in **Activities** to keep them in the check-in suggesti
 
 Use the sliders icon next to an activity to open **Activity settings**. Start with minutes or choose a custom unit such as laps, sets, or pages. You can log minutes alongside a custom unit. For running, set **Meters per unit** to 400 for 400-meter laps, and adjust it in an individual check-in when you run a different track. Checkin calculates distance and, when you also log minutes, pace. Existing check-ins keep the unit and distance per unit you saved with them.
 
-In the same settings, add a **Goal** for days worked, amount logged, or minutes logged. Choose one week, repeating Monday–Sunday weeks, or an inclusive date range. Each worked day counts once for a days goal, even with blank measurements. Distance goals combine compatible units and counts with a saved distance per unit. A lap goal counts recorded laps. Use the calendar to see goal progress for a different period. End an ongoing goal to create a replacement while keeping its past progress.
+In **Goals**, choose **Add goal** and select or enter an activity. Set a goal for days worked, amount logged, or minutes logged. Choose one week, repeating Monday–Sunday weeks, or an inclusive date range. Each worked day counts once for a days goal, even with blank measurements. Distance goals combine compatible units and counts with a saved distance per unit. A lap goal counts recorded laps. Use the calendar to see goal progress for a different period. Open an activity’s goal from that panel to end it while keeping its past progress.
 
 Open **Notes & score** for an optional reflection and overall score. **Mark all done + set score to 100%** fills in the changes for you to review and save.
 

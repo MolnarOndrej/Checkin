@@ -131,7 +131,7 @@
             </details>
             <button type="submit" id="save" class="primary"><svg class="icon"><use href="#check"/></svg> Save check-in</button>
             <p id="feedback" class="feedback" role="status"></p>
-            <div id="pickup-suggestions" class="goal-actions" hidden></div>
+            <div id="pickup-suggestions" class="editor-actions" hidden></div>
           </form>
           <button type="button" id="edit-plan" class="text-button" hidden>Previous plan</button>
         </section>
@@ -148,8 +148,9 @@
           </section>
           <section class="card activity-goals-card reveal" aria-labelledby="activity-goals-title">
             <h2 id="activity-goals-title">Goals</h2>
-            <p id="activity-goals-empty" class="tracking-hint">Open Activity settings to set a goal.</p>
+            <p id="activity-goals-empty" class="tracking-hint">Set a goal for an activity over a week or a date range.</p>
             <ul id="activity-goals-list"></ul>
+            <button type="button" id="open-goal-settings" class="save-button" aria-haspopup="dialog">Add goal</button>
           </section>
         </div>
       </div>
@@ -216,7 +217,7 @@
       <label for="next-plan">When will you start, and what would make it enjoyable?</label>
       <textarea id="next-plan" rows="3" maxlength="240" autofocus></textarea>
       <p id="plan-feedback" class="feedback" role="status"></p>
-      <div class="goal-actions">
+      <div class="editor-actions">
         <button type="submit" class="save-button">Save plan</button>
       </div>
     </form>
@@ -224,7 +225,7 @@
   <dialog id="activity-editor" aria-labelledby="activity-editor-title" closedby="any">
     <form id="activity-editor-form">
       <div class="dialog-header">
-        <h2 id="activity-editor-title"></h2>
+        <div><p class="tracking-kicker">Activity plan</p><h2 id="activity-editor-title"></h2></div>
         <button type="button" id="cancel-activity-edit" class="icon-button" aria-label="Close activity plan" title="Close">
           <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
         </button>
@@ -236,20 +237,20 @@
       <label for="activity-pickup">Where should I pick up? <span>optional</span></label>
       <textarea id="activity-pickup" rows="2" maxlength="240" placeholder="Start with bars 9–12 at half speed."></textarea>
       <p id="activity-editor-feedback" class="feedback" role="status"></p>
-      <div class="goal-actions">
+      <div class="editor-actions">
         <button type="submit" class="save-button">Save next step and note</button>
       </div>
-      <div class="goal-actions">
+      <div class="editor-actions">
         <button type="button" id="complete-activity-plan" class="save-button">Mark plan done</button>
         <button type="button" id="dismiss-activity-plan" class="save-button">Dismiss plan</button>
         <button type="button" id="unpin-activity" class="save-button">Unpin activity</button>
       </div>
     </form>
   </dialog>
-  <dialog id="tracking-editor" aria-labelledby="tracking-title" closedby="any">
+  <dialog id="activity-settings" aria-labelledby="activity-settings-title" closedby="any">
     <div class="dialog-header">
-      <div><p class="tracking-kicker">Activity settings</p><h2 id="tracking-title"></h2></div>
-      <button type="button" id="close-tracking" class="icon-button" aria-label="Close activity settings" title="Close">
+      <div><p class="tracking-kicker">Activity settings</p><h2 id="activity-settings-title"></h2></div>
+      <button type="button" id="close-activity-settings" class="icon-button" aria-label="Close activity settings" title="Close">
         <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
       </button>
     </div>
@@ -272,10 +273,21 @@
       </div>
       <p class="tracking-hint">Settings apply when you add this activity to a check-in. Saved measurements keep their original units.</p>
       <p id="measurement-feedback" class="feedback" role="status"></p>
-      <div><button type="submit" class="save-button">Save tracking</button></div>
+      <div><button type="submit" class="save-button">Save activity settings</button></div>
     </form>
-    <section class="tracking-section" aria-labelledby="tracking-goals-title">
-      <h3 id="tracking-goals-title">Goals</h3>
+  </dialog>
+  <dialog id="goal-settings" aria-labelledby="goal-settings-title" closedby="any">
+    <div class="dialog-header">
+      <h2 id="goal-settings-title">Goal settings</h2>
+      <button type="button" id="close-goal-settings" class="icon-button" aria-label="Close goal settings" title="Close">
+        <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
+      </button>
+    </div>
+    <div class="tracking-section">
+      <label class="tracking-field">Activity
+        <input id="goal-activity" type="text" maxlength="140" list="goal-activity-options" form="activity-goal-form" placeholder="Choose or enter an activity" required autofocus>
+      </label>
+      <datalist id="goal-activity-options"></datalist>
       <ul id="tracking-goals-list"></ul>
       <details id="new-activity-goal">
         <summary>Add a goal <svg class="icon chevron" aria-hidden="true"><use href="#down"/></svg></summary>
@@ -311,7 +323,7 @@
         </form>
       </details>
       <p id="activity-goal-feedback" class="feedback" role="status"></p>
-    </section>
+    </div>
   </dialog>
   <dialog id="backup-dialog" aria-labelledby="backup-title" closedby="any">
     <div class="dialog-header">
