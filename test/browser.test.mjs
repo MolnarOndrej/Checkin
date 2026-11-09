@@ -194,6 +194,13 @@ test('the Moonlit Trail heading shows a new two-line motto every five minutes', 
 
 test('partial work counts without a daily score and survives reload', async (t) => {
   const page = await openCheckin(t);
+  const layout = await page.evaluate(() => ({
+    hasHeader: Boolean(document.querySelector('.shell > header, #sound')),
+    heroTop: document.querySelector('.hero').getBoundingClientRect().top,
+  }));
+  assert.equal(layout.hasHeader, false);
+  assert.ok(layout.heroTop > 0 && layout.heroTop <= 24);
+
   const saved = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
     find('#new-goal').value = 'Guitar';
@@ -231,13 +238,6 @@ test('partial work counts without a daily score and survives reload', async (t) 
       week: find('#week-goals').textContent,
     };
     find('#save').click();
-  const layout = await page.evaluate(() => ({
-    hasHeader: Boolean(document.querySelector('.shell > header, #sound')),
-    heroTop: document.querySelector('.hero').getBoundingClientRect().top,
-  }));
-  assert.equal(layout.hasHeader, false);
-  assert.ok(layout.heroTop > 0 && layout.heroTop <= 24);
-
     return { ...state, feedback: find('#feedback').textContent, glowed: Boolean(find('.trail-glow')) };
   });
   assert.deepEqual(reloaded, {
