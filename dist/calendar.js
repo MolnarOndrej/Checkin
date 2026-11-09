@@ -78,31 +78,32 @@ export function renderCalendar({ grid, title, month, today, selected, entryFor }
     button.append(label);
 
     if (entry && !button.disabled) {
-      const mark = document.createElement('span');
-      mark.className = 'day-mark';
-      mark.setAttribute('aria-hidden', 'true');
       const hasWork = entry.goals.some(goalHasWork);
       if (hasWork) {
         workDays.push(number);
         button.dataset.status = 'work';
-        mark.textContent = '✦';
-      } else if (entry.score === 100) {
-        button.dataset.status = 'full';
-        const check = document.createElementNS(svgNamespace, 'svg');
-        check.setAttribute('class', 'icon');
-        check.setAttribute('viewBox', '0 0 24 24');
-        const path = document.createElementNS(svgNamespace, 'use');
-        path.setAttribute('href', '#check');
-        check.append(path);
-        mark.append(check);
-      } else if (entry.score !== null) {
-        button.dataset.status = 'partial';
-        mark.textContent = `${entry.score}%`;
       } else {
-        button.dataset.status = 'note';
-        mark.textContent = '◆';
+        const mark = document.createElement('span');
+        mark.className = 'day-mark';
+        mark.setAttribute('aria-hidden', 'true');
+        if (entry.score === 100) {
+          button.dataset.status = 'full';
+          const check = document.createElementNS(svgNamespace, 'svg');
+          check.setAttribute('class', 'icon');
+          check.setAttribute('viewBox', '0 0 24 24');
+          const path = document.createElementNS(svgNamespace, 'use');
+          path.setAttribute('href', '#check');
+          check.append(path);
+          mark.append(check);
+        } else if (entry.score !== null) {
+          button.dataset.status = 'partial';
+          mark.textContent = `${entry.score}%`;
+        } else {
+          button.dataset.status = 'note';
+          mark.textContent = '◆';
+        }
+        button.append(mark);
       }
-      button.append(mark);
     }
     fragment.append(button);
   }

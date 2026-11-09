@@ -829,7 +829,8 @@ test('partial work counts without a daily score and survives reload', async (t) 
     return {
       validation,
       feedback: find('#feedback').textContent,
-      workMark: find('[data-selected]').dataset.status,
+      dayStatus: find('[data-selected]').dataset.status,
+      hasDayMark: Boolean(find('[data-selected] .day-mark')),
       week: find('#week-goals').textContent,
       glowed: Boolean(find('#trail-waypoints .trail-glow')),
     };
@@ -837,7 +838,8 @@ test('partial work counts without a daily score and survives reload', async (t) 
   assert.deepEqual(saved, {
     validation: 'Enter whole minutes from 1 to 1440, or leave minutes blank.',
     feedback: 'Check-in saved.',
-    workMark: 'work',
+    dayStatus: 'work',
+    hasDayMark: false,
     week: 'Guitar · 1 day',
     glowed: true,
   });
@@ -845,7 +847,11 @@ test('partial work counts without a daily score and survives reload', async (t) 
   await page.reload();
   const reloaded = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
+    const day = find('[data-selected]');
     const state = {
+      dayStatus: day.dataset.status,
+      hasDayMark: Boolean(day.querySelector('.day-mark')),
+      workLabel: day.getAttribute('aria-label').endsWith(', work logged'),
       progress: find('[aria-label="Progress for Guitar"]').value,
       minutes: find('[aria-label="Optional minutes for Guitar"]').valueAsNumber,
       score: find('#score').value,
@@ -856,6 +862,7 @@ test('partial work counts without a daily score and survives reload', async (t) 
     return { ...state, feedback: find('#feedback').textContent, glowed: Boolean(find('.trail-glow')) };
   });
   assert.deepEqual(reloaded, {
+    dayStatus: 'work', hasDayMark: false, workLabel: true,
     progress: 'worked', minutes: 20, score: '', summary: 'You put 20 min into “Guitar”.',
     week: 'Guitar · 1 day', feedback: 'Check-in saved.', glowed: false,
   });
