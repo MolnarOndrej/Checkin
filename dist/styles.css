@@ -21,21 +21,29 @@ body {
   isolation: isolate;
   background: radial-gradient(ellipse at 50% -10%, #272835, transparent 65%);
 }
-body::before {
+body::before, body::after {
   content: "";
   position: fixed;
-  inset: 0;
+  inset: -12%;
   z-index: -1;
   pointer-events: none;
-  background:
-    radial-gradient(ellipse at 18% 20%, #a99ce036, transparent 56%),
-    radial-gradient(ellipse at 86% 52%, #8fae852b, transparent 50%);
-  opacity: .55;
-  animation: ambient-light 16s ease-in-out -6s infinite alternate;
+  opacity: .65;
 }
-@keyframes ambient-light {
-  from { opacity: .3; }
-  to { opacity: 1; }
+body::before {
+  background: radial-gradient(ellipse at 16% 24%, #a99ce05e, transparent 52%);
+  animation: lavender-drift 17s ease-in-out -5s infinite alternate;
+}
+body::after {
+  background: radial-gradient(ellipse at 88% 65%, #88c4ab4f, transparent 49%);
+  animation: sage-drift 23s ease-in-out -12s infinite alternate;
+}
+@keyframes lavender-drift {
+  from { transform: translate(-6%, -6%); opacity: .36; }
+  to { transform: translate(8%, 7%); opacity: 1; }
+}
+@keyframes sage-drift {
+  from { transform: translate(7%, 9%); opacity: .3; }
+  to { transform: translate(-9%, -6%); opacity: .95; }
 }
 button, input, textarea { font: inherit; }
 button, summary { cursor: pointer; }
@@ -68,22 +76,46 @@ button:disabled { cursor: default; }
 .hero-scene svg { position: absolute; left: 50%; translate: -50% 0; height: 100%; min-width: 100%; }
 .moon-halo {
   opacity: .45;
-  animation: moonlight 12s ease-in-out -4s infinite alternate;
+  animation: moonlight 7s ease-in-out -2s infinite alternate;
 }
 @keyframes moonlight {
   from { opacity: .12; }
-  to { opacity: .85; }
+  to { opacity: 1; }
 }
 .sky-star {
   fill: #fff4cc;
   opacity: .35;
-  animation: sky-twinkle 9s ease-in-out infinite;
+  animation: sky-twinkle 5.5s ease-in-out -2s infinite;
 }
-.sky-star:nth-child(2) { animation-delay: -3s; }
-.sky-star:nth-child(3) { animation-delay: -6s; }
+.sky-star:nth-child(2) { animation-duration: 7s; animation-delay: -4.5s; }
+.sky-star:nth-child(3) { animation-duration: 8.5s; animation-delay: -6s; }
 @keyframes sky-twinkle {
   0%, 100% { opacity: .2; }
   50% { opacity: .95; }
+}
+.sky-meteor {
+  opacity: 0;
+  animation: shooting-star 19s linear -14s infinite;
+}
+@keyframes shooting-star {
+  0%, 90% { opacity: 0; transform: translate(0, 0); }
+  93% { opacity: .85; }
+  100% { opacity: 0; transform: translate(78px, 35px); }
+}
+.firefly {
+  --flight-x: 16px;
+  opacity: .38;
+  animation: firefly-flight 9s ease-in-out -2s infinite;
+}
+.firefly:nth-child(2) { --flight-x: -22px; animation-duration: 13s; animation-delay: -7s; }
+.firefly:nth-child(3) { --flight-x: 24px; animation-duration: 11s; animation-delay: -6s; }
+.firefly:nth-child(4) { --flight-x: -16px; animation-duration: 8s; animation-delay: -3s; }
+.firefly:nth-child(5) { --flight-x: 12px; animation-duration: 15s; animation-delay: -10s; }
+@keyframes firefly-flight {
+  0%, 100% { opacity: .12; transform: translate(0, 0); }
+  30% { opacity: .9; transform: translate(var(--flight-x), -11px); }
+  60% { opacity: .35; transform: translate(var(--flight-x), -25px); }
+  80% { opacity: .72; transform: translate(0, -13px); }
 }
 #trail-waypoints { fill: #f7ffc7; filter: drop-shadow(0 0 2px #f5ffb4) drop-shadow(0 0 4px #dcf29c); }
 .trail-glow { transform-box: fill-box; transform-origin: center; animation: trail-glow 1.1s ease-out; }
@@ -100,7 +132,30 @@ button:disabled { cursor: default; }
 .hero-tag span { color: var(--accent); margin-right: 3px; }
 
 .dashboard { display: grid; grid-template-columns: minmax(0, 1.36fr) minmax(0, 1fr); align-items: start; gap: 18px; margin-top: 18px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 19px; padding: 22px; }
+.card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 19px; padding: 22px; }
+.card::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 9%;
+  width: 36%;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--lilac), transparent);
+  opacity: .18;
+  animation: edge-glint 13s ease-in-out -5s infinite alternate;
+}
+.journal-card::before {
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation-duration: 17s;
+  animation-delay: -11s;
+  animation-direction: alternate-reverse;
+}
+@keyframes edge-glint {
+  0%, 15% { opacity: .08; transform: translateX(0); }
+  55% { opacity: .65; }
+  90%, 100% { opacity: .13; transform: translateX(128%); }
+}
 .section-label { color: var(--lilac); display: flex; align-items: center; gap: 8px; }
 .section-label .icon { width: 15px; height: 15px; }
 .calendar-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 10px 0 17px; }

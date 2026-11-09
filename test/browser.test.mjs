@@ -15,56 +15,55 @@ async function openCheckin(t) {
   return page;
 }
 
-test('ambient light changes without animating the landscape on load', async (t) => {
+test('ambient effects run at different rhythms without moving the landscape', async (t) => {
   const page = await openCheckin(t);
   await page.setReducedMotion('no-preference');
   const animated = await page.evaluate(() => {
-    const glow = () => getComputedStyle(document.body, '::before');
-    const halo = document.querySelector('.moon-halo');
-    const star = document.querySelector('.sky-star');
-    function sample(animation, readStyle, fraction) {
-      animation.pause();
-      const { delay, duration } = animation.effect.getTiming();
-      // Sample a full cycle after the negative start delay.
-      animation.currentTime = delay + duration * (2 + fraction);
-      const { opacity, transform } = readStyle();
-      return { opacity: Number(opacity), transform };
-    }
-    const wash = document.getAnimations().find(({ animationName }) => animationName === glow().animationName);
-    const [moonlight] = halo.getAnimations();
-    const [twinkle] = star.getAnimations();
-    const dimWash = sample(wash, glow, .05);
-    const brightWash = sample(wash, glow, .95);
-    const dimHalo = sample(moonlight, () => getComputedStyle(halo), .05);
-    const brightHalo = sample(moonlight, () => getComputedStyle(halo), .95);
-    const dimStar = sample(twinkle, () => getComputedStyle(star), .1);
-    const brightStar = sample(twinkle, () => getComputedStyle(star), .5);
+    const effects = [
+      ['body', '::before', .05, .95],
+      ['body', '::after', .05, .95],
+      ['.moon-halo', null, .05, .95],
+      ['.sky-star', null, .1, .5],
+      ['.sky-meteor', null, .5, .93],
+      ['.firefly', null, .05, .3],
+      ['.calendar-card', '::before', .05, .55],
+    ];
+    const animations = document.getAnimations();
     return {
-      bannerAnimations: [...document.querySelectorAll('.hero, .hero-scene, .hero-scene svg')]
+      landscapeAnimations: [...document.querySelectorAll('.hero, .hero-scene, .hero-scene svg, .hero-scene use')]
         .map((element) => getComputedStyle(element).animationName),
-      lightingStaysInPlace: [dimWash, brightWash, dimHalo, brightHalo, dimStar, brightStar]
-        .every(({ transform }) => transform === 'none'),
-      washBrightens: brightWash.opacity - dimWash.opacity > .5,
-      haloBrightens: brightHalo.opacity - dimHalo.opacity > .5,
-      starBrightens: brightStar.opacity - dimStar.opacity > .5,
-      glowIgnoresClicks: glow().pointerEvents === 'none',
+      effects: effects.map(([selector, pseudo, dimAt, brightAt]) => {
+        const element = document.querySelector(selector);
+        const style = () => getComputedStyle(element, pseudo);
+        const animation = animations.find(({ animationName }) => animationName === style().animationName);
+        const { delay, duration, iterations } = animation.effect.getTiming();
+        animation.pause();
+        // Sample an even-numbered cycle after any negative start delay.
+        animation.currentTime = delay + duration * (2 + dimAt);
+        const dim = Number(style().opacity);
+        const start = style().transform;
+        animation.currentTime = delay + duration * (2 + brightAt);
+        return {
+          duration, repeats: iterations === Infinity, brightens: Number(style().opacity) - dim > .45,
+          moves: style().transform !== start,
+          interceptsClicks: Boolean(pseudo) && style().pointerEvents !== 'none',
+        };
+      }),
     };
   });
-  assert.deepEqual(animated, {
-    bannerAnimations: ['none', 'none', 'none'], lightingStaysInPlace: true,
-    washBrightens: true, haloBrightens: true, starBrightens: true, glowIgnoresClicks: true,
-  });
+  assert.deepEqual(animated.landscapeAnimations, ['none', 'none', 'none', 'none']);
+  assert.equal(new Set(animated.effects.map(({ duration }) => duration)).size, animated.effects.length);
+  assert.ok(animated.effects.every(({ repeats, brightens, interceptsClicks }) => repeats && brightens && !interceptsClicks));
+  assert.deepEqual(animated.effects.map(({ moves }) => moves), [true, true, false, false, true, true, true]);
 
   await page.setReducedMotion('reduce');
   assert.deepEqual(await page.evaluate(() => {
-    const glow = getComputedStyle(document.body, '::before');
-    const halo = getComputedStyle(document.querySelector('.moon-halo'));
-    const star = getComputedStyle(document.querySelector('.sky-star'));
     return {
-      animations: [glow, halo, star].map(({ animationName }) => animationName),
-      visible: [glow, halo, star].every(({ opacity }) => Number(opacity) > 0),
+      running: document.getAnimations().length,
+      haloVisible: Number(getComputedStyle(document.querySelector('.moon-halo')).opacity) > 0,
+      meteorHidden: Number(getComputedStyle(document.querySelector('.sky-meteor')).opacity) === 0,
     };
-  }), { animations: ['none', 'none', 'none'], visible: true });
+  }), { running: 0, haloVisible: true, meteorHidden: true });
 });
 
 test('partial work counts without a daily score and survives reload', async (t) => {
