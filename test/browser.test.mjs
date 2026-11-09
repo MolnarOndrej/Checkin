@@ -270,14 +270,14 @@ test('moonlit trail rotates through random effects and the river flows downstrea
     ambientTick();
     effects.push(scene.dataset.ambient);
     const hidden = Number(getComputedStyle(ripple).opacity) === 0 && ripple.getAnimations().length === 0;
-    for (const draw of [.6, 0, 0, .99]) {
+    for (const draw of [.6, .4, 0, 0, .99]) {
       Math.random = () => draw;
       ambientTick();
       effects.push(scene.dataset.ambient);
     }
     return { effects, moving, visible, hidden };
   }), {
-    effects: ['river', 'fireflies', 'meteor', 'moon', 'stars', 'river'],
+    effects: ['river', 'fireflies', 'owl', 'meteor', 'moon', 'stars', 'river'],
     moving: true, visible: true, hidden: true,
   });
 
@@ -293,6 +293,61 @@ test('moonlit trail rotates through random effects and the river flows downstrea
       rippleVisible: Number(getComputedStyle(scene.querySelector('.river-current path')).opacity) > 0,
     };
   }), { rotating: false, selected: false, rippleVisible: false });
+});
+
+test('the owl glides left of the moon and fades out on desktop and mobile', async (t) => {
+  const page = await openCheckin(t, captureRotations);
+  await page.setReducedMotion('no-preference');
+
+  for (const width of [1280, 320]) {
+    await page.setViewport(width, 800);
+    await page.reload();
+    assert.deepEqual(await page.evaluate(() => {
+      const scene = document.querySelector('.hero-scene');
+      const owl = scene.querySelector('.sky-owl');
+      const wing = owl.querySelector('.owl-wing');
+      const opacity = () => Number(getComputedStyle(owl).opacity);
+      const idle = opacity();
+      const tick = window.rotationTicks.get(12_000);
+      Math.random = () => .6;
+      tick();
+      const glide = owl.getAnimations()[0];
+      const flap = wing.getAnimations()[0];
+      glide.pause();
+      flap.pause();
+      const { delay, duration } = glide.effect.getTiming();
+      glide.currentTime = 0;
+      const before = opacity();
+      glide.currentTime = delay + duration * .5;
+      const first = owl.getBoundingClientRect();
+      const visible = opacity() > .5;
+      const wingUp = () => new DOMMatrix(getComputedStyle(wing).transform).m22 > 0;
+      flap.currentTime = delay + 840;
+      const raisesWing = wingUp();
+      flap.currentTime = delay + 1290;
+      const lowersWing = !wingUp();
+      glide.currentTime = delay + duration * .7;
+      const second = owl.getBoundingClientRect();
+      const hero = scene.getBoundingClientRect();
+      const moonCenter = new DOMPoint(805, 102).matrixTransform(scene.querySelector('svg').getScreenCTM());
+      glide.currentTime = delay + duration;
+      const after = opacity();
+      return {
+        idle, before, after, visible, raisesWing, lowersWing,
+        glidesRight: second.left > first.left,
+        inLeftSky: first.left >= hero.left && second.right < Math.min(hero.right, moonCenter.x),
+      };
+    }), {
+      idle: 0, before: 0, after: 0, visible: true, raisesWing: true, lowersWing: true,
+      glidesRight: true, inLeftSky: true,
+    }, `viewport width ${width}`);
+  }
+
+  await page.setReducedMotion('reduce');
+  assert.deepEqual(await page.evaluate(() => {
+    const owl = document.querySelector('.sky-owl');
+    return { opacity: Number(getComputedStyle(owl).opacity), animations: owl.getAnimations({ subtree: true }).length };
+  }), { opacity: 0, animations: 0 });
 });
 
 test('Moonlit Trail fireflies hold their position and brightness between turns', async (t) => {

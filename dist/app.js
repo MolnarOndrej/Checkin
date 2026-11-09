@@ -38,7 +38,7 @@ let loadedDraft;
 
 function setupAmbientEffects() {
   const scene = document.querySelector('.hero-scene');
-  const effects = ['moon', 'stars', 'meteor', 'fireflies', 'river'];
+  const effects = ['moon', 'stars', 'meteor', 'owl', 'fireflies', 'river'];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let timer;
 

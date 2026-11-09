@@ -99,6 +99,25 @@ button:disabled { cursor: default; }
   20% { opacity: .85; }
   100% { opacity: 0; transform: translate(78px, 35px); }
 }
+.sky-owl { opacity: 0; }
+[data-ambient="owl"] .sky-owl {
+  animation: owl-glide 9s linear 1s;
+}
+[data-ambient="owl"] .owl-wing {
+  animation: owl-wingbeat 3s ease-in-out 1s 3;
+}
+@keyframes owl-glide {
+  0% { opacity: 0; transform: translate(448px, 64px) rotate(-8deg); }
+  22%, 76% { opacity: .86; }
+  50% { transform: translate(536px, 43px) rotate(-5deg); }
+  100% { opacity: 0; transform: translate(624px, 40px) rotate(3deg); }
+}
+@keyframes owl-wingbeat {
+  0%, 16%, 100% { transform: scaleY(.65); }
+  28% { transform: scaleY(1); }
+  43% { transform: scaleY(-.8); }
+  60% { transform: scaleY(.65); }
+}
 .firefly {
   --flight-x: 16px;
   opacity: .38;
