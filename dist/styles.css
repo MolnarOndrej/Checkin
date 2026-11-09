@@ -137,6 +137,20 @@ textarea { width: 100%; resize: vertical; }
 .plan-reminder { padding: 10px 12px; border-left: 2px solid var(--accent); background: var(--surface); font-size: 13px; overflow-wrap: anywhere; }
 .plan-reminder strong, .plan-reminder span { display: block; }
 .plan-reminder span { margin: 4px 0 8px; }
+.pinned-goals { margin-bottom: 18px; }
+.pinned-goals h3, .pinned-goal h4 { font-size: 13px; margin: 0 0 6px; }
+#pin-form { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.pinned-goal { padding: 10px; margin-bottom: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow-wrap: anywhere; }
+.pinned-goal p { margin: 0 0 6px; color: #bcbdc9; font-size: 12px; line-height: 1.5; }
+.pinned-goal p strong { color: var(--text); margin-right: 3px; }
+.goal-actions { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.goal-actions[hidden] { display: none; }
+.pinned-goal [data-stage] { color: var(--accent); }
+#pin-feedback:not(:empty) { margin-top: 6px; }
+#goal-editor { width: min(420px, calc(100% - 28px)); padding: 20px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; }
+#goal-editor::backdrop { background: #11121bbb; }
+#goal-editor h2 { margin: 0 0 4px; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
+#goal-editor label span { color: var(--muted); font-size: 11px; }
 .week-progress { display: flex; gap: 10px; align-items: flex-start; margin-top: 17px; padding-top: 15px; border-top: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
 .progress-icon { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 8px; color: var(--lilac); background: #353045; flex: none; }
 .progress-icon .icon { width: 16px; height: 16px; }

@@ -1,5 +1,6 @@
-import { dateLabel, dateOffset, dayKey, goalHasWork, monthStart, renderCalendar, weekStart } from './calendar.js';
+import { dateLabel, dateOffset, dayKey, goalHasWork, goalKey, monthStart, renderCalendar, weekStart } from './calendar.js';
 import { celebrate, playOpening } from './celebration.js';
+import { setupPinnedGoals } from './pinned-goals.js';
 
 const byId = (id) => document.getElementById(id);
 const grid = byId('calendar');
@@ -43,10 +44,6 @@ function entryFor(key) {
 function announce(message = '', error = false) {
   feedback.textContent = message;
   feedback.toggleAttribute('data-error', error);
-}
-
-function goalKey({ text }) {
-  return text.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 function updateCalendar(glow = false) {
@@ -105,13 +102,12 @@ function updatePlanAndSuggestions(entry) {
   const suggestions = new Map();
   let plan = entry?.nextPlan;
   displayedPlanKey = plan ? key : null;
-  // A newer day of work closes the prior plan, while a gap or note-only day keeps it visible.
-  let lookForPlan = key === dayKey(today) && !plan && !entry?.goals.some(goalHasWork);
+  let lookForPlan = key === dayKey(today) && !plan;
   for (const previousKey of Array.from(keys).sort().reverse()) {
     if (previousKey >= key) continue;
     const previous = entryFor(previousKey);
     if (!previous) continue;
-    if (lookForPlan && (previous.nextPlan || previous.goals.some(goalHasWork))) {
+    if (lookForPlan && previous.nextPlan) {
       plan = previous.nextPlan;
       displayedPlanKey = plan ? previousKey : null;
       lookForPlan = false;
@@ -205,8 +201,18 @@ function addGoalRow({ text, done, worked, minutes }) {
 function commitNewGoal() {
   const text = newGoal.value.trim();
   if (!text) return;
-  const status = addGoalRow({ text, worked: true });
+  const status = stageGoal(text);
   newGoal.value = '';
+  return status;
+}
+
+function stageGoal(text) {
+  const name = goalKey({ text });
+  const existing = Array.from(goalList.querySelectorAll('input[type="text"]'))
+    .find((input) => goalKey({ text: input.value }) === name);
+  if (!existing) return addGoalRow({ text, worked: true });
+  const status = existing.closest('.goal-row').querySelector('select');
+  if (status.value === 'open') status.value = 'worked';
   return status;
 }
 
@@ -226,6 +232,7 @@ function loadForm(entry) {
   score.value = range.value = entry?.score ?? 80;
   notes.value = entry?.notes ?? '';
   nextPlan.value = entry?.nextPlan ?? '';
+  nextTime.hidden = !entry?.nextPlan;
   newGoal.value = '';
   goalList.replaceChildren();
   entry?.goals.forEach(addGoalRow);
@@ -243,6 +250,7 @@ function viewDate(date, focusCalendar = false) {
   updateCalendar();
   updateWeek();
   updatePlanAndSuggestions(entry);
+  suggestPickup();
   announce();
   if (focusCalendar) grid.querySelector('[data-selected]')?.focus();
 }
@@ -285,8 +293,11 @@ function saveEntry(percentage, allDone, source) {
   updateWeek();
   updatePlanAndSuggestions(savedEntry);
   loadForm(savedEntry);
+  if (nextTime.hidden && nextTime.contains(source)) save.focus();
+  const loggedGoals = Array.from(newWork.values());
+  suggestPickup(loggedGoals);
   if (newWork.size) {
-    announce(`${describeWork(Array.from(newWork.values()))} Check-in saved.`);
+    announce(`${describeWork(loggedGoals)} Check-in saved.`);
     celebrate(origin, muted);
   } else {
     announce(hasContent ? 'Check-in saved.' : 'Check-in cleared.');
@@ -363,5 +374,9 @@ form.addEventListener('submit', (event) => {
   saveEntry(hasScore.checked ? score.valueAsNumber : null, false, event.submitter ?? save);
 });
 
+const suggestPickup = setupPinnedGoals((text) => {
+  announce(`“${text}” is ready to log for this day.`);
+  return stageGoal(text);
+});
 viewDate(today);
 playOpening();

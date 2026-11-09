@@ -81,7 +81,16 @@
           <p id="selected-date" class="selected-date"></p>
           <h2 id="journal-title">How did it go?</h2>
           <p id="journal-copy" class="journal-copy"></p>
-          <p id="plan-reminder" class="plan-reminder" hidden><strong>Next time</strong><span id="plan-preview"></span><button type="button" id="edit-plan">Edit plan</button></p>
+          <section class="pinned-goals" aria-labelledby="pinned-title">
+            <h3 id="pinned-title">Pinned goals</h3>
+            <div id="pinned-list"></div>
+            <form id="pin-form">
+              <input id="pin-name" type="text" maxlength="140" list="recent-goals" aria-label="Goal to pin" placeholder="Pin a recurring goal…">
+              <button type="submit" class="save-button">Pin goal</button>
+            </form>
+            <p id="pin-feedback" class="feedback" role="status"></p>
+          </section>
+          <p id="plan-reminder" class="plan-reminder" hidden><strong>Earlier check-in plan</strong><span id="plan-preview"></span><button type="button" id="edit-plan">Edit plan</button></p>
           <form id="entry-form" novalidate>
             <fieldset id="goals">
               <legend>What did you work on?</legend>
@@ -94,8 +103,9 @@
             </fieldset>
             <button type="submit" id="save" class="primary"><svg class="icon"><use href="#check"/></svg> Log what I did</button>
             <p id="feedback" class="feedback" role="status"></p>
-            <details id="next-time">
-              <summary><svg class="icon"><use href="#flag"/></svg> Plan the next session <svg class="icon chevron"><use href="#down"/></svg></summary>
+            <div id="pickup-suggestions" class="goal-actions" hidden></div>
+            <details id="next-time" hidden>
+              <summary><svg class="icon"><use href="#flag"/></svg> Earlier check-in plan <svg class="icon chevron"><use href="#down"/></svg></summary>
               <div class="detail-fields">
                 <label for="next-plan">When will you start, and what would make it enjoyable?</label>
                 <textarea id="next-plan" rows="2" maxlength="240" placeholder="After dinner on Tuesday, I’ll play guitar for 15 minutes and start with a song I like."></textarea>
@@ -126,6 +136,39 @@
     </main>
     <footer class="footer"><span>✦ &nbsp; ONE DAY AT A TIME</span><span><svg class="icon"><use href="#lock"/></svg> Saved in this browser</span></footer>
   </div>
+  <template id="pinned-goal-card">
+    <article class="pinned-goal">
+      <h4></h4>
+      <p data-plan hidden><strong>Next step</strong> <span></span></p>
+      <p data-fallback hidden><strong>Fallback</strong> <span></span></p>
+      <p data-pickup hidden><strong>Pick up here</strong> <span></span></p>
+      <div class="goal-actions">
+        <button type="button" data-stage class="save-button">Worked on it</button>
+        <button type="button" data-edit class="save-button">Plan or pickup note</button>
+        <button type="button" data-done class="save-button" hidden>Plan done</button>
+      </div>
+    </article>
+  </template>
+  <dialog id="goal-editor" aria-labelledby="goal-editor-title">
+    <form id="goal-editor-form">
+      <h2 id="goal-editor-title"></h2>
+      <label for="goal-plan">Next step</label>
+      <textarea id="goal-plan" rows="2" maxlength="240" placeholder="After dinner, play the chorus slowly." autofocus></textarea>
+      <label for="goal-fallback">If something gets in the way <span>optional</span></label>
+      <textarea id="goal-fallback" rows="2" maxlength="240" placeholder="If I get home late, play it once."></textarea>
+      <label for="goal-pickup">Where should I pick up? <span>optional</span></label>
+      <textarea id="goal-pickup" rows="2" maxlength="240" placeholder="Start with bars 9–12 at half speed."></textarea>
+      <p id="goal-editor-feedback" class="feedback" role="status"></p>
+      <div class="goal-actions">
+        <button type="submit" class="save-button">Save next step and note</button>
+        <button type="button" id="cancel-goal-edit" class="save-button">Cancel</button>
+      </div>
+      <div class="goal-actions">
+        <button type="button" id="dismiss-goal-plan" class="save-button">Dismiss plan</button>
+        <button type="button" id="unpin-goal" class="save-button">Unpin goal</button>
+      </div>
+    </form>
+  </dialog>
   <canvas id="effects" aria-hidden="true"></canvas>
 </body>
 </html>

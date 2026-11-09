@@ -28,6 +28,10 @@ export function goalHasWork(goal) {
   return goal.done || goal.worked === true;
 }
 
+export function goalKey({ text }) {
+  return text.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 function statusLabel(entry) {
   if (!entry) return 'open';
   if (entry.goals.some(goalHasWork)) return 'work logged';
