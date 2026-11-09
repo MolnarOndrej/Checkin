@@ -39,7 +39,7 @@ let loadedDraft;
 function setupAmbientEffects() {
   const scene = document.querySelector('.hero-scene');
   const owl = scene.querySelector('.sky-owl');
-  const effects = ['moon', 'stars', 'meteor', 'owl', 'fireflies', 'river'];
+  const effects = ['moon', 'stars', 'meteor', 'owl', 'wind', 'clouds', 'fireflies', 'river'];
   const flightDurations = [6, 7, 8, 9, 10];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let lastFlightDuration;

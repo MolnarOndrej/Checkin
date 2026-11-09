@@ -42,8 +42,42 @@
                 <stop stop-color="#e4e9ff" stop-opacity="0"/>
                 <stop offset="1" stop-color="#f6f4ff"/>
               </linearGradient>
+              <linearGradient id="cloud-light">
+                <stop stop-color="#c3c9e3" stop-opacity="0"/>
+                <stop offset=".46" stop-color="#c3c9e3"/>
+                <stop offset="1" stop-color="#c3c9e3" stop-opacity="0"/>
+              </linearGradient>
             </defs>
             <use href="trail.svg#landscape" width="1100" height="330"/>
+            <g fill="#213141">
+              <use href="trail.svg#pine" transform="translate(601 223) scale(.41)"/>
+              <use href="trail.svg#pine" transform="translate(619 225) scale(.31)"/>
+              <g class="wind-pine" transform="translate(636 237) scale(.29)"><use href="trail.svg#pine"/></g>
+              <use href="trail.svg#pine" transform="translate(704 230) scale(.24)"/>
+              <use href="trail.svg#pine" transform="translate(831 228) scale(.3)"/>
+              <use href="trail.svg#pine" transform="translate(850 231) scale(.32)"/>
+              <g class="wind-pine" transform="translate(875 217) scale(.47)"><use href="trail.svg#pine"/></g>
+              <use href="trail.svg#pine" transform="translate(902 219) scale(.55)"/>
+              <use href="trail.svg#pine" transform="translate(918 215) scale(.58)"/>
+            </g>
+            <g fill="#17242b">
+              <use href="trail.svg#pine" transform="translate(481 222) scale(.8)"/>
+              <g class="wind-pine" transform="translate(516 225) scale(.94)"><use href="trail.svg#pine"/></g>
+              <use href="trail.svg#pine" transform="translate(546 248) scale(.51)"/>
+              <g class="wind-pine" transform="translate(560 236) scale(.98)"><use href="trail.svg#pine"/></g>
+              <g class="wind-pine" transform="translate(594 262) scale(.62)"><use href="trail.svg#pine"/></g>
+              <use href="trail.svg#pine" transform="translate(928 247) scale(.72)"/>
+              <g class="wind-pine" transform="translate(955 224) scale(1.12)"><use href="trail.svg#pine"/></g>
+              <use href="trail.svg#pine" transform="translate(986 231) scale(.88)"/>
+              <g class="wind-pine" transform="translate(1008 203) scale(1.55)"><use href="trail.svg#pine"/></g>
+              <use href="trail.svg#pine" transform="translate(1048 195) scale(1.94)"/>
+              <g class="wind-pine" transform="translate(1085 161) scale(2.66)"><use href="trail.svg#pine"/></g>
+            </g>
+            <use href="trail.svg#trail-finish"/>
+            <g fill="url(#cloud-light)">
+              <path class="sky-cloud" d="M535 82h31l13-4h30l13-5h24l11 4h22l13 4h26l17 5H535z"/>
+              <path class="sky-cloud" d="M616 105h26l14-3h29l15-4h17l12 4h20l17 7H616z"/>
+            </g>
             <g class="river-current" fill="none" stroke="#f1edcb" stroke-linecap="round">
               <path pathLength="100" stroke-width="2" d="M750 237 C738 243 792 243 787 249 S703 263 704 275 S795 291 828 307 Q855 320 876 329"/>
               <path pathLength="100" stroke-width="1.3" d="M754 263 C727 271 733 277 766 284 S852 296 898 321"/>

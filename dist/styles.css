@@ -83,12 +83,13 @@ button:disabled { cursor: default; }
 .sky-star {
   fill: #fff4cc;
   opacity: .35;
+  animation: sky-twinkle 5.5s ease-in-out -2s infinite paused;
 }
 [data-ambient="stars"] .sky-star {
-  animation: sky-twinkle 5.5s ease-in-out -2s infinite;
+  animation-play-state: running;
 }
-[data-ambient="stars"] .sky-star:nth-child(2) { animation-duration: 7s; animation-delay: -4.5s; }
-[data-ambient="stars"] .sky-star:nth-child(3) { animation-duration: 8.5s; animation-delay: -6s; }
+.sky-star:nth-child(2) { animation-duration: 7s; animation-delay: -4.5s; }
+.sky-star:nth-child(3) { animation-duration: 8.5s; animation-delay: -6s; }
 @keyframes sky-twinkle {
   0%, 100% { opacity: .2; }
   50% { opacity: .95; }
@@ -119,6 +120,36 @@ button:disabled { cursor: default; }
   28% { transform: scaleY(1); }
   43% { transform: scaleY(-.8); }
   60% { transform: scaleY(.65); }
+}
+.wind-pine {
+  --pine-lean: -3deg;
+  --pine-sway-time: 11.6s;
+}
+.wind-pine:nth-child(even) { --pine-lean: -2deg; --pine-sway-time: 10.8s; }
+.wind-pine > use { transform-origin: 0 52px; }
+[data-ambient="wind"] .wind-pine > use {
+  animation: pine-sway var(--pine-sway-time) ease-in-out;
+}
+@keyframes pine-sway {
+  0%, 100% { transform: none; }
+  24% { transform: skewX(var(--pine-lean)); }
+  43% { transform: skewX(calc(var(--pine-lean) * -.35)); }
+  62% { transform: skewX(calc(var(--pine-lean) * .7)); }
+  80% { transform: skewX(calc(var(--pine-lean) * -.15)); }
+}
+.sky-cloud {
+  --cloud-distance: 42px;
+  --cloud-opacity: .26;
+  opacity: 0;
+}
+.sky-cloud + .sky-cloud { --cloud-distance: 58px; --cloud-opacity: .2; }
+[data-ambient="clouds"] .sky-cloud {
+  animation: cloud-drift 11.6s linear;
+}
+@keyframes cloud-drift {
+  from { transform: translateX(-24px); opacity: 0; }
+  24%, 64% { opacity: var(--cloud-opacity); }
+  to { transform: translateX(var(--cloud-distance)); opacity: 0; }
 }
 .firefly {
   --flight-x: 16px;

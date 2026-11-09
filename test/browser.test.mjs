@@ -240,7 +240,7 @@ test('ambient effects run at different rhythms without moving the landscape', as
     ];
     const scene = document.querySelector('.hero-scene');
     return {
-      landscapeAnimations: [...document.querySelectorAll('.hero, .hero-scene, .hero-scene svg, .hero-scene use')]
+      landscapeAnimations: [...document.querySelectorAll('.hero, .hero-scene, .hero-scene svg, [href="trail.svg#landscape"]')]
         .map((element) => getComputedStyle(element).animationName),
       effects: effects.map(([selector, pseudo, dimAt, brightAt, effect]) => {
         if (effect) scene.dataset.ambient = effect;
@@ -297,14 +297,14 @@ test('moonlit trail rotates through random effects and the river flows downstrea
     ambientTick();
     effects.push(scene.dataset.ambient);
     const hidden = Number(getComputedStyle(ripple).opacity) === 0 && ripple.getAnimations().length === 0;
-    for (const draw of [.6, .4, 0, 0, .99]) {
+    for (const draw of [.5, .35, 0, 0, .5, .6, .99]) {
       Math.random = () => draw;
       ambientTick();
       effects.push(scene.dataset.ambient);
     }
     return { effects, moving, visible, hidden };
   }), {
-    effects: ['river', 'fireflies', 'owl', 'meteor', 'moon', 'stars', 'river'],
+    effects: ['river', 'fireflies', 'owl', 'meteor', 'moon', 'stars', 'wind', 'clouds', 'river'],
     moving: true, visible: true, hidden: true,
   });
 
@@ -374,10 +374,10 @@ test('the owl varies its route, direction, and speed on desktop and mobile', asy
       }
 
       // Select the same speed draw twice to verify consecutive flights still differ.
-      const outbound = fly([.6, 0, 0, 0, 1, 1, 0, 0]);
+      const outbound = fly([.5, 0, 0, 0, 1, 1, 0, 0]);
       Math.random = () => .99;
       tick(); // Owl to river.
-      const inbound = fly([.6, 0, .9, 0, 0, 0, 0, .8]);
+      const inbound = fly([.5, 0, .9, 0, 0, 0, 0, .8]);
       return { idle, outbound, inbound };
     }), {
       idle: 0,
@@ -399,7 +399,7 @@ test('the owl varies its route, direction, and speed on desktop and mobile', asy
   }), { opacity: 0, animations: 0 });
 });
 
-test('the Moonlit Trail moon halo and fireflies hold their appearance between turns', async (t) => {
+test('the Moonlit Trail moon halo, stars, and fireflies hold their appearance between turns', async (t) => {
   const page = await openCheckin(t, captureRotations);
   await page.setReducedMotion('no-preference');
   await page.reload();
@@ -447,6 +447,7 @@ test('the Moonlit Trail moon halo and fireflies hold their appearance between tu
     return {
       fireflies: await sampleTurns('.firefly', .99),
       moon: await sampleTurns('.moon-halo', 0),
+      stars: await sampleTurns('.sky-star', .2),
     };
   });
   for (const [effect, result] of Object.entries(results)) {
@@ -458,6 +459,99 @@ test('the Moonlit Trail moon halo and fireflies hold their appearance between tu
     assert.deepEqual(result.resumed, result.holding, effect);
     assert.notDeepEqual(result.movingAgain, result.resumed, effect);
   }
+});
+
+test('wind bends the pines at their roots and hands off to fading clouds on desktop and mobile', async (t) => {
+  const page = await openCheckin(t, captureRotations);
+  await page.setReducedMotion('no-preference');
+
+  for (const width of [1280, 320]) {
+    await page.setViewport(width, 800);
+    await page.reload();
+    const result = await page.evaluate(() => {
+      const scene = document.querySelector('.hero-scene');
+      const hero = scene.getBoundingClientRect();
+      const turn = 12_000;
+      const tick = window.rotationTicks.get(turn);
+      const pines = [...scene.querySelectorAll('.wind-pine use')];
+      const clouds = [...scene.querySelectorAll('.sky-cloud')];
+      const opacity = (element) => Number(getComputedStyle(element).opacity);
+      const at = (element, y) => new DOMPoint(0, y).matrixTransform(element.getScreenCTM());
+      const time = (element) => {
+        const [animation] = element.getAnimations();
+        animation.pause();
+        const { delay, duration } = animation.effect.getTiming();
+        return { delay, duration, seek: (progress) => { animation.currentTime = duration * progress; } };
+      };
+
+      const still = pines.map((pine) => at(pine, 0).x);
+      const cloudsHidden = clouds.every((cloud) => opacity(cloud) === 0);
+      Math.random = () => .6;
+      tick(); // River to wind.
+      const wind = scene.dataset.ambient;
+      const gusts = pines.map((pine, index) => {
+        const base = at(pine, 52);
+        const { delay, duration, seek } = time(pine);
+        seek(0);
+        const start = at(pine, 0).x;
+        seek(.24);
+        const lean = at(pine, 0).x - start;
+        const rooted = Math.abs(at(pine, 52).x - base.x) < .01;
+        seek(.43);
+        const recoils = at(pine, 0).x < start;
+        seek(1);
+        return {
+          visible: start > hero.left && start < hero.right && pine.getBBox().height > 0,
+          subtle: lean > 0 && lean < 8,
+          rooted, recoils,
+          seamless: delay === 0 && duration < turn && start === still[index] && at(pine, 0).x === start,
+        };
+      });
+
+      tick(); // Wind to clouds.
+      const cloudEffect = scene.dataset.ambient;
+      const pinesRest = pines.every((pine, index) =>
+        at(pine, 0).x === still[index] && pine.getAnimations().length === 0);
+      const drifts = clouds.map((cloud) => {
+        const { delay, duration, seek } = time(cloud);
+        seek(0);
+        const beginsHidden = opacity(cloud) === 0;
+        seek(.24);
+        const first = cloud.getBoundingClientRect();
+        const peak = opacity(cloud);
+        seek(.64);
+        const later = cloud.getBoundingClientRect();
+        seek(.95);
+        const fading = opacity(cloud) > 0 && opacity(cloud) < peak / 4;
+        seek(1);
+        return {
+          visible: later.left < hero.right && first.right > hero.left && peak > .1,
+          driftsRight: later.left > first.left,
+          seamless: delay === 0 && duration < turn && beginsHidden && fading && opacity(cloud) === 0,
+        };
+      });
+      Math.random = () => .99;
+      tick(); // Clouds to river.
+      const cloudsRest = clouds.every((cloud) => opacity(cloud) === 0 && cloud.getAnimations().length === 0);
+      return { cloudsHidden, wind, gusts, cloudEffect, pinesRest, drifts, cloudsRest };
+    });
+    assert.equal(result.wind, 'wind');
+    assert.equal(result.cloudEffect, 'clouds');
+    assert.ok(result.cloudsHidden && result.pinesRest && result.cloudsRest);
+    assert.ok(result.gusts.filter(({ visible }) => visible).length >= 2, `viewport width ${width}`);
+    assert.ok(result.gusts.every(({ subtle, rooted, recoils, seamless }) => subtle && rooted && recoils && seamless));
+    assert.deepEqual(result.drifts, Array(2).fill({ visible: true, driftsRight: true, seamless: true }));
+  }
+
+  await page.setReducedMotion('reduce');
+  assert.deepEqual(await page.evaluate(() => {
+    const scene = document.querySelector('.hero-scene');
+    scene.dataset.ambient = 'wind';
+    const wind = scene.querySelector('.wind-pine use').getAnimations().length;
+    scene.dataset.ambient = 'clouds';
+    const cloud = scene.querySelector('.sky-cloud');
+    return { wind, clouds: cloud.getAnimations().length, opacity: Number(getComputedStyle(cloud).opacity) };
+  }), { wind: 0, clouds: 0, opacity: 0 });
 });
 
 test('the Moonlit Trail motto rotates on the timer and stays the same on refresh', async (t) => {
