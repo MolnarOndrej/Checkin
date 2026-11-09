@@ -19,6 +19,7 @@
     <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
     <symbol id="sparkle" viewBox="0 0 24 24"><path d="M12 2c1.3 6.4 3.6 8.7 10 10-6.4 1.3-8.7 3.6-10 10C10.7 15.6 8.4 13.3 2 12c6.4-1.3 8.7-3.6 10-10Z"/></symbol>
     <symbol id="pen" viewBox="0 0 24 24"><path d="m4 20 1-5L16 4a2 2 0 0 1 4 4L9 19l-5 1zm10-14 4 4"/></symbol>
+    <symbol id="close-icon" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="flag" viewBox="0 0 24 24"><path d="M5 21V4m0 1c5-5 9 4 14 0v11c-5 4-9-5-14 0"/></symbol>
     <symbol id="lock" viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/></symbol>
   </svg>
@@ -160,22 +161,31 @@
       </button>
     </li>
   </template>
-  <dialog id="plan-editor" aria-labelledby="plan-editor-title" aria-describedby="plan-date">
+  <dialog id="plan-editor" aria-labelledby="plan-editor-title" aria-describedby="plan-date" closedby="any">
     <form id="plan-editor-form">
-      <h2 id="plan-editor-title">Previous plan</h2>
+      <div class="dialog-header">
+        <h2 id="plan-editor-title">Previous plan</h2>
+        <button type="button" id="cancel-plan-edit" class="icon-button" aria-label="Close previous plan" title="Close">
+          <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
+        </button>
+      </div>
       <p id="plan-date"></p>
       <label for="next-plan">When will you start, and what would make it enjoyable?</label>
       <textarea id="next-plan" rows="3" maxlength="240" autofocus></textarea>
       <p id="plan-feedback" class="feedback" role="status"></p>
       <div class="goal-actions">
         <button type="submit" class="save-button">Save plan</button>
-        <button type="button" id="cancel-plan-edit" class="save-button">Cancel</button>
       </div>
     </form>
   </dialog>
-  <dialog id="goal-editor" aria-labelledby="goal-editor-title">
+  <dialog id="goal-editor" aria-labelledby="goal-editor-title" closedby="any">
     <form id="goal-editor-form">
-      <h2 id="goal-editor-title"></h2>
+      <div class="dialog-header">
+        <h2 id="goal-editor-title"></h2>
+        <button type="button" id="cancel-goal-edit" class="icon-button" aria-label="Close goal editor" title="Close">
+          <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
+        </button>
+      </div>
       <label for="goal-plan">Next step</label>
       <textarea id="goal-plan" rows="2" maxlength="240" placeholder="After dinner, play the chorus slowly." autofocus></textarea>
       <label for="goal-fallback">If something gets in the way <span>optional</span></label>
@@ -185,7 +195,6 @@
       <p id="goal-editor-feedback" class="feedback" role="status"></p>
       <div class="goal-actions">
         <button type="submit" class="save-button">Save next step and note</button>
-        <button type="button" id="cancel-goal-edit" class="save-button">Cancel</button>
       </div>
       <div class="goal-actions">
         <button type="button" id="complete-goal-plan" class="save-button">Mark plan done</button>

@@ -397,6 +397,63 @@ test('an older plan can be edited without leaving the selected date or losing it
   });
 });
 
+test('both editors dismiss via their centered close icon or backdrop and discard drafts', async (t) => {
+  const page = await openCheckin(t);
+  await page.setViewport(360, 800);
+  await page.evaluate(() => {
+    const today = new Date();
+    const date = [today.getFullYear(), today.getMonth() + 1, today.getDate()]
+      .map((part) => String(part).padStart(2, '0')).join('-');
+    localStorage.setItem(`checkin.day.${date}`, JSON.stringify({
+      score: null, notes: '', goals: [], nextPlan: 'Saved plan',
+    }));
+    localStorage.setItem('checkin.pinned.guitar', JSON.stringify({ text: 'Guitar', pinned: true, plan: 'Saved plan' }));
+  });
+  await page.reload();
+
+  const openEditors = [
+    () => document.querySelector('#edit-plan').click(),
+    () => document.querySelector('[aria-label="Plan or pickup note for Guitar"]').click(),
+  ];
+  const readPlan = () => document.querySelector('dialog[open] textarea').value;
+  const modalIsOpen = () => Boolean(document.querySelector('dialog:modal'));
+
+  for (const open of openEditors) {
+    await page.evaluate(open);
+    const { centered, closeX, closeY, insideX, insideY } = await page.evaluate(() => {
+      const dialog = document.querySelector('dialog:modal');
+      const button = dialog.querySelector('.dialog-header button');
+      const dialogBox = dialog.getBoundingClientRect();
+      const buttonBox = button.getBoundingClientRect();
+      const iconBox = button.querySelector('svg').getBoundingClientRect();
+      const closeX = buttonBox.x + buttonBox.width / 2;
+      const closeY = buttonBox.y + buttonBox.height / 2;
+      dialog.querySelector('textarea').value = 'Discard via backdrop';
+      return {
+        centered: Math.abs(closeX - iconBox.x - iconBox.width / 2) < 1
+          && Math.abs(closeY - iconBox.y - iconBox.height / 2) < 1,
+        closeX, closeY, insideX: dialogBox.left + 8, insideY: dialogBox.top + dialogBox.height / 2,
+      };
+    });
+    assert.ok(centered);
+    await page.clickAt(insideX, insideY);
+    assert.equal(await page.evaluate(modalIsOpen), true);
+    await page.clickAt(2, 2);
+    assert.equal(await page.evaluate(modalIsOpen), false);
+
+    await page.evaluate(open);
+    assert.equal(await page.evaluate(readPlan), 'Saved plan');
+    await page.evaluate(() => { document.querySelector('dialog[open] textarea').value = 'Discard via close button'; });
+    await page.clickAt(closeX, closeY);
+    assert.equal(await page.evaluate(modalIsOpen), false);
+
+    await page.reload();
+    await page.evaluate(open);
+    assert.equal(await page.evaluate(readPlan), 'Saved plan');
+    await page.clickAt(2, 2);
+  }
+});
+
 test('the check-in stays focused while pinned goals remain available in the shared picker', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(1280, 900);

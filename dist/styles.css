@@ -246,13 +246,14 @@ textarea { width: 100%; resize: vertical; }
 #pinned-list:not(:empty) { margin-top: 10px; }
 .pinned-goal { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0 2px 4px; font-size: 13px; overflow-wrap: anywhere; }
 .pinned-goal + .pinned-goal { border-top: 1px solid var(--line); }
-.pinned-goal .icon-button { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border: 0; border-radius: 6px; background: transparent; color: var(--lilac); }
-.pinned-goal .icon-button:hover { background: var(--surface); color: var(--accent); }
+.pinned-goal .icon-button, .dialog-header .icon-button { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--lilac); }
+.pinned-goal .icon-button:hover, .dialog-header .icon-button:hover { background: var(--surface); color: var(--accent); }
 .goal-actions { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .goal-actions[hidden] { display: none; }
 #pin-feedback:not(:empty) { margin-top: 6px; }
 dialog { width: min(420px, calc(100% - 28px)); padding: 20px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; }
 dialog::backdrop { background: #11121bbb; }
+.dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
 #plan-date { margin: 0 0 4px; color: var(--muted); }
 #goal-editor label span { color: var(--muted); font-size: 11px; }

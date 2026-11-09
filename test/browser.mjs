@@ -114,6 +114,11 @@ export async function openBrowser(t) {
     setViewport: (width, height) => page('Emulation.setDeviceMetricsOverride', {
       width, height, deviceScaleFactor: 1, mobile: false,
     }),
+    async clickAt(x, y) {
+      const point = { x, y, button: 'left', clickCount: 1 };
+      await page('Input.dispatchMouseEvent', { type: 'mousePressed', ...point });
+      await page('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point });
+    },
     async evaluate(action) {
       const { result, exceptionDetails } = await page('Runtime.evaluate', {
         expression: `(${action})()`, returnByValue: true, awaitPromise: true,
