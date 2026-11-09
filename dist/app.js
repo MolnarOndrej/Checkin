@@ -71,12 +71,22 @@ function setupTrailMottos() {
     ['Stay', 'steady.'],
     ['Let effort', 'lead.'],
   ];
-  let index = Math.floor(Math.random() * mottos.length);
+  const storageKey = 'checkin.motto';
+  let index;
+  if (performance.getEntriesByType('navigation')[0]?.type === 'reload') {
+    try {
+      index = Number(sessionStorage.getItem(storageKey) ?? NaN);
+    } catch {}
+  }
+  if (!Number.isInteger(index) || index < 0 || index >= mottos.length) {
+    index = Math.floor(Math.random() * mottos.length);
+  }
 
   function showMotto() {
     const [first, second] = mottos[index];
     firstLine.textContent = first;
     secondLine.textContent = second;
+    try { sessionStorage.setItem(storageKey, String(index)); } catch {}
   }
 
   showMotto();

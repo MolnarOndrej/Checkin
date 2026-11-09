@@ -160,7 +160,7 @@ test('moonlit trail rotates through random effects and the river flows downstrea
   }), { rotating: false, selected: false, rippleVisible: false });
 });
 
-test('the Moonlit Trail heading shows a new two-line motto every five minutes', async (t) => {
+test('the Moonlit Trail motto rotates on the timer and stays the same on refresh', async (t) => {
   const page = await openCheckin(t, captureRotations);
   await page.setViewport(320, 800);
   const result = await page.evaluate(() => {
@@ -190,6 +190,20 @@ test('the Moonlit Trail heading shows a new two-line motto every five minutes', 
   assert.equal(new Set(result.mottos.map(({ text }) => text)).size, 10);
   assert.deepEqual(result.mottos.filter(({ fits }) => !fits), []);
   assert.equal(result.afterCycle, result.first);
+
+  await page.evaluate(() => window.rotationTicks.get(300_000)());
+  await page.reload();
+  const readMotto = () => document.querySelector('#page-title').textContent;
+  assert.equal(await page.evaluate(readMotto), 'The way forward.');
+  await page.evaluate(() => window.rotationTicks.get(300_000)());
+  assert.equal(await page.evaluate(readMotto), 'One step at a time.');
+  await page.reload();
+  assert.equal(await page.evaluate(readMotto), 'One step at a time.');
+
+  const url = await page.evaluate(() => location.href);
+  await page.navigate('about:blank');
+  await page.navigate(url);
+  assert.equal(await page.evaluate(readMotto), result.first);
 });
 
 test('partial work counts without a daily score and survives reload', async (t) => {
