@@ -148,7 +148,7 @@ test('backup restores missing check-ins and goal plans without overwriting saved
       minutes: find('[aria-label="Optional minutes for Guitar"]').valueAsNumber,
       writing: find('[aria-label="Progress for Writing"]').value,
       pages: find('[aria-label="Optional pages for Writing"]').valueAsNumber,
-      plan: find('#goal-plan').value, fallback: find('#goal-fallback').value, pickup: find('#goal-pickup').value,
+      plan: find('#activity-plan').value, fallback: find('#activity-fallback').value, pickup: find('#activity-pickup').value,
       unpinned: JSON.parse(localStorage.getItem('checkin.pinned.reading')),
       existing: JSON.parse(localStorage.getItem('checkin.day.2025-01-02')).notes,
       unrelated: localStorage.getItem('unrelated'),
@@ -779,10 +779,10 @@ test('pinned activities remain in the shared picker while time-bound goals have 
       find('#pin-name').value = text;
       find('#pin-form button').click();
       find(`[aria-label="Plan or pickup note for ${text}"]`).click();
-      find('#goal-plan').value = plan;
-      find('#goal-fallback').value = fallback;
-      find('#goal-pickup').value = pickup;
-      find('#goal-editor button[type="submit"]').click();
+      find('#activity-plan').value = plan;
+      find('#activity-fallback').value = fallback;
+      find('#activity-pickup').value = pickup;
+      find('#activity-editor button[type="submit"]').click();
     }
     pinWithPlan('Guitar', 'After dinner, play the chorus.', 'If I get home late, play it once.', 'Start at bar 9.');
     pinWithPlan('Writing', 'After coffee, draft a paragraph.');
@@ -820,13 +820,13 @@ test('pinned activities remain in the shared picker while time-bound goals have 
     const shortcut = find('#pickup-suggestions button');
     shortcut.click();
     const pickupFocus = document.activeElement.id;
-    find('#goal-pickup').value = 'Continue the opening paragraph.';
-    find('#goal-editor button[type="submit"]').click();
+    find('#activity-pickup').value = 'Continue the opening paragraph.';
+    find('#activity-editor button[type="submit"]').click();
     return { ...beforeSave, layout, feedback: find('#feedback').textContent, pickupFocus };
   });
   assert.deepEqual(staged, {
     rows: 1, progress: 'worked', workMark: null, feedback: 'Next step and note saved.',
-    pickupFocus: 'goal-pickup',
+    pickupFocus: 'activity-pickup',
     layout: {
       unchangedOffset: true, formCount: 1, submitCount: 1, activitiesSeparate: true, goalsSeparate: true, weekByCalendar: true,
       calendarStartsWithMonth: true,
@@ -841,36 +841,37 @@ test('pinned activities remain in the shared picker while time-bound goals have 
     const find = (selector) => document.querySelector(selector);
     find('[aria-label="Plan or pickup note for Guitar"]').click();
     const guitar = {
-      guitarPlan: find('#goal-plan').value,
-      fallback: find('#goal-fallback').value,
-      pickup: find('#goal-pickup').value,
-      dialogOpen: find('#goal-editor').matches(':modal'),
+      guitarPlan: find('#activity-plan').value,
+      fallback: find('#activity-fallback').value,
+      pickup: find('#activity-pickup').value,
+      dialogOpen: find('#activity-editor').matches(':modal'),
+      dialogTitle: document.getElementById(find('#activity-editor').getAttribute('aria-labelledby')).textContent,
     };
-    find('#cancel-goal-edit').click();
+    find('#cancel-activity-edit').click();
     find('[aria-label="Plan or pickup note for Writing"]').click();
     return {
       ...guitar,
-      writingPlan: find('#goal-plan').value,
-      writingPickup: find('#goal-pickup').value,
+      writingPlan: find('#activity-plan').value,
+      writingPickup: find('#activity-pickup').value,
       workMark: find('[data-selected]').dataset.status,
     };
   });
   assert.deepEqual(reloaded, {
     guitarPlan: 'After dinner, play the chorus.', fallback: 'If I get home late, play it once.',
-    pickup: 'Start at bar 9.', dialogOpen: true, writingPlan: 'After coffee, draft a paragraph.',
+    pickup: 'Start at bar 9.', dialogOpen: true, dialogTitle: 'Guitar', writingPlan: 'After coffee, draft a paragraph.',
     writingPickup: 'Continue the opening paragraph.', workMark: 'work',
   });
 
   await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
-    find('#cancel-goal-edit').click();
+    find('#cancel-activity-edit').click();
     find('[aria-label="Plan or pickup note for Guitar"]').click();
-    find('#complete-goal-plan').click();
+    find('#complete-activity-plan').click();
     find('[aria-label="Plan or pickup note for Writing"]').click();
-    find('#goal-plan').value = 'After lunch, draft a paragraph.';
-    find('#goal-editor button[type="submit"]').click();
+    find('#activity-plan').value = 'After lunch, draft a paragraph.';
+    find('#activity-editor button[type="submit"]').click();
     find('[aria-label="Plan or pickup note for Guitar"]').click();
-    find('#unpin-goal').click();
+    find('#unpin-activity').click();
   });
   await page.reload();
   const changes = await page.evaluate(() => {
@@ -879,20 +880,20 @@ test('pinned activities remain in the shared picker while time-bound goals have 
     const unpinned = !find('[aria-label="Plan or pickup note for Guitar"]')
       && !Array.from(find('#goal-options').options).some(({ value }) => value === 'Guitar');
     openGoal('Writing');
-    const rescheduled = find('#goal-plan').value;
-    find('#dismiss-goal-plan').click();
+    const rescheduled = find('#activity-plan').value;
+    find('#dismiss-activity-plan').click();
     openGoal('Writing');
-    const writingPlan = find('#goal-plan').value;
-    find('#cancel-goal-edit').click();
+    const writingPlan = find('#activity-plan').value;
+    find('#cancel-activity-edit').click();
     find('#pin-name').value = 'Guitar';
     find('#pin-form button').click();
     openGoal('Guitar');
     return {
       unpinned, rescheduled, writingPlan,
-      guitarPlan: find('#goal-plan').value,
-      guitarFallback: find('#goal-fallback').value,
-      pickup: find('#goal-pickup').value,
-      completeHidden: find('#complete-goal-plan').hidden,
+      guitarPlan: find('#activity-plan').value,
+      guitarFallback: find('#activity-fallback').value,
+      pickup: find('#activity-pickup').value,
+      completeHidden: find('#complete-activity-plan').hidden,
     };
   });
   assert.deepEqual(changes, {
@@ -900,7 +901,7 @@ test('pinned activities remain in the shared picker while time-bound goals have 
     guitarFallback: '', pickup: 'Start at bar 9.', completeHidden: true,
   });
 
-  await page.evaluate(() => document.querySelector('#cancel-goal-edit').click());
+  await page.evaluate(() => document.querySelector('#cancel-activity-edit').click());
   await page.setViewport(360, 800);
   assert.equal(await page.evaluate(() => {
     const journal = document.querySelector('.journal-card').getBoundingClientRect();

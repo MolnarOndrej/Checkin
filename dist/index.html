@@ -193,8 +193,8 @@
       <p class="daily-metrics tracking-hint" hidden></p>
     </div>
   </template>
-  <template id="pinned-goal-card">
-    <li class="pinned-goal">
+  <template id="pinned-activity-card">
+    <li class="pinned-activity">
       <span class="activity-name"></span>
       <button type="button" data-tracking class="icon-button" aria-haspopup="dialog" title="Activity settings">
         <svg class="icon" aria-hidden="true"><use href="#tracking-icon"/></svg>
@@ -221,28 +221,28 @@
       </div>
     </form>
   </dialog>
-  <dialog id="goal-editor" aria-labelledby="goal-editor-title" closedby="any">
-    <form id="goal-editor-form">
+  <dialog id="activity-editor" aria-labelledby="activity-editor-title" closedby="any">
+    <form id="activity-editor-form">
       <div class="dialog-header">
-        <h2 id="goal-editor-title"></h2>
-        <button type="button" id="cancel-goal-edit" class="icon-button" aria-label="Close activity plan" title="Close">
+        <h2 id="activity-editor-title"></h2>
+        <button type="button" id="cancel-activity-edit" class="icon-button" aria-label="Close activity plan" title="Close">
           <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
         </button>
       </div>
-      <label for="goal-plan">Next step</label>
-      <textarea id="goal-plan" rows="2" maxlength="240" placeholder="After dinner, play the chorus slowly." autofocus></textarea>
-      <label for="goal-fallback">If something gets in the way <span>optional</span></label>
-      <textarea id="goal-fallback" rows="2" maxlength="240" placeholder="If I get home late, play it once."></textarea>
-      <label for="goal-pickup">Where should I pick up? <span>optional</span></label>
-      <textarea id="goal-pickup" rows="2" maxlength="240" placeholder="Start with bars 9–12 at half speed."></textarea>
-      <p id="goal-editor-feedback" class="feedback" role="status"></p>
+      <label for="activity-plan">Next step</label>
+      <textarea id="activity-plan" rows="2" maxlength="240" placeholder="After dinner, play the chorus slowly." autofocus></textarea>
+      <label for="activity-fallback">If something gets in the way <span>optional</span></label>
+      <textarea id="activity-fallback" rows="2" maxlength="240" placeholder="If I get home late, play it once."></textarea>
+      <label for="activity-pickup">Where should I pick up? <span>optional</span></label>
+      <textarea id="activity-pickup" rows="2" maxlength="240" placeholder="Start with bars 9–12 at half speed."></textarea>
+      <p id="activity-editor-feedback" class="feedback" role="status"></p>
       <div class="goal-actions">
         <button type="submit" class="save-button">Save next step and note</button>
       </div>
       <div class="goal-actions">
-        <button type="button" id="complete-goal-plan" class="save-button">Mark plan done</button>
-        <button type="button" id="dismiss-goal-plan" class="save-button">Dismiss plan</button>
-        <button type="button" id="unpin-goal" class="save-button">Unpin activity</button>
+        <button type="button" id="complete-activity-plan" class="save-button">Mark plan done</button>
+        <button type="button" id="dismiss-activity-plan" class="save-button">Dismiss plan</button>
+        <button type="button" id="unpin-activity" class="save-button">Unpin activity</button>
       </div>
     </form>
   </dialog>

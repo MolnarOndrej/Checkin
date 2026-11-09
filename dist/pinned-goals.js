@@ -3,16 +3,16 @@ import { pinnedGoalPrefix as prefix } from './backup.js';
 
 export function setupPinnedGoals(updateActivities, announcePickup, openTracking) {
   const list = document.getElementById('pinned-list');
-  const template = document.getElementById('pinned-goal-card');
+  const template = document.getElementById('pinned-activity-card');
   const pinName = document.getElementById('pin-name');
   const pinFeedback = document.getElementById('pin-feedback');
-  const dialog = document.getElementById('goal-editor');
-  const editorFeedback = document.getElementById('goal-editor-feedback');
-  const plan = document.getElementById('goal-plan');
-  const fallback = document.getElementById('goal-fallback');
-  const pickup = document.getElementById('goal-pickup');
-  const complete = document.getElementById('complete-goal-plan');
-  const dismiss = document.getElementById('dismiss-goal-plan');
+  const dialog = document.getElementById('activity-editor');
+  const editorFeedback = document.getElementById('activity-editor-feedback');
+  const plan = document.getElementById('activity-plan');
+  const fallback = document.getElementById('activity-fallback');
+  const pickup = document.getElementById('activity-pickup');
+  const complete = document.getElementById('complete-activity-plan');
+  const dismiss = document.getElementById('dismiss-activity-plan');
   const suggestions = document.getElementById('pickup-suggestions');
   const suggestionButtons = new Map();
   const editButtons = new Map();
@@ -39,7 +39,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
   function openEditor(key, goal, focusPickup = false) {
     editingKey = key;
     editingPickup = focusPickup;
-    document.getElementById('goal-editor-title').textContent = goal.text;
+    document.getElementById('activity-editor-title').textContent = goal.text;
     plan.value = goal.plan ?? '';
     fallback.value = goal.fallback ?? '';
     pickup.value = goal.pickup ?? '';
@@ -119,7 +119,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
     dialog.close();
   }
 
-  document.getElementById('goal-editor-form').addEventListener('submit', (event) => {
+  document.getElementById('activity-editor-form').addEventListener('submit', (event) => {
     event.preventDefault();
     const nextStep = plan.value.trim();
     const backup = fallback.value.trim();
@@ -136,10 +136,10 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
   dismiss.addEventListener('click', () => {
     finishEdit({ plan: '', fallback: '' }, 'Plan dismissed.');
   });
-  document.getElementById('unpin-goal').addEventListener('click', () => {
+  document.getElementById('unpin-activity').addEventListener('click', () => {
     finishEdit({ pinned: false }, 'Activity unpinned.');
   });
-  document.getElementById('cancel-goal-edit').addEventListener('click', () => dialog.close());
+  document.getElementById('cancel-activity-edit').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
     const target = editingPickup
       ? suggestionButtons.get(editingKey) ?? document.getElementById('save')
