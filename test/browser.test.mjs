@@ -278,47 +278,65 @@ test('ambient effects run at different rhythms without moving the landscape', as
   }), { running: 0, haloVisible: true, meteorHidden: true });
 });
 
-test('one randomly chosen dashboard panel glints at a time', async (t) => {
+test('dashboard panels can glint independently or together', async (t) => {
   const page = await openCheckin(t, captureRotations);
   await page.setReducedMotion('no-preference');
   await page.reload();
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate(async () => {
     const turn = 8_000;
     const tick = window.rotationTicks.get(turn);
     const panels = [...document.querySelectorAll('.dashboard .card')];
     const style = (panel) => getComputedStyle(panel, '::before');
     const selections = [];
-    for (const draw of [null, 0, .4, .99, .4]) {
-      if (draw !== null) {
-        Math.random = () => draw;
-        tick();
-      }
+    for (const draws of [[.8, .8, .8, .8], [.1, .8, .8, .8], [.1, .2, .8, .8], [.1, .2, .3, .39]]) {
+      Math.random = () => draws.shift();
+      tick();
       const active = panels.filter((panel) => style(panel).animationName === 'edge-glint');
-      const [panel] = active;
-      const [glint] = document.getAnimations().filter(({ animationName }) => animationName === 'edge-glint');
-      glint.pause();
-      const { duration, iterations } = glint.effect.getTiming();
-      glint.currentTime = 0;
-      const startsDark = Number(style(panel).opacity) === 0;
-      const start = style(panel).transform;
-      glint.currentTime = duration / 2;
-      const brightens = Number(style(panel).opacity) > .5;
-      const moves = style(panel).transform !== start;
-      glint.currentTime = duration;
-      selections.push({
-        panel: panel.getAttribute('aria-labelledby'),
-        isolated: active.length === 1 && panels.every((other) => other === panel || Number(style(other).opacity) === 0),
-        glints: startsDark && brightens && moves && Number(style(panel).opacity) === 0,
-        finishesBeforeNext: iterations === 1 && duration < turn,
-        clickThrough: style(panel).pointerEvents === 'none',
+      const glints = document.getAnimations().filter(({ animationName }) => animationName === 'edge-glint');
+      for (const glint of glints) {
+        glint.pause();
+        glint.currentTime = 0;
+      }
+      const startsDark = active.every((panel) => Number(style(panel).opacity) === 0);
+      const starts = active.map((panel) => style(panel).transform);
+      const fitsTurn = glints.every((glint) => {
+        const { duration, iterations } = glint.effect.getTiming();
+        glint.currentTime = duration / 2;
+        return duration < turn && iterations === 1;
       });
+      selections.push({
+        bright: panels.filter((panel) => Number(style(panel).opacity) > .5)
+          .map((panel) => panel.getAttribute('aria-labelledby')),
+        glints: glints.length === active.length && startsDark && fitsTurn && active.every((panel, index) =>
+          style(panel).transform !== starts[index] && style(panel).pointerEvents === 'none'),
+        inactiveDark: panels.every((panel) => active.includes(panel) || Number(style(panel).opacity) === 0),
+      });
+      for (const glint of glints) {
+        glint.currentTime = glint.effect.getTiming().duration - 20;
+        glint.play();
+      }
+      for (let frame = 0; frame < 60 && active.some((panel) => panel.hasAttribute('data-highlight')); frame++) {
+        await new Promise(requestAnimationFrame);
+      }
+      if (active.some((panel) => style(panel).animationName !== 'none')) {
+        throw new Error('Panel glints were not cleared after ending');
+      }
     }
-    return selections;
+    Math.random = () => 0;
+    tick(); // Restart all four so reduced motion is tested during an active round.
+    return {
+      selections,
+      restarted: document.getAnimations().filter(({ animationName }) => animationName === 'edge-glint').length,
+    };
   });
-  assert.deepEqual(result.map(({ panel }) => panel),
-    ['activity-goals-title', 'calendar-title', 'pinned-title', 'activity-goals-title', 'journal-title']);
-  assert.ok(result.every(({ isolated, glints, finishesBeforeNext, clickThrough }) =>
-    isolated && glints && finishesBeforeNext && clickThrough));
+  assert.deepEqual(result.selections.map(({ bright }) => bright), [
+    [],
+    ['calendar-title'],
+    ['calendar-title', 'journal-title'],
+    ['calendar-title', 'journal-title', 'pinned-title', 'activity-goals-title'],
+  ]);
+  assert.ok(result.selections.every(({ glints, inactiveDark }) => glints && inactiveDark));
+  assert.equal(result.restarted, 4);
 
   await page.setReducedMotion('reduce');
   assert.deepEqual(await page.evaluate(async () => {

@@ -123,24 +123,30 @@ function setupTrailMottos() {
 function setupPanelHighlights() {
   const panels = [...document.querySelectorAll('.dashboard .card')];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-  let highlighted;
   let timer;
 
-  function highlightPanel() {
-    const choices = panels.filter((panel) => panel !== highlighted);
-    highlighted?.removeAttribute('data-highlight');
-    highlighted = choices[Math.floor(Math.random() * choices.length)];
-    highlighted.setAttribute('data-highlight', '');
+  function highlightPanels() {
+    for (const panel of panels) {
+      if (Math.random() < .4) panel.setAttribute('data-highlight', '');
+    }
   }
 
   function updateMotion() {
     clearInterval(timer);
     if (reducedMotion.matches) {
-      highlighted?.removeAttribute('data-highlight');
+      for (const panel of panels) panel.removeAttribute('data-highlight');
       return;
     }
-    highlightPanel();
-    timer = setInterval(highlightPanel, 8_000);
+    highlightPanels();
+    timer = setInterval(highlightPanels, 8_000);
+  }
+
+  for (const panel of panels) {
+    panel.addEventListener('animationend', (event) => {
+      if (event.target === panel && event.animationName === 'edge-glint') {
+        panel.removeAttribute('data-highlight');
+      }
+    });
   }
 
   reducedMotion.addEventListener('change', updateMotion);
