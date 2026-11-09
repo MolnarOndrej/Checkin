@@ -109,6 +109,7 @@ test('backup restores missing check-ins and goal plans without overwriting saved
     const { dayKey } = await import('/calendar.js');
     const today = `checkin.day.${dayKey(new Date())}`;
     const older = 'checkin.day.2025-01-02';
+    const late = 'checkin.day.2025-01-03';
     const records = {
       [today]: {
         score: 80, notes: 'Evening reflection', nextPlan: 'Start after dinner',
@@ -118,6 +119,7 @@ test('backup restores missing check-ins and goal plans without overwriting saved
         ],
       },
       [older]: { score: null, notes: 'Older reflection', goals: [] },
+      [late]: { score: null, notes: 'Reflection from backup', goals: [] },
       'checkin.pinned.guitar': {
         text: 'Guitar', pinned: true, plan: 'Practice the chorus', fallback: 'Play it once', pickup: 'Bar 9',
       },
@@ -170,7 +172,7 @@ test('backup restores missing check-ins and goal plans without overwriting saved
     return window.chooseBackup(JSON.stringify(invalid));
   }), { message: 'Checkin could not read this backup. Choose a valid Checkin backup file.', canRestore: false });
   assert.deepEqual(await page.evaluate(() => window.chooseBackup(window.testBackup)), {
-    message: '1 check-in and 2 activity records ready to restore. This browser already has 1 record from the backup.',
+    message: '2 check-ins and 2 activity records ready to restore. This browser already has 1 record from the backup.',
     canRestore: true,
   });
 
@@ -204,6 +206,9 @@ test('backup restores missing check-ins and goal plans without overwriting saved
 
   assert.deepEqual(await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
+    localStorage.setItem('checkin.day.2025-01-03', JSON.stringify({
+      score: null, notes: 'Saved after preview', goals: [],
+    }));
     find('#restore-backup').click();
     return {
       message: find('#backup-feedback').textContent,
@@ -228,13 +233,14 @@ test('backup restores missing check-ins and goal plans without overwriting saved
       plan: find('#activity-plan').value, fallback: find('#activity-fallback').value, pickup: find('#activity-pickup').value,
       unpinned: JSON.parse(localStorage.getItem('checkin.pinned.reading')),
       existing: JSON.parse(localStorage.getItem('checkin.day.2025-01-02')).notes,
+      savedAfterPreview: JSON.parse(localStorage.getItem('checkin.day.2025-01-03')).notes,
       unrelated: localStorage.getItem('unrelated'),
     };
   }), {
     previousPlan: 'Start after dinner', note: 'Evening reflection', score: 80, minutes: 20, writing: 'done', pages: 0,
     plan: 'Practice the chorus', fallback: 'Play it once', pickup: 'Bar 9',
     unpinned: exported.records['checkin.pinned.reading'],
-    existing: 'Keep this reflection', unrelated: 'keep me',
+    existing: 'Keep this reflection', savedAfterPreview: 'Saved after preview', unrelated: 'keep me',
   });
 });
 

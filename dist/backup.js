@@ -1,9 +1,7 @@
 import { dayKey, goalKey } from './calendar.js';
 import { isAmount, isDateKey, isGoal, isMeasurement } from './measurements.js';
 import { showFeedback } from './feedback.js';
-
-export const entryPrefix = 'checkin.day.';
-export const pinnedGoalPrefix = 'checkin.pinned.';
+import { activityPrefix, backupRecords, entryPrefix, missingRecords, restoreRecords } from './journal-storage.js';
 
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isIntegerIn = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
@@ -28,9 +26,9 @@ function isValidRecord(key, value) {
   if (key.startsWith(entryPrefix)) {
     return isDateKey(key.slice(entryPrefix.length)) && isDayEntry(value);
   }
-  return key.startsWith(pinnedGoalPrefix)
+  return key.startsWith(activityPrefix)
     && isRecord(value) && typeof value.text === 'string' && Boolean(goalKey(value))
-    && key === pinnedGoalPrefix + goalKey(value)
+    && key === activityPrefix + goalKey(value)
     && typeof value.pinned === 'boolean'
     && optionalText(value.plan) && optionalText(value.fallback) && optionalText(value.pickup)
     && (value.measurement === undefined || (isRecord(value.measurement) && isMeasurement(value.measurement)))
@@ -46,17 +44,12 @@ function parseBackup(text) {
   if (!records.every(([key, value]) => isValidRecord(key, value))) {
     throw new Error('Invalid Checkin data');
   }
-  return records.map(([key, value]) => [key, JSON.stringify(value)]);
+  return records;
 }
 
 function downloadBackup() {
   const records = {};
-  for (let index = 0; index < localStorage.length; index++) {
-    const key = localStorage.key(index);
-    if (!key?.startsWith(entryPrefix) && !key?.startsWith(pinnedGoalPrefix)) continue;
-    const saved = localStorage.getItem(key);
-    if (saved === null) continue;
-    const value = JSON.parse(saved);
+  for (const [key, value] of backupRecords()) {
     if (!isValidRecord(key, value)) throw new Error('Invalid Checkin data');
     records[key] = value;
   }
@@ -67,23 +60,6 @@ function downloadBackup() {
   link.download = `checkin-backup-${dayKey(new Date())}.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function restoreRecords(records) {
-  const added = new Map();
-  try {
-    for (const [key, value] of records) {
-      if (localStorage.getItem(key) !== null) continue;
-      localStorage.setItem(key, value);
-      added.set(key, value);
-    }
-  } catch (error) {
-    for (const [key, value] of added) {
-      if (localStorage.getItem(key) === value) localStorage.removeItem(key);
-    }
-    throw error;
-  }
-  return added;
 }
 
 export function setupBackup({ canRestore, onRestore }) {
@@ -128,7 +104,7 @@ export function setupBackup({ canRestore, onRestore }) {
     try {
       const parsed = parseBackup(await chosen.text());
       if (currentSelection !== selection || !dialog.open) return;
-      records = parsed.filter(([key]) => localStorage.getItem(key) === null);
+      records = missingRecords(parsed);
       const days = records.filter(([key]) => key.startsWith(entryPrefix)).length;
       const skipped = parsed.length - records.length;
       const ready = `${countLabel(days, 'check-in')} and ${countLabel(records.length - days, 'activity record')} ready to restore.`;
@@ -144,7 +120,7 @@ export function setupBackup({ canRestore, onRestore }) {
   restore.addEventListener('click', () => {
     let added;
     try {
-      const missing = records.filter(([key]) => localStorage.getItem(key) === null);
+      const missing = missingRecords(records);
       if (!canRestore(missing)) {
         show('Save your current check-in edits before restoring this date.', true);
         return;

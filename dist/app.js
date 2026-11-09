@@ -1,11 +1,12 @@
 import { dateLabel, dateOffset, dayKey, goalHasWork, goalKey, monthStart, renderCalendar, weekStart } from './calendar.js';
 import { celebrate, playOpening } from './celebration.js';
 import { setupPinnedGoals } from './pinned-goals.js';
-import { entryPrefix, setupBackup } from './backup.js';
+import { setupBackup } from './backup.js';
 import { createActivityRow } from './activity-row.js';
 import { measurementSummary } from './measurements.js';
 import { renderGoals, setupGoalSettings, setupTracking } from './tracking.js';
 import { showFeedback } from './feedback.js';
+import { entriesBetween, entryDates, entryFor, entryPrefix, saveDay } from './journal-storage.js';
 
 const byId = (id) => document.getElementById(id);
 const grid = byId('calendar');
@@ -25,7 +26,6 @@ const goalList = byId('goal-list');
 const feedback = byId('feedback');
 const complete = byId('complete');
 const save = byId('save');
-const cachedEntries = new Map();
 const activityRows = new WeakMap();
 let today = new Date();
 let selected = today;
@@ -164,17 +164,6 @@ function setupPanelHighlights() {
   updateMotion();
 }
 
-function entryFor(key) {
-  try {
-    const entry = JSON.parse(localStorage.getItem(entryPrefix + key));
-    if (entry) cachedEntries.set(key, entry);
-    else cachedEntries.delete(key);
-  } catch {
-    // Keep this visit usable if browser storage is blocked.
-  }
-  return cachedEntries.get(key);
-}
-
 function announce(message, error) {
   showFeedback(feedback, message, error);
 }
@@ -222,22 +211,8 @@ function updateWeek() {
   }));
 }
 
-function entryKeys() {
-  const keys = new Set(cachedEntries.keys());
-  try {
-    for (let index = 0; index < localStorage.length; index++) {
-      const storageKey = localStorage.key(index);
-      if (storageKey?.startsWith(entryPrefix)) keys.add(storageKey.slice(entryPrefix.length));
-    }
-  } catch {}
-  return keys;
-}
-
 function updateActivityGoals() {
-  renderGoals(activities, selected, (start, end) => Array.from(entryKeys())
-    .filter((key) => key >= start && key <= end)
-    .map(entryFor)
-    .filter(Boolean), (text, trigger) => openGoalSettings(text, trigger));
+  renderGoals(activities, selected, entriesBetween, (text, trigger) => openGoalSettings(text, trigger));
 }
 
 function updateGoalOptions() {
@@ -251,7 +226,7 @@ function updateGoalOptions() {
 
 function updatePlanAndSuggestions(entry) {
   const key = dayKey(selected);
-  const keys = entryKeys();
+  const keys = entryDates();
 
   const suggestions = new Map();
   displayedPlanKey = entry?.nextPlan ? key : null;
@@ -365,11 +340,6 @@ function hasEntryContent(entry) {
   return entry.score != null || entry.notes || entry.goals.length || entry.nextPlan;
 }
 
-function persistEntry(key, entry) {
-  if (hasEntryContent(entry)) localStorage.setItem(entryPrefix + key, JSON.stringify(entry));
-  else localStorage.removeItem(entryPrefix + key);
-}
-
 function saveEntry(percentage) {
   commitNewGoal();
   for (const row of goalList.children) {
@@ -394,8 +364,9 @@ function saveEntry(percentage) {
     announce('Add an activity, a note, or a score to save this day.', true);
     return;
   }
+  const savedEntry = hasContent ? entry : undefined;
   try {
-    persistEntry(key, entry);
+    saveDay(key, savedEntry);
   } catch {
     announce('Checkin could not save to this browser. Your edits are still here.', true);
     return;
@@ -403,7 +374,6 @@ function saveEntry(percentage) {
   const previouslyWorked = new Set(previous?.goals.filter(goalHasWork).map(goalKey));
   const newWork = new Map(entry.goals.filter(goalHasWork).map((goal) => [goalKey(goal), goal]));
   for (const name of previouslyWorked) newWork.delete(name);
-  const savedEntry = hasContent ? entry : undefined;
   updateSummary(savedEntry);
   updateCalendar(newWork.size > 0);
   updateWeek();
@@ -469,7 +439,7 @@ byId('plan-editor-form').addEventListener('submit', (event) => {
   if (plan) entry.nextPlan = plan;
   else delete entry.nextPlan;
   try {
-    persistEntry(editingPlanKey, entry);
+    saveDay(editingPlanKey, hasEntryContent(entry) ? entry : undefined);
   } catch {
     showFeedback(planFeedback, 'Checkin could not save this plan. Your edits are still here.');
     return;

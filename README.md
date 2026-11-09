@@ -27,7 +27,8 @@ The opening scene animates when the page loads. Logging work on an activity for 
 ## Source layout
 
 - `dist/index.html`, `styles.css`, and the SVG assets define the UI and artwork.
-- `dist/app.js` manages the editor, storage, and navigation.
+- `dist/app.js` manages the check-in editor and navigation.
+- `dist/journal-storage.js` reads and writes saved days and activities in browser storage.
 - `dist/pinned-goals.js` manages activity records, pinning, and plans.
 - `dist/activity-row.js`, `dist/tracking.js`, and `dist/measurements.js` handle daily measurements, activity settings, and goal progress.
 - `dist/backup.js` handles backup downloads and restore.
