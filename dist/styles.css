@@ -285,11 +285,12 @@ fieldset legend { padding: 0; margin-bottom: 6px; }
 .time-only { grid-template-columns: minmax(0, 1fr) minmax(78px, .46fr); }
 .time-only .activity-row-header { grid-column: 1 / -1; }
 .time-only > select { align-self: end; }
-.goal-add button, .save-button { border: 1px solid #4a4e5f; background: #303443; border-radius: 6px; padding: 4px 9px; }
-.goal-add button:hover, .save-button:hover { background: #44485b; }
+.save-button { border: 1px solid #4a4e5f; background: #303443; border-radius: 6px; padding: 8px; font-weight: 650; }
+.save-button:hover { background: #44485b; }
+.save-button.icon-button { display: grid; place-items: center; min-height: 32px; padding: 0; }
 .optional { color: var(--muted); font-size: 11px; margin-left: 3px; }
 textarea { width: 100%; resize: vertical; }
-.save-button { padding: 8px; font-weight: 650; }
+textarea:focus-visible { outline-color: #8a83a6; outline-offset: 1px; }
 .feedback { color: var(--accent); font-size: 13px; margin: 0; overflow-wrap: anywhere; }
 .feedback:empty { position: absolute; }
 .feedback[data-error] { color: var(--gold); }

@@ -53,6 +53,41 @@ test('the next-month arrow is dimmed when the calendar shows the current month',
   assert.deepEqual(states.returned, states.current);
 });
 
+test('activity add buttons show plus icons and the notes field uses a softer focus outline', async (t) => {
+  const page = await openCheckin(t);
+  await page.setReducedMotion('reduce');
+  const buttons = await page.evaluate(() => ['#add-goal', '#pin-form button'].map((selector) => {
+    const button = document.querySelector(selector);
+    const icon = button.querySelector('svg use');
+    return {
+      text: button.innerText.trim(),
+      tooltip: button.title,
+      label: button.getAttribute('aria-label'),
+      visiblePlus: icon.getAttribute('href') === '#plus' && icon.getBBox().width > 0,
+    };
+  }));
+  assert.deepEqual(buttons, [
+    { text: '', tooltip: 'Add', label: 'Add activity to check-in', visiblePlus: true },
+    { text: '', tooltip: 'Add', label: 'Add pinned activity', visiblePlus: true },
+  ]);
+  const { x, y } = await page.evaluate(() => {
+    document.querySelector('#details summary').click();
+    const notes = document.querySelector('#notes');
+    notes.scrollIntoView({ block: 'center' });
+    const bounds = notes.getBoundingClientRect();
+    return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+  });
+  await page.clickAt(x, y);
+  const outline = await page.evaluate(() => {
+    const field = document.activeElement;
+    const { outlineColor, outlineStyle, outlineOffset } = getComputedStyle(field);
+    return { id: field.id, outlineColor, outlineStyle, outlineOffset };
+  });
+  assert.deepEqual(outline, {
+    id: 'notes', outlineColor: 'rgb(138, 131, 166)', outlineStyle: 'solid', outlineOffset: '1px',
+  });
+});
+
 test('backup restores missing check-ins and goal plans without overwriting saved records', async (t) => {
   const page = await openCheckin(t);
   const exported = await page.evaluate(async () => {

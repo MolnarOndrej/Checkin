@@ -15,6 +15,7 @@
     <symbol id="left" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></symbol>
     <symbol id="right" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></symbol>
     <symbol id="down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
     <symbol id="sparkle" viewBox="0 0 24 24"><path d="M12 2c1.3 6.4 3.6 8.7 10 10-6.4 1.3-8.7 3.6-10 10C10.7 15.6 8.4 13.3 2 12c6.4-1.3 8.7-3.6 10-10Z"/></symbol>
     <symbol id="pen" viewBox="0 0 24 24"><path d="m4 20 1-5L16 4a2 2 0 0 1 4 4L9 19l-5 1zm10-14 4 4"/></symbol>
@@ -155,7 +156,9 @@
               <div id="goal-list"></div>
               <div class="goal-add">
                 <input id="new-goal" type="text" maxlength="140" aria-label="Add or find an activity" placeholder="Add or find an activity…" list="goal-options">
-                <button id="add-goal" type="button">Add</button>
+                <button id="add-goal" type="button" class="save-button icon-button" aria-label="Add activity to check-in" title="Add">
+                  <svg class="icon" aria-hidden="true"><use href="#plus"/></svg>
+                </button>
               </div>
             </fieldset>
             <details id="details">
@@ -182,7 +185,9 @@
             <h2 id="pinned-title">Activities</h2>
             <form id="pin-form">
               <input id="pin-name" type="text" maxlength="140" list="recent-goals" aria-label="Activity to pin" placeholder="Activity name">
-              <button type="submit" class="save-button">Pin</button>
+              <button type="submit" class="save-button icon-button" aria-label="Add pinned activity" title="Add">
+                <svg class="icon" aria-hidden="true"><use href="#plus"/></svg>
+              </button>
             </form>
             <p id="pin-feedback" class="feedback" role="status"></p>
             <ul id="pinned-list"></ul>
