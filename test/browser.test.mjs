@@ -763,6 +763,42 @@ test('an older plan can be edited without leaving the selected date or losing it
   });
 });
 
+test('all modals show a single heading that names the dialog', async (t) => {
+  const page = await openCheckin(t);
+  await page.evaluate(async () => {
+    const { dayKey } = await import('/calendar.js');
+    localStorage.setItem(`checkin.day.${dayKey(new Date())}`, JSON.stringify({
+      score: null, notes: '', goals: [], nextPlan: 'Saved plan',
+    }));
+    localStorage.setItem('checkin.pinned.guitar', JSON.stringify({ text: 'Guitar', pinned: true }));
+  });
+  await page.reload();
+
+  const titles = await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    return [
+      '#edit-plan',
+      '#pinned-list [data-edit]',
+      '#pinned-list [data-tracking]',
+      '#open-goal-settings',
+      '#open-backup',
+    ].map((trigger) => {
+      find(trigger).click();
+      const dialog = find('dialog:modal');
+      if (!dialog) throw new Error(`No modal opened from ${trigger}`);
+      const header = dialog.querySelector('.dialog-header');
+      const heading = header.querySelector('h2');
+      const title = header.innerText.trim();
+      const label = document.getElementById(dialog.getAttribute('aria-labelledby'));
+      header.querySelector('button').click();
+      return { title, namedByHeading: label === heading };
+    });
+  });
+  assert.deepEqual(titles, [
+    'Previous plan', 'Activity plan for Guitar', 'Activity settings for Guitar', 'Goal settings', 'Backup & restore',
+  ].map((title) => ({ title, namedByHeading: true })));
+});
+
 test('both editors dismiss via their centered close icon or backdrop and discard drafts', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(360, 800);
@@ -912,7 +948,8 @@ test('pinned activities remain in the shared picker while time-bound goals have 
   });
   assert.deepEqual(reloaded, {
     guitarPlan: 'After dinner, play the chorus.', fallback: 'If I get home late, play it once.',
-    pickup: 'Start at bar 9.', dialogOpen: true, dialogTitle: 'Guitar', writingPlan: 'After coffee, draft a paragraph.',
+    pickup: 'Start at bar 9.', dialogOpen: true, dialogTitle: 'Activity plan for Guitar',
+    writingPlan: 'After coffee, draft a paragraph.',
     writingPickup: 'Continue the opening paragraph.', workMark: 'work',
   });
 

@@ -278,8 +278,7 @@ dialog h2 { margin: 0; font: 400 25px Georgia, serif; overflow-wrap: anywhere; }
 .tracking-pair.single-measure { grid-template-columns: minmax(0, 1fr); }
 .tracking-check { display: flex; gap: 7px; align-items: center; }
 .tracking-check input, #activity-goals-list progress { accent-color: var(--accent); }
-.tracking-hint, .tracking-kicker, #activity-goals-list small, #tracking-goals-list small { color: var(--muted); font-size: 12px; margin: 0; overflow-wrap: anywhere; }
-.tracking-kicker { margin-bottom: 3px; }
+.tracking-hint, #activity-goals-list small, #tracking-goals-list small { color: var(--muted); font-size: 12px; margin: 0; overflow-wrap: anywhere; }
 .daily-measures label { color: var(--muted); overflow-wrap: anywhere; }
 .daily-distance { margin: 0; }
 .daily-distance summary { padding: 6px 8px; color: var(--muted); font-size: 12px; }

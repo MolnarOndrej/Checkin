@@ -39,7 +39,7 @@ export function setupPinnedGoals(updateActivities, announcePickup, openTracking)
   function openEditor(key, goal, focusPickup = false) {
     editingKey = key;
     editingPickup = focusPickup;
-    document.getElementById('activity-editor-title').textContent = goal.text;
+    document.getElementById('activity-editor-title').textContent = `Activity plan for ${goal.text}`;
     plan.value = goal.plan ?? '';
     fallback.value = goal.fallback ?? '';
     pickup.value = goal.pickup ?? '';

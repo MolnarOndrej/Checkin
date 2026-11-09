@@ -114,7 +114,7 @@ export function setupTracking({ getActivity, saveActivity }) {
     activityName = text;
     opener = trigger;
     const measurement = getActivity(text)?.measurement;
-    byId('activity-settings-title').textContent = text;
+    byId('activity-settings-title').textContent = `Activity settings for ${text}`;
     mode.value = measurement ? 'custom' : 'minutes';
     unit.value = measurement?.unit ?? '';
     factorUnit = unitKey(unit.value);
