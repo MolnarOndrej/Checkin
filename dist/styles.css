@@ -164,7 +164,9 @@ button:disabled { cursor: default; }
 .hero-tag span { color: var(--accent); margin-right: 3px; }
 
 .dashboard { display: grid; grid-template-columns: minmax(0, 1.36fr) minmax(0, 1fr); align-items: start; gap: 18px; margin-top: 18px; }
-.card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 19px; padding: 22px; }
+.card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 19px; padding-block: 22px; }
+.card, dialog { padding-inline: 20px; }
+.card h2, .dialog-header h2 { font: 400 25px/1.1 Georgia, serif; letter-spacing: -.035em; margin: 0; }
 .card::before {
   content: "";
   position: absolute;
@@ -189,7 +191,6 @@ button:disabled { cursor: default; }
   90%, 100% { opacity: .13; transform: translateX(128%); }
 }
 .calendar-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 17px; }
-.calendar-header h2 { font: 400 clamp(23px, 3vw, 30px)/1 Georgia, serif; letter-spacing: -.035em; margin: 0; }
 .calendar-controls { display: flex; align-items: center; gap: 6px; }
 .calendar-controls button { display: grid; place-items: center; border: 1px solid #383c49; border-radius: 8px; background: var(--surface); height: 32px; }
 .icon-button { width: 32px; padding: 0; }
@@ -222,7 +223,6 @@ button:disabled { cursor: default; }
 .journal-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .day-tag { border: 1px solid #454e3e; color: var(--accent); background: #30372f; padding: 4px 7px; border-radius: 5px; font-size: 9px; letter-spacing: .1em; }
 .selected-date { color: var(--muted); font-size: 13px; margin: 6px 0 16px; }
-.journal-card h2 { font: 400 clamp(24px, 3.5vw, 34px)/1.08 Georgia, serif; letter-spacing: -.035em; margin: 0; }
 .journal-copy { font-size: 13px; color: #bcbdc9; line-height: 1.45; margin: -8px 0 16px; overflow-wrap: anywhere; }
 .primary { border: 0; border-radius: 9px; background: var(--accent); color: #212919; display: flex; align-items: center; gap: 9px; text-align: left; padding: 12px; font-size: 14px; font-weight: 750; box-shadow: 0 3px 0 #9aaa6b; transition: background .15s, transform .15s; }
 .primary:hover { background: #e9ffb1; transform: translateY(-1px); }
@@ -260,8 +260,8 @@ textarea { width: 100%; resize: vertical; }
 .text-button { margin-top: 12px; border: 0; padding: 0; background: none; color: var(--lilac); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .text-button:hover { color: var(--accent); }
 .dashboard-sidebar { grid-column: -2 / -1; display: grid; gap: 12px; min-width: 0; }
-.dashboard-sidebar .card { padding: 16px; }
-.dashboard-sidebar h2 { font: 400 24px Georgia, serif; margin: 0 0 10px; }
+.dashboard-sidebar .card { padding-block: 16px; }
+.dashboard-sidebar h2 { margin-bottom: 10px; }
 #pin-form { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; max-width: 360px; }
 #pinned-list { list-style: none; padding: 0; margin: 0; }
 #pinned-list:not(:empty) { margin-top: 10px; }
@@ -273,10 +273,10 @@ textarea { width: 100%; resize: vertical; }
 .editor-actions { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .editor-actions[hidden] { display: none; }
 #pin-feedback:not(:empty) { margin-top: 6px; }
-dialog { width: min(420px, calc(100% - 28px)); padding: 20px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; }
+dialog { width: min(420px, calc(100% - 28px)); padding-block: 20px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; }
 dialog::backdrop { background: #11121bbb; }
 .dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
-.dialog-header h2 { min-width: 0; margin: 0; font: 400 25px Georgia, serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dialog-header h2 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #plan-date { margin: 0 0 4px; color: var(--muted); }
 #activity-editor label span { color: var(--muted); font-size: 11px; }
 #backup-dialog > p:not(.feedback) { color: var(--muted); font-size: 13px; }
@@ -329,7 +329,7 @@ dialog::backdrop { background: #11121bbb; }
   .hero-copy { padding-left: 23px; }
   .hero-scene svg { left: 62%; translate: -62% 0; }
   .hero-tag { display: none; }
-  .card { padding: 17px; }
+  .card { padding-block: 17px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

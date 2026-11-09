@@ -845,7 +845,7 @@ test('an older plan can be edited without leaving the selected date or losing it
   });
 });
 
-test('all modals show a single heading that names the dialog', async (t) => {
+test('panel and modal titles share a size and left inset on desktop and mobile', async (t) => {
   const page = await openCheckin(t);
   await page.evaluate(async () => {
     const { dayKey } = await import('/calendar.js');
@@ -856,9 +856,19 @@ test('all modals show a single heading that names the dialog', async (t) => {
   });
   await page.reload();
 
-  const titles = await page.evaluate(() => {
+  const readTitles = () => {
     const find = (selector) => document.querySelector(selector);
-    return [
+    const readHeading = (panel) => {
+      const heading = panel.querySelector('h2');
+      return {
+        title: heading.innerText.trim(),
+        namedByHeading: document.getElementById(panel.getAttribute('aria-labelledby')) === heading,
+        fontSize: getComputedStyle(heading).fontSize,
+        leftInset: heading.getBoundingClientRect().left - panel.getBoundingClientRect().left,
+      };
+    };
+    const panels = Array.from(document.querySelectorAll('.dashboard .card'), readHeading);
+    const modals = [
       '#edit-plan',
       '#pinned-list [data-edit]',
       '#pinned-list [data-tracking]',
@@ -868,17 +878,28 @@ test('all modals show a single heading that names the dialog', async (t) => {
       find(trigger).click();
       const dialog = find('dialog:modal');
       if (!dialog) throw new Error(`No modal opened from ${trigger}`);
-      const header = dialog.querySelector('.dialog-header');
-      const heading = header.querySelector('h2');
-      const title = header.innerText.trim();
-      const label = document.getElementById(dialog.getAttribute('aria-labelledby'));
-      header.querySelector('button').click();
-      return { title, namedByHeading: label === heading };
+      const heading = readHeading(dialog);
+      dialog.querySelector('.dialog-header button').click();
+      return heading;
     });
-  });
-  assert.deepEqual(titles, [
-    'Previous plan', 'Activity plan for Guitar', 'Activity settings for Guitar', 'Goal settings', 'Backup & restore',
-  ].map((title) => ({ title, namedByHeading: true })));
+    return { panels, modals };
+  };
+
+  for (const width of [1280, 320]) {
+    await page.setViewport(width, 900);
+    const { panels, modals } = await page.evaluate(readTitles);
+    assert.equal(panels.length, 4);
+    assert.ok(panels[0].title);
+    assert.deepEqual(panels.slice(1).map(({ title }) => title), ['Daily check-in', 'Activities', 'Goals']);
+    assert.deepEqual(modals.map(({ title }) => title), [
+      'Previous plan', 'Activity plan for Guitar', 'Activity settings for Guitar', 'Goal settings', 'Backup & restore',
+    ]);
+    for (const { title, namedByHeading, fontSize, leftInset } of [...panels, ...modals]) {
+      assert.ok(namedByHeading, title);
+      assert.equal(fontSize, '25px', title);
+      assert.equal(leftInset, 21, title);
+    }
+  }
 });
 
 test('modal titles use an ellipsis at the character limit or when space runs out', async (t) => {
