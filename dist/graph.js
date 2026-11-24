@@ -206,9 +206,9 @@ function landBall(wave, progress, color, yAt, height, complete) {
   return { ball, ribbons };
 }
 
-function ribbon(route, progress, options, complete) {
+function ribbon(route, progress, options, complete, trailStart = 0) {
   const tail = options.tail ?? .19;
-  const start = Math.max(0, progress - tail);
+  const start = Math.max(trailStart, progress - tail);
   const segments = 40;
   const points = complete
     ? Array.from({ length: segments + 1 }, (_, index) => route(mix(start, progress, index / segments)))
@@ -216,12 +216,13 @@ function ribbon(route, progress, options, complete) {
   return { points, ...options };
 }
 
-function traversalAt(wave, now, colors, yAt, height, complete = true) {
+function traversalAt(wave, now, colors, yAt, height, { complete = true, after } = {}) {
   if (!wave) return {};
   const progress = (now - wave.started) / wave.duration;
   if (progress < 0 || progress >= 1) return {};
   const { from, to, direction } = wave;
-  const drawRibbon = (route, options) => ribbon(route, progress, options, complete);
+  const trailStart = after === undefined ? 0 : clamp((after - wave.started) / wave.duration, 0, progress);
+  const drawRibbon = (route, options) => ribbon(route, progress, options, complete, trailStart);
 
   switch (wave.kind) {
     case 'daybreak-sweep':
@@ -318,11 +319,12 @@ function lineWave(context, path, head, worldToX, spacing) {
   const back = x - head.direction * head.tail * spacing;
   const lead = head.lead ?? .75;
   const front = x + head.direction * lead * spacing;
+  const peak = Math.max(.001, head.tail / (head.tail + lead));
   const gradient = (opacity) => {
     const color = context.createLinearGradient(back, 0, front, 0);
     color.addColorStop(0, tint(head.color, 0));
     color.addColorStop(.5, tint(head.color, opacity * (head.trailOpacity ?? .24)));
-    color.addColorStop(head.tail / (head.tail + lead), tint(head.color, opacity));
+    color.addColorStop(peak, tint(head.color, opacity));
     color.addColorStop(1, tint(head.color, 0));
     return color;
   };
@@ -334,16 +336,17 @@ function lineWave(context, path, head, worldToX, spacing) {
 
 function ribbonTips(ribbons = []) {
   return ribbons.filter(({ quietTip }) => !quietTip)
-    .map(({ points, tip }) => ({ ...points.at(-1), color: tip, strength: .92 }));
+    .map(({ points, tip, opacity = 1 }) => ({ ...points.at(-1), color: tip, strength: .92 * opacity }));
 }
 
 function inkOnGraph(wave, now, colors, yAt, height) {
   if (!wave?.ink) return null;
   const marks = [];
-  for (let age = 0; age < inkFade && now - age >= wave.started; age += 20) {
+  const visitStart = wave.started + (wave.visit?.begin ?? 0);
+  const earliest = wave.visit?.delay > 0 && now >= visitStart ? visitStart + wave.visit.delay : wave.started;
+  for (let age = 0; age < inkFade && now - age >= earliest; age += 20) {
     const frame = waveFrameAt(wave, now - age);
-    if (frame.loop !== null) continue;
-    const { heads = [], ribbons, ball } = traversalAt(wave, frame.time, colors, yAt, height, false);
+    const { heads = [], ribbons, ball } = traversalAt(wave, frame.time, colors, yAt, height, { complete: false });
     const contacts = [...heads, ...ribbonTips(ribbons)];
     if (ball && !heads.length) contacts.push(ball);
     for (const { day, y, strength } of contacts) {
@@ -403,12 +406,23 @@ function paintBall(context, ball, worldToX, width, height) {
   context.stroke();
 }
 
+function paintTrailTip(context, { x, y }, { tip, width, quietTip, opacity = 1 }, height) {
+  if (quietTip || opacity <= 0 || y <= -24 || y >= height + 24) return;
+  halo(context, x, y, 27, tip, .57 * opacity);
+  circle(context, x, y, width * .78);
+  context.fillStyle = tint('#ffffff', .88 * opacity);
+  context.fill();
+}
+
 function paintTrail(context, pixels, style, width, height) {
-  const { color, tip, width: thickness, beads, quietTip, opacity = 1 } = style;
+  const { color, tip, width: thickness, beads, opacity = 1 } = style;
   if (pixels.every(({ x }) => x < -64) || pixels.every(({ x }) => x > width + 64)) return;
   const first = pixels[0];
   const last = pixels.at(-1);
-  if (Math.hypot(last.x - first.x, last.y - first.y) < 1) return;
+  if (Math.hypot(last.x - first.x, last.y - first.y) < 1) {
+    paintTrailTip(context, last, style, height);
+    return;
+  }
   const path = new Path2D();
   path.moveTo(first.x, first.y);
   for (let index = 1; index < pixels.length - 1; index++) {
@@ -432,18 +446,13 @@ function paintTrail(context, pixels, style, width, height) {
   if (beads) {
     for (const fraction of [.43, .65, .83]) {
       const { x, y } = pixels[Math.round(fraction * (pixels.length - 1))];
-      halo(context, x, y, 8, tip, fraction * .3);
+      halo(context, x, y, 8, tip, fraction * .3 * opacity);
       circle(context, x, y, 1.3);
-      context.fillStyle = tint(tip, fraction);
+      context.fillStyle = tint(tip, fraction * opacity);
       context.fill();
     }
   }
-  if (!quietTip && last.y > -24 && last.y < height + 24) {
-    halo(context, last.x, last.y, 27, tip, .57);
-    circle(context, last.x, last.y, thickness * .78);
-    context.fillStyle = tint('#ffffff', .88);
-    context.fill();
-  }
+  paintTrailTip(context, last, style, height);
 }
 
 function paintRibbon(context, ribbon, worldToX, width, height) {
@@ -524,7 +533,7 @@ function planVisit(wave, visit, width, colors, worldToX, yAt, height) {
   let moment;
   for (let index = 0; index <= 48; index++) {
     const scale = mix(first, last, index / 48);
-    const signal = traversalAt(wave, wave.started + scale * wave.duration, colors, yAt, height, false);
+    const signal = traversalAt(wave, wave.started + scale * wave.duration, colors, yAt, height, { complete: false });
     const lead = leadOf(wave, signal);
     if (!lead) continue;
     const x = worldToX(lead.day);
@@ -545,15 +554,28 @@ function planVisit(wave, visit, width, colors, worldToX, yAt, height) {
 
 function waveFrameAt(wave, now) {
   const visit = wave?.visit;
-  if (!visit) return { time: now, loop: null };
+  if (!visit) return { time: now, loop: null, rejoin: null };
   const elapsed = now - wave.started;
   const intoVisit = elapsed - visit.begin;
   const detouring = intoVisit >= 0 && intoVisit < visit.delay;
   const spentVisiting = clamp(intoVisit, 0, visit.delay);
+  const rejoin = visit.delay > 0 && intoVisit >= visit.delay ? {
+    time: wave.started + visit.begin * wave.duration / visit.duration,
+    age: intoVisit - visit.delay,
+  } : null;
   return {
     time: wave.started + (elapsed - spentVisiting) * wave.duration / visit.duration,
     loop: detouring ? intoVisit / visit.delay : null,
+    rejoin,
   };
+}
+
+function rejoinedHeads(heads, startingHeads, secondaryLight) {
+  return heads.map((head, index) => {
+    const start = startingHeads.find(({ direction }) => direction === head.direction);
+    const tail = start ? clamp((head.day - start.day) * head.direction, 0, head.tail) : head.tail;
+    return { ...head, tail, strength: index === 0 ? head.strength : head.strength * secondaryLight };
+  });
 }
 
 function sampleRim(panel, direction) {
@@ -600,6 +622,8 @@ function cubic(a, b, c, d, t) {
   return { x: coordinate('x'), y: coordinate('y') };
 }
 
+const loopTrailLength = .19;
+
 function paintVisit(canvas, visit, lead, progress, worldToX, yAt, ratio) {
   canvas.hidden = false;
   const width = canvas.clientWidth;
@@ -633,7 +657,7 @@ function paintVisit(canvas, visit, lead, progress, worldToX, yAt, ratio) {
   };
 
   const arc = clamp((progress - goesAround) / (rejoins - goesAround), 0, 1);
-  if (arc > 0) {
+  if (arc > 0 && progress < 1) {
     const d = new Path2D();
     d.moveTo(entry.x, entry.y);
     const steps = Math.max(1, Math.ceil(arc * 144));
@@ -645,9 +669,12 @@ function paintVisit(canvas, visit, lead, progress, worldToX, yAt, ratio) {
     stroke(context, d, tint(color, .13 * fade), 13);
     stroke(context, d, tint(color, .58 * fade), 1.65);
   }
-  const tail = Math.max(0, progress - .19);
-  const trail = Array.from({ length: 30 }, (_, index) => route(mix(tail, progress, index / 29)));
-  paintTrail(context, trail, { color, tip: color, width: 2.9 }, width, height);
+  // The last part of the loop stays attached to the graph as the glow moves on.
+  const end = Math.min(1, progress);
+  const tail = Math.max(0, progress - loopTrailLength);
+  const trail = Array.from({ length: 30 }, (_, index) => route(mix(tail, end, index / 29)));
+  const opacity = 1 - smooth(clamp((progress - 1) / loopTrailLength, 0, 1));
+  paintTrail(context, trail, { color, tip: color, width: 2.9, quietTip: progress >= 1, opacity }, width, height);
 }
 
 export function paintGraph(canvas, frame) {
@@ -674,14 +701,25 @@ export function paintGraph(canvas, frame) {
     wave.visit.delay = interrupted;
   }
   const phase = waveFrameAt(wave, now);
-  const effects = traversalAt(wave, phase.time, waveColors, yAt, height, phase.loop === null);
-  const lead = phase.loop !== null && visit && leadOf(wave, effects);
-  if (lead) paintVisit(drawerGlow, visit, lead, phase.loop, worldToX, yAt, ratio);
+  const looping = phase.loop !== null;
+  const effects = traversalAt(wave, phase.time, waveColors, yAt, height, {
+    complete: !looping, after: phase.rejoin?.time,
+  });
+  const atRejoin = phase.rejoin && traversalAt(wave, phase.rejoin.time, waveColors, yAt, height, { complete: false });
+  const loopProgress = phase.loop ?? (phase.rejoin ? 1 + phase.rejoin.age / wave.visit.delay : null);
+  const lead = visit && loopProgress !== null && loopProgress < 1 + loopTrailLength
+    && leadOf(wave, looping ? effects : atRejoin);
+  if (lead) paintVisit(drawerGlow, visit, lead, loopProgress, worldToX, yAt, ratio);
   else drawerGlow.hidden = true;
-  const onGraph = lead ? {} : effects;
+  const onGraph = looping ? {} : effects;
   const ink = inkOnGraph(wave, now, waveColors, yAt, height);
-  const heads = [...(onGraph.heads ?? []), ...rippleHeads(ripple, now, colors)];
-  const ribbons = onGraph.ribbons ?? [];
+  const secondaryLight = phase.rejoin ? smooth(clamp(phase.rejoin.age / 150, 0, 1)) : 1;
+  const graphHeads = atRejoin
+    ? rejoinedHeads(onGraph.heads ?? [], atRejoin.heads ?? [], secondaryLight)
+    : onGraph.heads ?? [];
+  const heads = [...graphHeads, ...rippleHeads(ripple, now, colors)];
+  const ribbons = (onGraph.ribbons ?? []).map((ribbon, index) =>
+    index === 0 || secondaryLight === 1 ? ribbon : { ...ribbon, opacity: (ribbon.opacity ?? 1) * secondaryLight });
   const contacts = ribbonTips(ribbons);
   if (onGraph.ball && !onGraph.heads) contacts.push(onGraph.ball);
   const path = trace(points);

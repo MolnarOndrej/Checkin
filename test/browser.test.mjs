@@ -514,6 +514,72 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
   assert.deepEqual(visits.forward, { appeared: true, completed: true, continued: true, enteredFrom: 'left' });
   assert.deepEqual(visits.reverse, { appeared: true, completed: true, continued: true, enteredFrom: 'right' });
 
+  const handoffs = await page.evaluate(async () => {
+    const graph = document.querySelector('#graph');
+    const glow = document.querySelector('#drawer-glow');
+    const drawer = document.querySelector('#day-drawer').getBoundingClientRect();
+    const graphContext = graph.getContext('2d');
+    const glowContext = glow.getContext('2d');
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const baseline = Math.floor(graph.clientHeight * .56);
+    const x = 100;
+    const width = Math.floor(drawer.left) - x - 55;
+
+    function graphTrail(ribbon) {
+      const { data } = graphContext.getImageData(x, 0, width, graph.height);
+      let total = 0;
+      for (let y = 0; y < graph.height; y += 3) {
+        if (ribbon ? Math.abs(y - baseline) <= 26 : Math.abs(y - baseline) > 5) continue;
+        for (let column = 0; column < width; column += 3) total += data[(y * width + column) * 4 + 3];
+      }
+      return total;
+    }
+
+    function loopTrail() {
+      if (glow.hidden) return 0;
+      const { data } = glowContext.getImageData(0, 0, glow.width, glow.height);
+      let total = 0;
+      for (let y = 0; y < glow.height; y += 4) {
+        for (let x = 0; x < glow.width; x += 4) total += data[(y * glow.width + x) * 4 + 3];
+      }
+      return total;
+    }
+
+    async function step(time) {
+      window.advanceCheckin(time);
+      await frame();
+    }
+
+    async function handoff(kind, rolls) {
+      await step(5000);
+      const ribbon = kind === 3;
+      const idle = graphTrail(ribbon);
+      window.traverse(kind, rolls);
+      let before = idle;
+      for (let turn = 0; turn < 120 && glow.hidden; turn++) {
+        await step(20);
+        if (glow.hidden) before = Math.max(before, graphTrail(ribbon));
+      }
+      if (glow.hidden) throw new Error('Drawer Loop did not begin');
+      const during = graphTrail(ribbon);
+      await step(1625);
+      const after = graphTrail(ribbon);
+      const returningTail = loopTrail();
+      await step(115);
+      const fadingTail = loopTrail();
+      await step(180);
+      return { idle, before, during, after, returningTail, fadingTail, loopCleared: glow.hidden };
+    }
+    return [await handoff(0, [.29, .8, .399]), await handoff(3, [.99, .399])];
+  });
+  for (const effect of handoffs) {
+    assert.ok(effect.before > effect.idle + 100, JSON.stringify(effect));
+    assert.equal(effect.during, effect.idle);
+    assert.equal(effect.after, effect.idle);
+    assert.ok(effect.returningTail > effect.fadingTail && effect.fadingTail > 0, JSON.stringify(effect));
+    assert.equal(effect.loopCleared, true);
+  }
+
   const eligible = await page.evaluate(async () => {
     const glow = document.querySelector('#drawer-glow');
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
