@@ -1,6 +1,6 @@
 const maxDuration = 4;
 const fadeDuration = .75;
-const playbackGain = .4;
+const playbackGain = .25;
 let audio;
 let sounds;
 

@@ -949,11 +949,11 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
     assert.equal(sound.started, started);
     assert.equal(sound.offset, 0);
     assert.equal(sound.duration, 4);
-    assert.deepEqual(sound.gain, [['level', .4, started], ['level', .4, started + 3.25], ['fade', 0, started + 4]]);
+    assert.deepEqual(sound.gain, [['level', .25, started], ['level', .25, started + 3.25], ['fade', 0, started + 4]]);
   }
   assert.deepEqual(result.played[2], {
     started: 8, offset: 0, duration: 2, original: 2,
-    gain: [['level', .4, 8], ['level', .4, 9.25], ['fade', 0, 10]],
+    gain: [['level', .25, 8], ['level', .25, 9.25], ['fade', 0, 10]],
   });
   for (const { early, late, after } of [result.first, result.short]) {
     const earlyWave = early.wave - after.earlyWave;
