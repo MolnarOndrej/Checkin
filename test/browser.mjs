@@ -114,6 +114,16 @@ export async function openBrowser(t) {
     setViewport: (width, height) => page('Emulation.setDeviceMetricsOverride', {
       width, height, deviceScaleFactor: 1, mobile: false,
     }),
+    async swipe(fromX, toX, y) {
+      await page('Emulation.setTouchEmulationEnabled', { enabled: true });
+      const point = (x) => [{ x, y, id: 1 }];
+      const touch = (type, touchPoints) => page('Input.dispatchTouchEvent', { type, touchPoints });
+      await touch('touchStart', point(fromX));
+      for (let step = 1; step <= 5; step++) {
+        await touch('touchMove', point(fromX + (toX - fromX) * step / 5));
+      }
+      await touch('touchEnd', []);
+    },
     async clickAt(x, y) {
       const point = { x, y, button: 'left', clickCount: 1 };
       await page('Input.dispatchMouseEvent', { type: 'mousePressed', ...point });

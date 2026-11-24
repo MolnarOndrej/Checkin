@@ -12,1562 +12,305 @@ async function openCheckin(t, beforeLoad) {
   assert.notEqual(new URL(url).port, '4173');
   const page = await openBrowser(t);
   if (beforeLoad) await page.beforeLoad(beforeLoad);
+  await page.setViewport(1440, 900);
   await page.navigate(url);
   return page;
 }
 
-function captureRotations() {
-  Math.random = () => .99;
-  const ticks = window.rotationTicks = new Map();
-  window.setInterval = (callback, delay) => {
-    ticks.set(delay, callback);
-    return delay;
-  };
-  window.clearInterval = (delay) => ticks.delete(delay);
-  const setTimeout = window.setTimeout.bind(window);
-  const clearTimeout = window.clearTimeout.bind(window);
-  window.setTimeout = (callback, delay) => {
-    if (delay < 12_000) return setTimeout(callback, delay);
-    const run = () => {
-      delete window.ambientTurn;
-      callback();
-    };
-    window.ambientTurn = { run, delay };
-    return run;
-  };
-  window.clearTimeout = (timer) => {
-    if (window.ambientTurn?.run === timer) delete window.ambientTurn;
-    else clearTimeout(timer);
-  };
+async function settle(page) {
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
-test('the next-month arrow is dimmed when the calendar shows the current month', async (t) => {
-  const page = await openCheckin(t);
-  const states = await page.evaluate(() => {
-    const next = document.querySelector('#next');
-    const previous = document.querySelector('#previous');
-    const title = document.querySelector('#calendar-title');
-    const state = () => ({
-      month: title.textContent,
-      disabled: next.disabled,
-      opacity: Number(getComputedStyle(next).opacity),
-    });
-
-    const current = state();
-    previous.click();
-    const earlier = state();
-    next.click();
-    return { current, earlier, returned: state() };
-  });
-
-  assert.equal(states.current.disabled, true);
-  assert.ok(states.current.opacity > 0 && states.current.opacity < states.earlier.opacity);
-  assert.equal(states.earlier.disabled, false);
-  assert.equal(states.earlier.opacity, 1);
-  assert.notEqual(states.earlier.month, states.current.month);
-  assert.deepEqual(states.returned, states.current);
-});
-
-test('activity add buttons show plus icons and the notes field uses a softer focus outline', async (t) => {
-  const page = await openCheckin(t);
-  await page.setReducedMotion('reduce');
-  const buttons = await page.evaluate(() => ['#add-goal', '#pin-form button'].map((selector) => {
-    const button = document.querySelector(selector);
-    const icon = button.querySelector('svg use');
-    return {
-      text: button.innerText.trim(),
-      tooltip: button.title,
-      label: button.getAttribute('aria-label'),
-      visiblePlus: icon.getAttribute('href') === '#plus' && icon.getBBox().width > 0,
+test('today starts centered with 21 dated dots, and year labels and touch swipes work on a phone', async (t) => {
+  const page = await openCheckin(t, () => {
+    const NativeDate = Date;
+    window.Date = class extends NativeDate {
+      constructor(...args) {
+        if (args.length) super(...args);
+        else super(2026, 11, 31, 12);
+      }
     };
+  });
+  await page.setReducedMotion('reduce');
+  await settle(page);
+  const desktop = await page.evaluate(() => {
+    const days = [...document.querySelectorAll('.day')];
+    const today = document.querySelector('[aria-current="date"]');
+    const bounds = today.getBoundingClientRect();
+    return {
+      count: days.length, today: today.textContent, center: bounds.left + bounds.width / 2,
+      first: days[0].textContent, last: days.at(-1).textContent,
+      years: [...document.querySelectorAll('.year')].filter((year) => Number(year.style.opacity) > 0)
+        .map((year) => [year.textContent, year.getBoundingClientRect().left]),
+    };
+  });
+  assert.equal(desktop.count, 21);
+  assert.equal(desktop.center, 720);
+  assert.equal(desktop.first, 'Dec 21st');
+  assert.equal(desktop.today, 'Dec 31st');
+  assert.equal(desktop.last, 'Jan 10th');
+  assert.deepEqual(desktop.years.map(([year]) => year), ['2026', '2027']);
+  assert.ok(desktop.years[0][1] < desktop.years[1][1]);
+
+  await page.setViewport(390, 844);
+  await settle(page);
+  const before = await page.evaluate(() => {
+    const stage = document.querySelector('#timeline').getBoundingClientRect();
+    return { dots: document.querySelectorAll('.day').length, y: Math.round(stage.top + stage.height / 2) };
+  });
+  assert.ok(before.dots >= 5 && before.dots <= 9);
+  await page.swipe(320, 65, before.y);
+  await settle(page);
+  const swiped = await page.evaluate(() => ({
+    centered: document.querySelector('.day[tabindex="0"]').dataset.date,
+    todayShortcut: !document.querySelector('#back-today').hidden,
+    drawerClosed: document.querySelector('#day-drawer').hidden,
   }));
-  assert.deepEqual(buttons, [
-    { text: '', tooltip: 'Add', label: 'Add activity to check-in', visiblePlus: true },
-    { text: '', tooltip: 'Add', label: 'Add pinned activity', visiblePlus: true },
-  ]);
-  const { x, y } = await page.evaluate(() => {
-    document.querySelector('#details summary').click();
-    const notes = document.querySelector('#notes');
-    notes.scrollIntoView({ block: 'center' });
-    const bounds = notes.getBoundingClientRect();
-    return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
-  });
-  await page.clickAt(x, y);
-  const outline = await page.evaluate(() => {
-    const field = document.activeElement;
-    const { outlineColor, outlineStyle, outlineOffset } = getComputedStyle(field);
-    return { id: field.id, outlineColor, outlineStyle, outlineOffset };
-  });
-  assert.deepEqual(outline, {
-    id: 'notes', outlineColor: 'rgb(138, 131, 166)', outlineStyle: 'solid', outlineOffset: '1px',
-  });
+  assert.equal(swiped.centered, '2027-01-05');
+  assert.equal(swiped.todayShortcut, true);
+  assert.equal(swiped.drawerClosed, true);
+  await page.evaluate(() => document.querySelector('.day[tabindex="0"]').click());
+  assert.equal(await page.evaluate(() => document.querySelector('#day-content').innerText.trim()), 'Upcoming');
+  await page.evaluate(() => document.querySelector('#back-today').click());
+  await settle(page);
+  assert.equal(await page.evaluate(() => document.querySelector('.day[tabindex="0"]').dataset.date), '2026-12-31');
 });
 
-test('backup restores missing check-ins and goal plans without overwriting saved records', async (t) => {
+test('activities can be managed, logged, edited, deleted and reloaded on a phone', async (t) => {
   const page = await openCheckin(t);
-  const exported = await page.evaluate(async () => {
-    const { dayKey } = await import('/calendar.js');
-    const today = `checkin.day.${dayKey(new Date())}`;
-    const older = 'checkin.day.2025-01-02';
-    const late = 'checkin.day.2025-01-03';
-    const records = {
-      [today]: {
-        score: 80, notes: 'Evening reflection', nextPlan: 'Start after dinner',
-        goals: [
-          { text: 'Guitar', done: false, worked: true, minutes: 20 },
-          { text: 'Writing', done: true, measurement: { unit: 'pages', amount: 0, trackMinutes: false } },
-        ],
-      },
-      [older]: { score: null, notes: 'Older reflection', goals: [] },
-      [late]: { score: null, notes: 'Reflection from backup', goals: [] },
-      'checkin.pinned.guitar': {
-        text: 'Guitar', pinned: true, plan: 'Practice the chorus', fallback: 'Play it once', pickup: 'Bar 9',
-      },
-      'checkin.pinned.reading': {
-        text: 'Reading', pinned: false, pickup: 'Page 23', measurement: { unit: 'pages', trackMinutes: false },
-        goals: [{ id: 'reading-2025', metric: 'amount', amount: 50, unit: 'pages', repeat: 'range', start: '2025-01-01', end: '2025-01-31' }],
-      },
-    };
-    for (const [key, value] of Object.entries(records)) localStorage.setItem(key, JSON.stringify(value));
-    localStorage.setItem('unrelated', 'keep me');
-
+  await page.setViewport(390, 844);
+  await page.setReducedMotion('reduce');
+  await settle(page);
+  const created = await page.evaluate(async () => {
     const find = (selector) => document.querySelector(selector);
-    find('#open-backup').click();
-    const click = HTMLAnchorElement.prototype.click;
-    let download;
-    HTMLAnchorElement.prototype.click = function () {
-      download = { filename: this.download, response: fetch(this.href) };
+    window.waitForCheckin = async (test) => {
+      for (let round = 0; round < 90; round++) {
+        if (test()) return;
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+      throw new Error('Checkin update did not finish');
     };
-    try {
-      find('#download-backup').click();
-    } finally {
-      HTMLAnchorElement.prototype.click = click;
-    }
-    const dialogOpen = find('#backup-dialog').open;
-    const message = find('#backup-status').textContent;
-    const { filename, response } = download;
-    const backup = window.testBackup = await (await response).text();
-    window.chooseBackup = (contents) => new Promise((resolve) => {
-      const feedback = find('#backup-feedback');
-      const observer = new MutationObserver(() => {
-        if (!feedback.textContent) return;
-        observer.disconnect();
-        resolve({ message: feedback.textContent, canRestore: !find('#restore-backup').hidden });
-      });
-      observer.observe(feedback, { childList: true });
-      const transfer = new DataTransfer();
-      transfer.items.add(new File([contents], filename, { type: 'application/json' }));
-      const input = find('#backup-file');
-      input.files = transfer.files;
-      input.dispatchEvent(new Event('change'));
-    });
-    for (const key of Object.keys(records)) localStorage.removeItem(key);
-    localStorage.setItem(older, JSON.stringify({ score: null, notes: 'Keep this reflection', goals: [] }));
-    return { filename, today, records, backup: JSON.parse(backup), dialogOpen, message };
-  });
-  assert.equal(exported.dialogOpen, false);
-  assert.equal(exported.message, 'Backup download started.');
-  assert.equal(exported.filename, `${exported.today.replace('checkin.day.', 'checkin-backup-')}.json`);
-  assert.deepEqual(exported.backup, { format: 'checkin', version: 1, records: exported.records });
-
-  assert.deepEqual(await page.evaluate(() => {
-    document.querySelector('#open-backup').click();
-    const invalid = JSON.parse(window.testBackup);
-    invalid.records['checkin.day.2025-02-30'] = { goals: [] };
-    return window.chooseBackup(JSON.stringify(invalid));
-  }), { message: 'Checkin could not read this backup. Choose a valid Checkin backup file.', canRestore: false });
-  assert.deepEqual(await page.evaluate(() => window.chooseBackup(window.testBackup)), {
-    message: '2 check-ins and 2 activity records ready to restore. This browser already has 1 record from the backup.',
-    canRestore: true,
-  });
-
-  const attempted = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const keys = () => Object.keys(localStorage).filter((key) => key.startsWith('checkin.day.') || key.startsWith('checkin.pinned.'));
-    const before = keys();
-    find('#notes').value = 'Unsaved reflection';
-    find('#restore-backup').click();
-    const blockedDraft = find('#backup-feedback').textContent;
-    const draft = find('#notes').value;
-    find('#notes').value = '';
-
-    const setItem = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (key, value) {
-      if (key === 'checkin.pinned.guitar') throw new DOMException('Storage is full', 'QuotaExceededError');
-      setItem.call(this, key, value);
+    window.createCheckinActivity = async (name, unit) => {
+      find('[aria-label="New activity"]').click();
+      find('dialog input').value = name;
+      if (unit) {
+        find('dialog select').value = 'custom';
+        find('dialog select').dispatchEvent(new Event('change'));
+        find('dialog input[placeholder]').value = unit;
+      }
+      find('dialog [type="submit"]').click();
+      await window.waitForCheckin(() => find('[aria-label="Remove ' + name + '"]'));
     };
-    try {
-      find('#restore-backup').click();
-    } finally {
-      Storage.prototype.setItem = setItem;
-    }
+    find('#manage').click();
+    await window.createCheckinActivity('Read', 'pages');
+    await window.createCheckinActivity('Stretch');
+    const activityRows = [...document.querySelectorAll('dialog .activity-row')].map((row) => row.innerText.trim());
+    find('#close-dialog').click();
+    find('[aria-current="date"]').click();
+    window.logCheckinValue = async (name, amount) => {
+      find('[aria-label="Log activity"]').click();
+      const picker = find('#day-content select');
+      picker.value = [...picker.options].find((option) => option.text === name).value;
+      picker.dispatchEvent(new Event('change'));
+      find('#day-content input').value = amount;
+      find('#day-content [type="submit"]').click();
+      await window.waitForCheckin(() => !find('#day-content form'));
+    };
+    const originalY = find('[aria-current="date"]').getBoundingClientRect().top;
+    await window.logCheckinValue('Read', 4.5);
+    await window.logCheckinValue('Stretch', 20);
+    const value = find('.log-value').textContent;
+    find('.log-row').click();
+    const controls = [...document.querySelectorAll('dialog .actions button')].map((control) => control.textContent);
+    find('dialog input').value = '100';
+    [...document.querySelectorAll('dialog .actions button')].find((control) => control.textContent === 'Cancel').click();
+    const afterCancel = find('.log-value').textContent;
+    const beforeEdit = find('[aria-current="date"]').getBoundingClientRect().top;
+    find('.log-row').click();
+    find('dialog input').value = '100';
+    find('dialog [type="submit"]').click();
+    await window.waitForCheckin(() => !find('dialog').open);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     return {
-      before, after: keys(), blockedDraft, draft,
-      dialogOpen: find('#backup-dialog').open, failure: find('#backup-feedback').textContent,
+      activityRows, value, controls, afterCancel, originalY, beforeEdit,
+      afterEdit: find('[aria-current="date"]').getBoundingClientRect().top,
+      graphColor: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+      viewport: { width: innerWidth, scrollWidth: document.documentElement.scrollWidth },
     };
   });
-  assert.deepEqual(attempted, {
-    before: ['checkin.day.2025-01-02'], after: ['checkin.day.2025-01-02'],
-    blockedDraft: 'Save your current check-in edits before restoring this date.',
-    draft: 'Unsaved reflection', dialogOpen: true,
-    failure: 'Checkin could not restore the backup. Check browser storage and try again.',
-  });
-
-  assert.deepEqual(await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    localStorage.setItem('checkin.day.2025-01-03', JSON.stringify({
-      score: null, notes: 'Saved after preview', goals: [],
-    }));
-    find('#restore-backup').click();
-    return {
-      dialogOpen: find('#backup-dialog').open,
-      message: find('#backup-status').textContent,
-      note: find('#notes').value,
-      week: find('#week-goals').textContent,
-      goals: find('#pinned-list').textContent.trim(),
-    };
-  }), {
-    dialogOpen: false, message: 'Restored 3 records.', note: 'Evening reflection',
-    week: 'Guitar · 1 dayWriting · 1 day', goals: 'Guitar',
-  });
+  assert.deepEqual(created.activityRows, ['Read\npages', 'Stretch\nmin']);
+  assert.equal(created.value, '4.5 pages');
+  assert.deepEqual(created.controls, ['Delete', 'Cancel', 'Save']);
+  assert.equal(created.afterCancel, created.value);
+  assert.ok(created.beforeEdit < created.originalY);
+  assert.ok(created.afterEdit < created.beforeEdit);
+  assert.notEqual(created.graphColor, 'rgb(155, 250, 226)');
+  assert.equal(created.viewport.width, created.viewport.scrollWidth);
 
   await page.reload();
-  assert.deepEqual(await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    find('#edit-plan').click();
-    const previousPlan = find('#next-plan').value;
-    find('#cancel-plan-edit').click();
-    find('[data-edit]').click();
-    return {
-      previousPlan, note: find('#notes').value, score: find('#score').valueAsNumber,
-      minutes: find('[aria-label="Optional minutes for Guitar"]').valueAsNumber,
-      writing: find('[aria-label="Progress for Writing"]').value,
-      pages: find('[aria-label="Optional pages for Writing"]').valueAsNumber,
-      plan: find('#activity-plan').value, fallback: find('#activity-fallback').value, pickup: find('#activity-pickup').value,
-      unpinned: JSON.parse(localStorage.getItem('checkin.pinned.reading')),
-      existing: JSON.parse(localStorage.getItem('checkin.day.2025-01-02')).notes,
-      savedAfterPreview: JSON.parse(localStorage.getItem('checkin.day.2025-01-03')).notes,
-      unrelated: localStorage.getItem('unrelated'),
-    };
-  }), {
-    previousPlan: 'Start after dinner', note: 'Evening reflection', score: 80, minutes: 20, writing: 'done', pages: 0,
-    plan: 'Practice the chorus', fallback: 'Play it once', pickup: 'Bar 9',
-    unpinned: exported.records['checkin.pinned.reading'],
-    existing: 'Keep this reflection', savedAfterPreview: 'Saved after preview', unrelated: 'keep me',
+  await settle(page);
+  const persisted = await page.evaluate(() => {
+    document.querySelector('[aria-current="date"]').click();
+    return [...document.querySelectorAll('.log-value')].map((value) => value.textContent);
   });
+  assert.deepEqual(persisted, ['100 pages', '20 min']);
+
+  const removed = await page.evaluate(async () => {
+    const find = (selector) => document.querySelector(selector);
+    const centerY = () => find('[aria-current="date"]').getBoundingClientRect().top;
+    const before = centerY();
+    const remaining = () => [...document.querySelectorAll('.log-value')].map((value) => value.textContent);
+    const choose = (text) => [...document.querySelectorAll('dialog .actions button')].find((button) => button.textContent === text);
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    find('#manage').click();
+    find('[aria-label="Remove Read"]').click();
+    const confirmation = find('#dialog-title').textContent;
+    assertOnCancel();
+    function assertOnCancel() {
+      choose('Cancel').click();
+      if (!find('[aria-label="Remove Read"]')) throw new Error('Cancel removed the activity');
+    }
+    find('[aria-label="Remove Read"]').click();
+    choose('Remove').click();
+    for (let tries = 0; find('#dialog-title').textContent !== 'Activities'; tries++) {
+      if (tries === 90) throw new Error('Activity removal did not finish');
+      await nextFrame();
+    }
+    find('#close-dialog').click();
+    await nextFrame();
+    const afterRemoveActivity = centerY();
+    const surviving = remaining();
+    find('.log-row').click();
+    choose('Delete').click();
+    for (let tries = 0; find('dialog').open; tries++) {
+      if (tries === 90) throw new Error('Log removal did not finish');
+      await nextFrame();
+    }
+    await nextFrame();
+    return { before, afterRemoveActivity, surviving, afterRemoveLog: centerY(), remaining: remaining(), confirmation };
+  });
+  assert.equal(removed.confirmation, 'Remove Read?');
+  assert.equal(removed.afterRemoveActivity, removed.before);
+  assert.deepEqual(removed.surviving, ['20 min']);
+  assert.ok(removed.afterRemoveLog > removed.afterRemoveActivity);
+  assert.deepEqual(removed.remaining, []);
+
+  await page.reload();
+  await settle(page);
+  const finalState = await page.evaluate(() => {
+    const day = document.querySelector('[aria-current="date"]');
+    day.click();
+    document.querySelector('#manage').click();
+    return {
+      height: day.getBoundingClientRect().top,
+      logs: document.querySelectorAll('.log-row').length,
+      activities: [...document.querySelectorAll('dialog .activity-name')].map((row) => row.textContent),
+    };
+  });
+  assert.equal(finalState.height, removed.afterRemoveLog);
+  assert.equal(finalState.logs, 0);
+  assert.deepEqual(finalState.activities, ['Stretch']);
 });
 
-test('the Activities panel fades and slides in with the check-in on refresh', async (t) => {
+test('five-second traversals light edges between dots in both directions and then together', async (t) => {
   const page = await openCheckin(t, () => {
-    document.addEventListener('DOMContentLoaded', () => {
-      for (const animation of document.getAnimations()) {
-        if (animation.animationName === 'enter') {
-          animation.pause();
-          animation.currentTime = 0;
-        }
-      }
-    });
+    let time = 1000;
+    const frame = requestAnimationFrame;
+    window.requestAnimationFrame = (callback) => frame(() => callback(time));
+    performance.now = () => time;
+    const interval = window.setInterval;
+    window.setInterval = (callback, delay) => {
+      if (delay !== 5000) return interval(callback, delay);
+      window.traverse = callback;
+    };
+    window.advanceCheckin = (duration) => { time += duration; };
   });
-  await page.setReducedMotion('no-preference');
-  await page.reload();
-  assert.deepEqual(await page.evaluate(() => {
-    return ['.journal-card', '.activities-card'].map((selector) => {
-      const panel = document.querySelector(selector);
-      const animation = panel.getAnimations().find(({ animationName }) => animationName === 'enter');
-      const { delay, duration } = animation.effect.getTiming();
-      const sample = () => {
-        const { opacity, transform } = getComputedStyle(panel);
-        return { opacity: Number(opacity), y: new DOMMatrix(transform === 'none' ? undefined : transform).m42 };
-      };
-      const start = sample();
-      animation.currentTime = delay + duration;
-      return { delay, duration, start, end: sample() };
-    });
-  }), Array(2).fill({ delay: 240, duration: 750, start: { opacity: 0, y: 12 }, end: { opacity: 1, y: 0 } }));
-
-  await page.setReducedMotion('reduce');
-  await page.reload();
-  assert.deepEqual(await page.evaluate(() => {
-    const panel = document.querySelector('.activities-card');
-    const { opacity, transform } = getComputedStyle(panel);
-    return { opacity, transform, animations: panel.getAnimations().length };
-  }), { opacity: '1', transform: 'none', animations: 0 });
-});
-
-test('ambient effects run at different rhythms without moving the landscape', async (t) => {
-  const page = await openCheckin(t);
-  await page.setReducedMotion('no-preference');
-  const animated = await page.evaluate(() => {
-    const effects = [
-      ['body', '::before', .05, .95],
-      ['body', '::after', .05, .95],
-      ['.moon-halo', null, .05, .95, 'moon'],
-      ['.sky-star', null, .1, .5, 'stars'],
-      ['.sky-meteor', null, .05, .2, 'meteor'],
-      ['.firefly', null, .05, .3, 'fireflies'],
-    ];
-    const scene = document.querySelector('.hero-scene');
-    return {
-      landscapeAnimations: [...document.querySelectorAll('.hero, .hero-scene, .hero-scene svg, [href="trail.svg#landscape"]')]
-        .map((element) => getComputedStyle(element).animationName),
-      effects: effects.map(([selector, pseudo, dimAt, brightAt, effect]) => {
-        if (effect) scene.dataset.ambient = effect;
-        const element = document.querySelector(selector);
-        const style = () => getComputedStyle(element, pseudo);
-        const animation = document.getAnimations().find(({ animationName }) => animationName === style().animationName);
-        const { delay, duration, iterations } = animation.effect.getTiming();
-        animation.pause();
-        // Sample an even-numbered cycle after any negative start delay.
-        const cycleStart = delay + (iterations === Infinity ? 2 * duration : 0);
-        animation.currentTime = cycleStart + duration * dimAt;
-        const dim = Number(style().opacity);
-        const start = style().transform;
-        animation.currentTime = cycleStart + duration * brightAt;
-        return {
-          duration, expectedIterations: iterations === (effect === 'meteor' ? 1 : Infinity),
-          brightens: Number(style().opacity) - dim > .45,
-          moves: style().transform !== start,
-          interceptsClicks: Boolean(pseudo) && style().pointerEvents !== 'none',
-        };
-      }),
-    };
+  await settle(page);
+  const alpha = await page.evaluate(async () => {
+    const canvas = document.querySelector('#graph');
+    const context = canvas.getContext('2d');
+    const width = canvas.clientWidth;
+    const spacing = width / 21;
+    const reach = 21 / 2 + 9;
+    const progress = .335;
+    const offset = reach * (1 - 2 * progress);
+    const positions = [width / 2 - offset * spacing, width / 2 + offset * spacing];
+    const sample = () => positions.map((x) => context.getImageData(Math.round(x), Math.floor(canvas.clientHeight * .56), 1, 1).data[3]);
+    const results = [sample()];
+    for (let index = 0; index < 3; index++) {
+      window.traverse();
+      window.advanceCheckin(3300 * progress);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      results.push(sample());
+      window.advanceCheckin(5000 - 3300 * progress);
+    }
+    return results;
   });
-  assert.deepEqual(animated.landscapeAnimations, ['none', 'none', 'none', 'none']);
-  assert.equal(new Set(animated.effects.map(({ duration }) => duration)).size, animated.effects.length);
-  assert.ok(animated.effects.every(({ expectedIterations, brightens, interceptsClicks }) => expectedIterations && brightens && !interceptsClicks));
-  assert.deepEqual(animated.effects.map(({ moves }) => moves), [true, true, false, false, true, true]);
+  assert.ok(alpha[1][0] > alpha[0][0] + 40);
+  assert.ok(Math.abs(alpha[1][1] - alpha[0][1]) <= 2);
+  assert.ok(Math.abs(alpha[2][0] - alpha[0][0]) <= 2);
+  assert.ok(alpha[2][1] > alpha[0][1] + 40);
+  assert.ok(alpha[3][0] > alpha[0][0] + 40);
+  assert.ok(alpha[3][1] > alpha[0][1] + 40);
 
-  await page.setReducedMotion('reduce');
-  assert.deepEqual(await page.evaluate(() => {
-    return {
-      running: document.getAnimations().length,
-      haloVisible: Number(getComputedStyle(document.querySelector('.moon-halo')).opacity) > 0,
-      meteorHidden: Number(getComputedStyle(document.querySelector('.sky-meteor')).opacity) === 0,
-    };
-  }), { running: 0, haloVisible: true, meteorHidden: true });
-});
-
-test('dashboard panels can glint independently or together', async (t) => {
-  const page = await openCheckin(t, captureRotations);
-  await page.setReducedMotion('no-preference');
-  await page.reload();
-  const result = await page.evaluate(async () => {
-    const turn = 8_000;
-    const tick = window.rotationTicks.get(turn);
-    const panels = [...document.querySelectorAll('.dashboard .card')];
-    const style = (panel) => getComputedStyle(panel, '::before');
-    const selections = [];
-    for (const draws of [[.8, .8, .8, .8], [.1, .8, .8, .8], [.1, .2, .8, .8], [.1, .2, .3, .39]]) {
-      Math.random = () => draws.shift();
-      tick();
-      const active = panels.filter((panel) => style(panel).animationName === 'edge-glint');
-      const glints = document.getAnimations().filter(({ animationName }) => animationName === 'edge-glint');
-      for (const glint of glints) {
-        glint.pause();
-        glint.currentTime = 0;
-      }
-      const startsDark = active.every((panel) => Number(style(panel).opacity) === 0);
-      const starts = active.map((panel) => style(panel).transform);
-      const fitsTurn = glints.every((glint) => {
-        const { duration, iterations } = glint.effect.getTiming();
-        glint.currentTime = duration / 2;
-        return duration < turn && iterations === 1;
-      });
-      selections.push({
-        bright: panels.filter((panel) => Number(style(panel).opacity) > .5)
-          .map((panel) => panel.getAttribute('aria-labelledby')),
-        glints: glints.length === active.length && startsDark && fitsTurn && active.every((panel, index) =>
-          style(panel).transform !== starts[index] && style(panel).pointerEvents === 'none'),
-        inactiveDark: panels.every((panel) => active.includes(panel) || Number(style(panel).opacity) === 0),
-      });
-      for (const glint of glints) {
-        glint.currentTime = glint.effect.getTiming().duration - 20;
-        glint.play();
-      }
-      for (let frame = 0; frame < 60 && active.some((panel) => panel.hasAttribute('data-highlight')); frame++) {
-        await new Promise(requestAnimationFrame);
-      }
-      if (active.some((panel) => style(panel).animationName !== 'none')) {
-        throw new Error('Panel glints were not cleared after ending');
-      }
+  await page.evaluate(() => {
+    const today = document.querySelector('[aria-current="date"]').dataset.date;
+    const toDateKey = (offset) => new Date(Date.parse(today) + offset * 86_400_000).toISOString().slice(0, 10);
+    const activities = Array.from({ length: 5 }, (_, index) => ({
+      id: String(index), text: 'Activity ' + index, type: 'minutes', unit: 'min', goals: [],
+    }));
+    const value = { amount: 30, effort: .2896 };
+    const days = {};
+    for (let offset = -8; offset <= 0; offset++) {
+      const active = offset === -1 ? activities : activities.slice(0, 1);
+      days[toDateKey(offset)] = { values: Object.fromEntries(active.map(({ id }) => [id, value])) };
     }
-    Math.random = () => 0;
-    tick(); // Restart all four so reduced motion is tested during an active round.
-    return {
-      selections,
-      restarted: document.getAnimations().filter(({ animationName }) => animationName === 'edge-glint').length,
-    };
+    localStorage.setItem('checkin.timeline.v1', JSON.stringify({ activities, days }));
   });
-  assert.deepEqual(result.selections.map(({ bright }) => bright), [
-    [],
-    ['calendar-title'],
-    ['calendar-title', 'journal-title'],
-    ['calendar-title', 'journal-title', 'pinned-title', 'activity-goals-title'],
-  ]);
-  assert.ok(result.selections.every(({ glints, inactiveDark }) => glints && inactiveDark));
-  assert.equal(result.restarted, 4);
-
-  await page.setReducedMotion('reduce');
-  assert.deepEqual(await page.evaluate(async () => {
-    for (let frame = 0; frame < 60 && window.rotationTicks.has(8_000); frame++) {
-      await new Promise(requestAnimationFrame);
-    }
-    return {
-      rotating: window.rotationTicks.has(8_000),
-      selected: Boolean(document.querySelector('.card[data-highlight]')),
-      visible: [...document.querySelectorAll('.dashboard .card')]
-        .some((panel) => Number(getComputedStyle(panel, '::before').opacity) > 0),
-    };
-  }), { rotating: false, selected: false, visible: false });
-});
-
-test('moonlit trail rotates through random effects and the river flows downstream when selected', async (t) => {
-  const page = await openCheckin(t, captureRotations);
-  assert.deepEqual(await page.evaluate(() => {
-    const ambientTick = () => window.ambientTurn.run();
-    const scene = document.querySelector('.hero-scene');
-    const ripple = scene.querySelector('.river-current path');
-    const animation = ripple.getAnimations()[0];
-    animation.pause();
-    animation.currentTime = 0;
-    const start = Number.parseFloat(getComputedStyle(ripple).strokeDashoffset);
-    animation.currentTime = 4_000;
-    const moving = Number.parseFloat(getComputedStyle(ripple).strokeDashoffset) < start;
-    const visible = Number(getComputedStyle(ripple).opacity) > .5;
-    const effects = [scene.dataset.ambient];
-    Math.random = () => .99;
-    ambientTick();
-    effects.push(scene.dataset.ambient);
-    const hidden = Number(getComputedStyle(ripple).opacity) === 0 && ripple.getAnimations().length === 0;
-    for (const draw of [.5, .35, 0, 0, .5, .6, .99]) {
-      Math.random = () => draw;
-      ambientTick();
-      effects.push(scene.dataset.ambient);
-    }
-    return { effects, moving, visible, hidden };
-  }), {
-    effects: ['river', 'fireflies', 'owl', 'meteor', 'moon', 'stars', 'wind', 'clouds', 'river'],
-    moving: true, visible: true, hidden: true,
-  });
-
-  await page.setReducedMotion('reduce');
-  assert.deepEqual(await page.evaluate(async () => {
-    const scene = document.querySelector('.hero-scene');
-    for (let frame = 0; frame < 60 && scene.hasAttribute('data-ambient'); frame++) {
-      await new Promise(requestAnimationFrame);
-    }
-    return {
-      rotating: Boolean(window.ambientTurn),
-      selected: scene.hasAttribute('data-ambient'),
-      rippleVisible: Number(getComputedStyle(scene.querySelector('.river-current path')).opacity) > 0,
-    };
-  }), { rotating: false, selected: false, rippleVisible: false });
-});
-
-test('the owl varies its route, direction, and speed on desktop and mobile', async (t) => {
-  const page = await openCheckin(t, captureRotations);
-  await page.setReducedMotion('no-preference');
-
-  for (const width of [1280, 320]) {
-    await page.setViewport(width, 800);
-    await page.reload();
-    assert.deepEqual(await page.evaluate(() => {
-      const scene = document.querySelector('.hero-scene');
-      const owl = scene.querySelector('.sky-owl');
-      const wing = owl.querySelector('.owl-wing');
-      const opacity = () => Number(getComputedStyle(owl).opacity);
-      const idle = opacity();
-      const tick = () => window.ambientTurn.run();
-      const hero = scene.getBoundingClientRect();
-      const moonCenter = new DOMPoint(805, 102).matrixTransform(scene.querySelector('svg').getScreenCTM());
-
-      function fly(draws) {
-        Math.random = () => draws.shift();
-        tick();
-        const [glide] = owl.getAnimations();
-        const [flap] = wing.getAnimations();
-        glide.pause();
-        flap.pause();
-        const { delay, duration } = glide.effect.getTiming();
-        const wingbeat = flap.effect.getTiming().duration;
-        glide.currentTime = 0;
-        const before = opacity();
-        flap.currentTime = delay + wingbeat * .28;
-        const raisesWing = new DOMMatrix(getComputedStyle(wing).transform).m22 > 0;
-        flap.currentTime = delay + wingbeat * .43;
-        const lowersWing = new DOMMatrix(getComputedStyle(wing).transform).m22 < 0;
-        const positions = [.3, .5, .7].map((progress) => {
-          glide.currentTime = delay + duration * progress;
-          const bounds = owl.getBoundingClientRect();
-          const head = new DOMPoint(16, 0).matrixTransform(owl.getScreenCTM());
-          const tail = new DOMPoint(-13, 2).matrixTransform(owl.getScreenCTM());
-          return { bounds, visible: opacity() > .5, facesRight: head.x > tail.x };
-        });
-        const [first, middle, last] = positions;
-        const glidesRight = last.bounds.left > first.bounds.left;
-        glide.currentTime = delay + duration;
-        return {
-          duration, delay, before, after: opacity(), raisesWing, lowersWing, glidesRight,
-          dips: middle.bounds.top > Math.max(first.bounds.top, last.bounds.top) + 1,
-          facesForward: positions.every(({ facesRight }) => facesRight === glidesRight),
-          inLeftSky: positions.every(({ bounds, visible }) =>
-            visible && bounds.left >= hero.left && bounds.right < Math.min(hero.right, moonCenter.x)),
-        };
-      }
-
-      // Select the same speed draw twice to verify consecutive flights still differ.
-      const outbound = fly([.5, 0, 0, 0, 1, 1, 0, 0]);
-      Math.random = () => .99;
-      tick(); // Owl to river.
-      const inbound = fly([.5, 0, .9, 0, 0, 0, 0, .8]);
-      return { idle, outbound, inbound };
-    }), {
-      idle: 0,
-      outbound: {
-        duration: 6000, delay: 500, before: 0, after: 0, raisesWing: true, lowersWing: true,
-        glidesRight: true, dips: true, facesForward: true, inLeftSky: true,
-      },
-      inbound: {
-        duration: 7000, delay: 1500, before: 0, after: 0, raisesWing: true, lowersWing: true,
-        glidesRight: false, dips: false, facesForward: true, inLeftSky: true,
-      },
-    }, `viewport width ${width}`);
-  }
-
-  await page.setReducedMotion('reduce');
-  assert.deepEqual(await page.evaluate(() => {
-    const owl = document.querySelector('.sky-owl');
-    return { opacity: Number(getComputedStyle(owl).opacity), animations: owl.getAnimations({ subtree: true }).length };
-  }), { opacity: 0, animations: 0 });
-});
-
-test('the Moonlit Trail moon halo, stars, and fireflies hold their appearance between turns', async (t) => {
-  const page = await openCheckin(t, captureRotations);
-  await page.setReducedMotion('no-preference');
   await page.reload();
-  const results = await page.evaluate(async () => {
-    const tick = () => window.ambientTurn.run();
-    const frame = () => new Promise(requestAnimationFrame);
+  await settle(page);
+  const still = await page.evaluate(() => {
+    const canvas = document.querySelector('#graph');
+    const context = canvas.getContext('2d');
+    const stage = canvas.getBoundingClientRect();
+    const activeDays = [...document.querySelectorAll('.day[data-work]')];
+    const sampleAbove = (day) => {
+      const box = day.getBoundingClientRect();
+      return context.getImageData(Math.round(box.left + box.width / 2), Math.round(box.top - stage.top + 13), 1, 1).data[3];
+    };
+    return [sampleAbove(activeDays.at(-3)), sampleAbove(activeDays.at(-2))];
+  });
+  assert.ok(still[1] > still[0] + 15);
 
-    async function sampleTurns(selector, draw) {
-      const lights = [...document.querySelectorAll(selector)];
-      const sample = () => lights.map((light) => {
-        const { transform, opacity } = getComputedStyle(light);
-        return { transform, opacity };
-      });
-      async function waitForMotion(previous) {
-        let current = previous;
-        for (let i = 0; i < 30; i++) {
-          await frame();
-          current = sample();
-          if (current.some(({ transform, opacity }, index) =>
-            transform !== previous[index].transform || opacity !== previous[index].opacity)) break;
-        }
-        return current;
-      }
-
-      Math.random = () => draw;
-      const idle = sample();
+  const ripple = await page.evaluate(async () => {
+    const find = (selector) => document.querySelector(selector);
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const canvas = find('#graph');
+    const context = canvas.getContext('2d');
+    const stage = canvas.getBoundingClientRect();
+    const today = find('[aria-current="date"]');
+    const sample = () => {
+      const neighbours = [today.previousElementSibling, today.nextElementSibling];
+      return neighbours.reduce((sum, day) => {
+        const box = day.getBoundingClientRect();
+        const x = Math.round(box.left + box.width / 2);
+        const y = Math.round(box.top - stage.top + 21);
+        const rgba = context.getImageData(x - 2, y - 5, 5, 11).data;
+        return sum + rgba.reduce((total, value, index) => total + (index % 4 === 3 ? value : 0), 0);
+      }, 0);
+    };
+    today.click();
+    await frame();
+    const before = sample();
+    find('.log-row').click();
+    find('dialog [type="submit"]').click();
+    for (let tries = 0; find('dialog').open; tries++) {
+      if (tries === 90) throw new Error('Log save did not finish');
       await frame();
-      const stillIdle = sample();
-      tick();
-      const started = sample();
-      const moving = await waitForMotion(started);
-      tick();
-      const stopped = sample();
-      await frame();
-      await frame();
-      const holding = sample();
-      tick();
-      const resumed = sample();
-      const movingAgain = await waitForMotion(resumed);
-      Math.random = () => .99;
-      tick(); // Return to the river before sampling the next effect.
-      return { idle, stillIdle, started, moving, stopped, holding, resumed, movingAgain };
     }
-
-    return {
-      fireflies: await sampleTurns('.firefly', .99),
-      moon: await sampleTurns('.moon-halo', 0),
-      stars: await sampleTurns('.sky-star', .2),
-    };
+    window.advanceCheckin(140);
+    await frame();
+    return { before, after: sample() };
   });
-  for (const [effect, result] of Object.entries(results)) {
-    assert.deepEqual(result.stillIdle, result.idle, effect);
-    assert.deepEqual(result.started, result.idle, effect);
-    assert.notDeepEqual(result.moving, result.started, effect);
-    assert.deepEqual(result.stopped, result.moving, effect);
-    assert.deepEqual(result.holding, result.stopped, effect);
-    assert.deepEqual(result.resumed, result.holding, effect);
-    assert.notDeepEqual(result.movingAgain, result.resumed, effect);
-  }
-});
-
-test('wind hands off to longer, randomly paced cloud drifts on desktop and mobile', async (t) => {
-  const page = await openCheckin(t, captureRotations);
-  await page.setReducedMotion('no-preference');
-
-  for (const width of [1280, 320]) {
-    await page.setViewport(width, 800);
-    await page.reload();
-    const result = await page.evaluate(() => {
-      const scene = document.querySelector('.hero-scene');
-      const hero = scene.getBoundingClientRect();
-      const turn = window.ambientTurn.delay;
-      const tick = () => window.ambientTurn.run();
-      const pines = [...scene.querySelectorAll('.wind-pine use')];
-      const clouds = [...scene.querySelectorAll('.sky-cloud')];
-      const opacity = (element) => Number(getComputedStyle(element).opacity);
-      const at = (element, y) => new DOMPoint(0, y).matrixTransform(element.getScreenCTM());
-      const time = (element) => {
-        const [animation] = element.getAnimations();
-        animation.pause();
-        const { delay, duration } = animation.effect.getTiming();
-        return { delay, duration, seek: (progress) => { animation.currentTime = duration * progress; } };
-      };
-
-      const still = pines.map((pine) => at(pine, 0).x);
-      const cloudsHidden = clouds.every((cloud) => opacity(cloud) === 0);
-      Math.random = () => .6;
-      tick(); // River to wind.
-      const wind = scene.dataset.ambient;
-      const gusts = pines.map((pine, index) => {
-        const base = at(pine, 52);
-        const { delay, duration, seek } = time(pine);
-        seek(0);
-        const start = at(pine, 0).x;
-        seek(.24);
-        const lean = at(pine, 0).x - start;
-        const rooted = Math.abs(at(pine, 52).x - base.x) < .01;
-        seek(.43);
-        const recoils = at(pine, 0).x < start;
-        seek(1);
-        return {
-          visible: start > hero.left && start < hero.right && pine.getBBox().height > 0,
-          subtle: lean > 0 && lean < 8,
-          rooted, recoils,
-          seamless: delay === 0 && duration < turn && start === still[index] && at(pine, 0).x === start,
-        };
-      });
-
-      const firstDraws = [.6, 0, .99];
-      Math.random = () => firstDraws.shift();
-      tick(); // Wind to clouds.
-      const cloudEffect = scene.dataset.ambient;
-      const cloudTurn = window.ambientTurn.delay;
-      const pinesRest = pines.every((pine, index) =>
-        at(pine, 0).x === still[index] && pine.getAnimations().length === 0);
-      const drifts = clouds.map((cloud) => {
-        const { delay, duration, seek } = time(cloud);
-        seek(0);
-        const beginsHidden = opacity(cloud) === 0;
-        const start = cloud.getBoundingClientRect().left;
-        seek(9000 / duration);
-        const distance = cloud.getBoundingClientRect().left - start;
-        seek(.12);
-        const first = cloud.getBoundingClientRect();
-        const peak = opacity(cloud);
-        seek(.84);
-        const later = cloud.getBoundingClientRect();
-        const staysVisible = peak >= .3 && opacity(cloud) === peak && duration * (.84 - .12) >= 12_000;
-        seek(.97);
-        const fading = opacity(cloud) > 0 && opacity(cloud) < peak / 4;
-        seek(1);
-        return {
-          visible: later.left < hero.right && first.right > hero.left && staysVisible,
-          driftsRight: later.left > first.left,
-          seamless: delay === 0 && duration < cloudTurn && beginsHidden && fading && opacity(cloud) === 0,
-          duration, distance,
-        };
-      });
-      Math.random = () => .99;
-      tick(); // Clouds to river.
-      const cloudsRest = clouds.every((cloud) => opacity(cloud) === 0 && cloud.getAnimations().length === 0);
-      const riverTurn = window.ambientTurn.delay;
-
-      const secondDraws = [.8, .99, 0];
-      Math.random = () => secondDraws.shift();
-      tick(); // River to clouds, with the speeds swapped.
-      const laterDrifts = clouds.map((cloud) => {
-        const { duration, seek } = time(cloud);
-        seek(0);
-        const start = cloud.getBoundingClientRect().left;
-        seek(9000 / duration);
-        return { duration, distance: cloud.getBoundingClientRect().left - start };
-      });
-      return { cloudsHidden, wind, gusts, cloudEffect, cloudTurn, pinesRest, drifts, cloudsRest, riverTurn, laterDrifts };
-    });
-    assert.equal(result.wind, 'wind');
-    assert.equal(result.cloudEffect, 'clouds');
-    assert.ok(result.cloudsHidden && result.pinesRest && result.cloudsRest);
-    assert.ok(result.gusts.filter(({ visible }) => visible).length >= 2, `viewport width ${width}`);
-    assert.ok(result.gusts.every(({ subtle, rooted, recoils, seamless }) => subtle && rooted && recoils && seamless));
-    assert.ok(result.drifts.every(({ visible, driftsRight, seamless }) => visible && driftsRight && seamless));
-    assert.deepEqual(result.drifts.map(({ duration }) => duration), [18_000, 22_950]);
-    assert.deepEqual(result.laterDrifts.map(({ duration }) => duration), [22_950, 18_000]);
-    assert.ok(result.drifts[0].distance > result.laterDrifts[0].distance);
-    assert.ok(result.drifts[1].distance < result.laterDrifts[1].distance);
-    assert.equal(result.cloudTurn, 23_350);
-    assert.equal(result.riverTurn, 12_000);
-  }
-
-  await page.setReducedMotion('reduce');
-  assert.deepEqual(await page.evaluate(() => {
-    const scene = document.querySelector('.hero-scene');
-    scene.dataset.ambient = 'wind';
-    const wind = scene.querySelector('.wind-pine use').getAnimations().length;
-    scene.dataset.ambient = 'clouds';
-    const cloud = scene.querySelector('.sky-cloud');
-    return { wind, clouds: cloud.getAnimations().length, opacity: Number(getComputedStyle(cloud).opacity) };
-  }), { wind: 0, clouds: 0, opacity: 0 });
-});
-
-test('the Moonlit Trail motto rotates on the timer and stays the same on refresh', async (t) => {
-  const page = await openCheckin(t, captureRotations);
-  await page.setViewport(320, 800);
-  const ambientTitles = await page.evaluate(() => {
-    const title = document.querySelector('#page-title');
-    const first = title.textContent;
-    for (let tick = 0; tick < 24; tick++) window.ambientTurn.run();
-    return { first, afterAmbientTicks: title.textContent };
-  });
-  assert.equal(ambientTitles.first, 'Let effort lead.');
-  assert.equal(ambientTitles.afterAmbientTicks, ambientTitles.first);
-
-  await page.setReducedMotion('reduce');
-  const result = await page.evaluate(() => {
-    const title = document.querySelector('#page-title');
-    const lines = [...title.querySelectorAll('span, em')];
-    const heroRight = title.closest('.hero').getBoundingClientRect().right;
-    const readTitle = () => lines.map((line) => line.textContent).join(' ');
-    const first = readTitle();
-    const mottoTick = window.rotationTicks.get(300_000);
-    const mottos = [];
-    for (let tick = 0; tick < 10; tick++) {
-      mottos.push({
-        text: readTitle(),
-        fits: lines.every((line) => line.getClientRects().length === 1
-          && line.getBoundingClientRect().right <= heroRight),
-      });
-      mottoTick();
-    }
-    return { first, mottos, afterCycle: readTitle(), animations: title.getAnimations().length };
-  });
-  assert.equal(result.animations, 0);
-  assert.equal(result.mottos[1].text, 'The way forward.');
-  assert.equal(new Set(result.mottos.map(({ text }) => text)).size, 10);
-  assert.deepEqual(result.mottos.filter(({ fits }) => !fits), []);
-  assert.equal(result.afterCycle, result.first);
-
-  await page.evaluate(() => window.rotationTicks.get(300_000)());
-  await page.reload();
-  const readMotto = () => document.querySelector('#page-title').textContent;
-  assert.equal(await page.evaluate(readMotto), 'The way forward.');
-  await page.evaluate(() => window.rotationTicks.get(300_000)());
-  assert.equal(await page.evaluate(readMotto), 'One step at a time.');
-  await page.reload();
-  assert.equal(await page.evaluate(readMotto), 'One step at a time.');
-
-  const url = await page.evaluate(() => location.href);
-  await page.navigate('about:blank');
-  await page.navigate(url);
-  assert.equal(await page.evaluate(readMotto), result.first);
-});
-
-test('the page title fades out before changing mottos and fades back in', async (t) => {
-  const page = await openCheckin(t, captureRotations);
-  await page.setReducedMotion('no-preference');
-  const result = await page.evaluate(async () => {
-    const title = document.querySelector('#page-title');
-    const readTitle = () => ({ text: title.textContent, opacity: Number(getComputedStyle(title).opacity) });
-    const before = readTitle();
-    const rotation = window.rotationTicks.get(300_000)();
-    const [fadeOut] = title.getAnimations();
-    fadeOut.currentTime = fadeOut.effect.getTiming().duration / 2;
-    const fadingOut = readTitle();
-    fadeOut.finish();
-    await rotation;
-    const [fadeIn] = title.getAnimations();
-    fadeIn.currentTime = 0;
-    const swapped = readTitle();
-    fadeIn.currentTime = fadeIn.effect.getTiming().duration / 2;
-    const fadingIn = readTitle();
-    fadeIn.finish();
-    return { before, fadingOut, swapped, fadingIn, after: readTitle() };
-  });
-
-  assert.deepEqual(result.before, { text: 'Let effort lead.', opacity: 1 });
-  assert.equal(result.fadingOut.text, result.before.text);
-  assert.ok(result.fadingOut.opacity > 0 && result.fadingOut.opacity < 1);
-  assert.deepEqual(result.swapped, { text: 'The way forward.', opacity: 0 });
-  assert.equal(result.fadingIn.text, result.swapped.text);
-  assert.ok(result.fadingIn.opacity > 0 && result.fadingIn.opacity < 1);
-  assert.deepEqual(result.after, { text: result.swapped.text, opacity: 1 });
-});
-
-test('partial work counts without a daily score and survives reload', async (t) => {
-  const page = await openCheckin(t);
-  const layout = await page.evaluate(() => ({
-    hasHeader: Boolean(document.querySelector('.shell > header, #sound')),
-    hasFooter: Boolean(document.querySelector('.shell > footer')),
-    heroTop: document.querySelector('.hero').getBoundingClientRect().top,
-  }));
-  assert.equal(layout.hasHeader, false);
-  assert.equal(layout.hasFooter, false);
-  assert.ok(layout.heroTop > 0 && layout.heroTop <= 24);
-
-  const saved = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    find('#new-goal').value = 'Guitar';
-    find('#add-goal').click();
-    const minutes = find('[aria-label="Optional minutes for Guitar"]');
-    minutes.value = '0';
-    find('#save').click();
-    const validation = find('#feedback').textContent;
-    minutes.value = '20';
-    find('#save').click();
-    return {
-      validation,
-      feedback: find('#feedback').textContent,
-      dayStatus: find('[data-selected]').dataset.status,
-      hasDayMark: Boolean(find('[data-selected] .day-mark')),
-      week: find('#week-goals').textContent,
-      glowed: Boolean(find('#trail-waypoints .trail-glow')),
-    };
-  });
-  assert.deepEqual(saved, {
-    validation: 'Enter whole minutes from 1 to 1440, or leave minutes blank.',
-    feedback: 'Check-in saved.',
-    dayStatus: 'work',
-    hasDayMark: false,
-    week: 'Guitar · 1 day',
-    glowed: true,
-  });
-
-  await page.reload();
-  const reloaded = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const day = find('[data-selected]');
-    const state = {
-      dayStatus: day.dataset.status,
-      hasDayMark: Boolean(day.querySelector('.day-mark')),
-      workLabel: day.getAttribute('aria-label').endsWith(', work logged'),
-      progress: find('[aria-label="Progress for Guitar"]').value,
-      minutes: find('[aria-label="Optional minutes for Guitar"]').valueAsNumber,
-      score: find('#score').value,
-      summary: find('#journal-copy').textContent,
-      week: find('#week-goals').textContent,
-    };
-    find('#save').click();
-    return { ...state, feedback: find('#feedback').textContent, glowed: Boolean(find('.trail-glow')) };
-  });
-  assert.deepEqual(reloaded, {
-    dayStatus: 'work', hasDayMark: false, workLabel: true,
-    progress: 'worked', minutes: 20, score: '', summary: 'You put 20 min into “Guitar”.',
-    week: 'Guitar · 1 day', feedback: 'Check-in saved.', glowed: false,
-  });
-});
-
-test('daily lap lengths and durations persist while a distance goal spans a change of unit', async (t) => {
-  const page = await openCheckin(t, () => {
-    const fixed = new Date(2026, 10, 11, 12).getTime();
-    window.Date = class extends Date {
-      constructor(...args) { super(...(args.length ? args : [fixed])); }
-      static now() { return fixed; }
-    };
-  });
-  const saved = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const set = (selector, value) => {
-      const field = find(selector);
-      field.value = value;
-      field.dispatchEvent(new Event('input'));
-      field.dispatchEvent(new Event('change'));
-    };
-    const click = (selector) => find(selector).click();
-    const progress = () => find('#activity-goals-list strong').textContent;
-    const addRunning = () => {
-      set('#new-goal', 'Running');
-      click('#add-goal');
-    };
-    set('#pin-name', 'Running');
-    click('#pin-form button');
-    click('#pinned-list [data-tracking]');
-    set('#measurement-mode', 'custom');
-    set('#measurement-unit', 'laps');
-    set('#measurement-factor', '400');
-    click('#measurement-form button');
-    const activitySettings = find('#activity-settings');
-    const settingsCopy = {
-      hasGoalControls: /\bgoals?\b/i.test(activitySettings.textContent),
-      saveLabel: find('#measurement-form button').textContent,
-    };
-    click('#close-activity-settings');
-    click('#open-goal-settings');
-    const goalOptions = Array.from(find('#goal-activity-options').options, ({ value }) => value);
-    set('#goal-activity', 'Running');
-    set('#activity-goal-metric', 'amount');
-    const defaultGoalUnit = find('#activity-goal-unit').value;
-    set('#activity-goal-amount', '2');
-    set('#activity-goal-unit', 'km');
-    set('#activity-goal-repeat', 'range');
-    set('#activity-goal-start', '2026-11-09');
-    set('#activity-goal-end', '2026-11-11');
-    click('#activity-goal-form button');
-    click('#close-goal-settings');
-
-    click('[data-day="9"]');
-    addRunning();
-    set('[data-amount]', '1');
-    set('[data-minutes]', '5');
-    const preview = find('.daily-metrics').textContent;
-    click('#save');
-    const firstProgress = progress();
-
-    click('[data-day="10"]');
-    addRunning();
-    set('[data-amount]', '2');
-    set('[data-minutes]', '10');
-    click('.daily-distance summary');
-    set('[data-factor]', '500');
-    click('#save');
-    const secondProgress = progress();
-
-    click('#pinned-list [data-tracking]');
-    set('#measurement-unit', 'km');
-    click('#measurement-form button');
-    click('#close-activity-settings');
-    click('#today');
-    addRunning();
-    set('[data-amount]', '0.6');
-    click('#save');
-    return { settingsCopy, goalOptions, defaultGoalUnit, preview, firstProgress, secondProgress, completed: progress() };
-  });
-  assert.deepEqual(saved, {
-    settingsCopy: { hasGoalControls: false, saveLabel: 'Save activity settings' },
-    goalOptions: ['Running'], defaultGoalUnit: 'laps', preview: '400 m · 12:30 min/km', firstProgress: '0.4 / 2 km',
-    secondProgress: '1.4 / 2 km', completed: '2 / 2 km',
-  });
-
-  await page.reload();
-  const reloaded = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const today = find('#journal-copy').textContent;
-    find('[data-day="9"]').click();
-    const first = find('#journal-copy').textContent;
-    const factor = find('[data-factor]').valueAsNumber;
-    find('[data-day="10"]').click();
-    return {
-      today, first, factor, second: find('#journal-copy').textContent,
-      secondFactor: find('[data-factor]').valueAsNumber,
-      completed: find('#activity-goals-list strong').textContent,
-    };
-  });
-  assert.deepEqual(reloaded, {
-    today: 'Running · 0.6 km', first: 'Running · 1 lap · 5 min · 400 m · 12:30 min/km', factor: 400,
-    second: 'Running · 2 laps · 10 min · 1 km · 10:00 min/km', secondFactor: 500, completed: '2 / 2 km',
-  });
-  await page.setViewport(360, 720);
-  assert.deepEqual(await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    find('#activity-goals-list button').click();
-    find('#goal-activity').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
-    const dialog = find('#goal-settings');
-    const rect = dialog.getBoundingClientRect();
-    return {
-      withinViewport: rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
-      fitsWidth: dialog.scrollWidth === dialog.clientWidth,
-      visible: dialog.matches(':modal'),
-      editing: document.activeElement.id === 'activity-goal-metric',
-    };
-  }), { withinViewport: true, fitsWidth: true, visible: true, editing: true });
-});
-
-test('a weekly days goal counts a check-in with no amount and preserves progress when replaced', async (t) => {
-  const page = await openCheckin(t, () => {
-    const fixed = new Date(2026, 10, 11, 12).getTime();
-    window.Date = class extends Date {
-      constructor(...args) { super(...(args.length ? args : [fixed])); }
-      static now() { return fixed; }
-    };
-  });
-  const result = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const click = (selector) => find(selector).click();
-    const progress = () => find('#activity-goals-list strong').textContent;
-    click('[data-day="9"]');
-    find('#new-goal').value = 'Strength';
-    click('#add-goal');
-    click('#open-goal-settings');
-    find('#goal-activity').value = 'Strength';
-    find('#goal-activity').dispatchEvent(new Event('input'));
-    find('#activity-goal-amount').value = '3';
-    click('#activity-goal-form button');
-    click('#close-goal-settings');
-    click('#save');
-    const first = progress();
-    click('#today');
-    click('#activity-goals-list button');
-    click('#new-activity-goal summary');
-    find('#activity-goal-amount').value = '2';
-    click('#activity-goal-form button');
-    const overlap = find('#activity-goal-feedback').textContent;
-    click('#tracking-goals-list button');
-    click('#activity-goal-form button');
-    click('#close-goal-settings');
-    const replacement = progress();
-    click('[data-day="9"]');
-    const historical = progress();
-
-    find('#new-goal').value = 'Reading';
-    click('#add-goal');
-    click('#open-goal-settings');
-    find('#goal-activity').value = 'Reading';
-    find('#goal-activity').dispatchEvent(new Event('input'));
-    find('#activity-goal-repeat').value = 'week';
-    find('#activity-goal-repeat').dispatchEvent(new Event('change'));
-    find('#activity-goal-amount').value = '3';
-    click('#activity-goal-form button');
-    click('#close-goal-settings');
-    return {
-      first, overlap, replacement, historical,
-      oneWeek: Array.from(document.querySelectorAll('#activity-goals-list small'), (item) => item.textContent),
-    };
-  });
-  assert.deepEqual(result, {
-    first: '1 / 3 days',
-    overlap: 'This activity already has a goal in that period. Choose different dates or end the existing goal.',
-    replacement: '0 / 2 days', historical: '1 / 3 days',
-    oneWeek: ['Nov 9, 2026 – Nov 15, 2026', 'Nov 9, 2026 – Nov 10, 2026'],
-  });
-});
-
-test('legacy scores, notes, and checklist entries load and can still be edited', async (t) => {
-  const page = await openCheckin(t);
-  await page.evaluate(() => {
-    const today = new Date();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    localStorage.setItem(`checkin.day.${today.getFullYear()}-${month}-${day}`, JSON.stringify({
-      score: 75, notes: 'Synthetic test note',
-      goals: [{ text: 'Guitar', done: true }, { text: 'Writing', done: false }],
-    }));
-  });
-  await page.reload();
-  const readEntry = () => {
-    const find = (selector) => document.querySelector(selector);
-    find('#details summary').click();
-    return {
-      score: find('#score').valueAsNumber,
-      note: find('#notes').value,
-      guitar: find('[aria-label="Progress for Guitar"]').value,
-      writing: find('[aria-label="Progress for Writing"]').value,
-      week: Array.from(document.querySelectorAll('#week-goals li'), (item) => item.textContent),
-    };
-  };
-  const entry = await page.evaluate(readEntry);
-  assert.deepEqual(entry, {
-    score: 75, note: 'Synthetic test note', guitar: 'done', writing: 'open', week: ['Guitar · 1 day'],
-  });
-
-  const staged = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    find('#complete').click();
-    return {
-      score: find('#score').valueAsNumber,
-      writing: find('[aria-label="Progress for Writing"]').value,
-      week: find('#week-goals').textContent,
-      focus: document.activeElement.id,
-    };
-  });
-  assert.deepEqual(staged, { score: 100, writing: 'done', week: 'Guitar · 1 day', focus: 'save' });
-  await page.evaluate(() => document.querySelector('#save').click());
-  await page.reload();
-  assert.deepEqual(await page.evaluate(readEntry), {
-    ...entry, score: 100, writing: 'done', week: ['Guitar · 1 day', 'Writing · 1 day'],
-  });
-});
-
-test('check-in and activity feedback clear independently and a new message resets its timer', async (t) => {
-  const page = await openCheckin(t);
-  const messages = await page.evaluate(async () => {
-    const find = (selector) => document.querySelector(selector);
-    const checkin = find('#feedback');
-    const activity = find('#pin-feedback');
-    const waitForClear = (element) => new Promise((resolve) => {
-      const observer = new MutationObserver(() => {
-        if (element.textContent) return;
-        observer.disconnect();
-        resolve();
-      });
-      observer.observe(element, { childList: true });
-    });
-
-    find('#score').value = '75';
-    find('#save').click();
-    find('#pin-name').value = 'Guitar';
-    find('#pin-form button').click();
-    const initial = [checkin.innerText, activity.innerText];
-    const checkinCleared = waitForClear(checkin);
-    const activityCleared = waitForClear(activity);
-
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    find('#pinned-list [data-edit]').click();
-    const unpinnedAt = performance.now();
-    find('#unpin-activity').click();
-    const afterUnpin = activity.innerText;
-    await checkinCleared;
-    const afterCheckinCleared = [checkin.innerText, activity.innerText];
-    await activityCleared;
-    return { initial, afterUnpin, afterCheckinCleared, final: activity.innerText, elapsed: performance.now() - unpinnedAt };
-  });
-  const { elapsed, ...visibleMessages } = messages;
-  assert.ok(elapsed >= 3900, `Unpin feedback cleared after ${elapsed} ms`);
-  assert.deepEqual(visibleMessages, {
-    initial: ['Check-in saved.', 'Guitar is pinned.'],
-    afterUnpin: 'Activity unpinned.',
-    afterCheckinCleared: ['', 'Activity unpinned.'],
-    final: '',
-  });
-
-  await page.reload();
-  assert.deepEqual(await page.evaluate(() => ({
-    score: document.querySelector('#score').value,
-    pinned: JSON.parse(localStorage.getItem('checkin.pinned.guitar')).pinned,
-  })), { score: '75', pinned: false });
-});
-
-test('an optional score can be saved as zero or cleared from a narrow check-in', async (t) => {
-  const page = await openCheckin(t);
-  await page.setViewport(360, 800);
-  assert.deepEqual(await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const save = find('#save');
-    const { left, right } = save.getBoundingClientRect();
-    const score = find('#score');
-    score.value = '101';
-    save.click();
-    const error = find('#feedback').textContent;
-    const scoreFocused = document.activeElement === score && find('#details').open;
-    score.value = '0';
-    save.click();
-    return { fits: left >= 0 && right <= innerWidth, error, scoreFocused, mark: find('[data-selected] .day-mark').textContent };
-  }), {
-    fits: true, error: 'Enter a whole score from 0 to 100, or leave it blank.', scoreFocused: true,
-    mark: '0%',
-  });
-
-  await page.reload();
-  assert.deepEqual(await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const score = find('#score');
-    const reloaded = score.value;
-    find('#details summary').click();
-    score.value = '';
-    find('#save').click();
-    return { reloaded, feedback: find('#feedback').textContent, mark: find('[data-selected]').dataset.status ?? null };
-  }), { reloaded: '0', feedback: 'Check-in cleared.', mark: null });
-});
-
-test('an older plan can be edited without leaving the selected date or losing its draft', async (t) => {
-  const page = await openCheckin(t);
-  await page.evaluate(() => {
-    const today = new Date();
-    const past = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 10);
-    const month = String(past.getMonth() + 1).padStart(2, '0');
-    const day = String(past.getDate()).padStart(2, '0');
-    localStorage.setItem(`checkin.day.${past.getFullYear()}-${month}-${day}`, JSON.stringify({
-      score: 40, notes: 'Older note', goals: [{ text: 'Writing', done: false, worked: true }],
-      nextPlan: 'After coffee, write for 15 minutes with music.',
-    }));
-  });
-  await page.reload();
-  const backdated = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const previousDay = find('#selected-date').textContent;
-    const suggestion = find('#goal-options option').value;
-    const emptyWeek = find('#week-empty').textContent;
-    find('#new-goal').value = suggestion;
-    find('#add-goal').click();
-    find('#details summary').click();
-    find('#notes').value = 'Draft for today';
-    find('#edit-plan').click();
-    const initial = {
-      reminder: find('#next-plan').value,
-      modal: find('#plan-editor').matches(':modal'),
-      earlierDate: find('#plan-date').textContent !== previousDay,
-      focus: document.activeElement.id,
-    };
-    find('#next-plan').value = 'After coffee, outline the next chapter.';
-    find('#plan-editor button[type="submit"]').click();
-    const draft = {
-      sameDay: find('#selected-date').textContent === previousDay,
-      notes: find('#notes').value,
-      work: find('[aria-label="Progress for Writing"]').value,
-      week: find('#week-empty').textContent,
-    };
-    find('#save').click();
-    return { initial, suggestion, emptyWeek, draft };
-  });
-  assert.deepEqual(backdated, {
-    initial: {
-      reminder: 'After coffee, write for 15 minutes with music.', modal: true, earlierDate: true, focus: 'next-plan',
-    },
-    suggestion: 'Writing', emptyWeek: 'No activity logged this week.',
-    draft: { sameDay: true, notes: 'Draft for today', work: 'worked', week: 'No activity logged this week.' },
-  });
-  await page.reload();
-  assert.deepEqual(await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const notes = find('#notes').value;
-    find('#edit-plan').click();
-    const plan = find('#next-plan').value;
-    const date = find('#plan-date').textContent;
-    find('#next-plan').value = 'Discard this draft';
-    find('#cancel-plan-edit').click();
-    const day = new Date(date);
-    if (day.getMonth() !== new Date().getMonth()) find('#previous').click();
-    find(`[data-day="${day.getDate()}"]`).click();
-    find('#edit-plan').click();
-    const previousPlan = find('#next-plan').value;
-    find('#cancel-plan-edit').click();
-    return {
-      notes, plan, previousPlan, previousNotes: find('#notes').value, previousScore: find('#score').valueAsNumber,
-      previousWork: find('[aria-label="Progress for Writing"]').value,
-    };
-  }), {
-    notes: 'Draft for today', plan: 'After coffee, outline the next chapter.',
-    previousPlan: 'After coffee, outline the next chapter.', previousNotes: 'Older note',
-    previousScore: 40, previousWork: 'worked',
-  });
-});
-
-test('dashboard titles align across columns and share sizing with modal titles', async (t) => {
-  const page = await openCheckin(t);
-  await page.setReducedMotion('reduce');
-  await page.evaluate(async () => {
-    const { dayKey } = await import('/calendar.js');
-    localStorage.setItem(`checkin.day.${dayKey(new Date())}`, JSON.stringify({
-      score: null, notes: '', goals: [], nextPlan: 'Saved plan',
-    }));
-    localStorage.setItem('checkin.pinned.guitar', JSON.stringify({ text: 'Guitar', pinned: true }));
-  });
-  await page.reload();
-
-  const readTitles = () => {
-    const find = (selector) => document.querySelector(selector);
-    const readHeading = (panel) => {
-      const heading = panel.querySelector('h2');
-      const panelBox = panel.getBoundingClientRect();
-      const text = document.createRange();
-      text.selectNodeContents(heading);
-      const textTop = text.getClientRects()[0].top;
-      return {
-        title: heading.innerText.trim(),
-        namedByHeading: document.getElementById(panel.getAttribute('aria-labelledby')) === heading,
-        fontSize: getComputedStyle(heading).fontSize,
-        leftInset: heading.getBoundingClientRect().left - panelBox.left,
-        textTop,
-        topInset: textTop - panelBox.top,
-      };
-    };
-    const panels = Array.from(document.querySelectorAll('.dashboard .card'), readHeading);
-    const modals = [
-      '#edit-plan',
-      '#pinned-list [data-edit]',
-      '#pinned-list [data-tracking]',
-      '#open-goal-settings',
-      '#open-backup',
-    ].map((trigger) => {
-      find(trigger).click();
-      const dialog = find('dialog:modal');
-      if (!dialog) throw new Error(`No modal opened from ${trigger}`);
-      const heading = readHeading(dialog);
-      dialog.querySelector('.dialog-header button').click();
-      return heading;
-    });
-    return { panels, modals };
-  };
-
-  for (const [width, columns] of [[1280, 3], [900, 2], [320, 1]]) {
-    await page.setViewport(width, 900);
-    const { panels, modals } = await page.evaluate(readTitles);
-    assert.equal(panels.length, 4);
-    assert.ok(panels[0].title);
-    assert.deepEqual(panels.slice(1).map(({ title }) => title), ['Daily check-in', 'Activities', 'Goals']);
-    for (const { title, topInset } of panels) {
-      assert.equal(topInset, panels[0].topInset, title);
-    }
-    for (const { title, textTop } of panels.slice(0, columns)) {
-      assert.equal(textTop, panels[0].textTop, title);
-    }
-    assert.deepEqual(modals.map(({ title }) => title), [
-      'Previous plan', 'Activity plan for Guitar', 'Activity settings for Guitar', 'Goal settings', 'Backup & restore',
-    ]);
-    for (const { title, namedByHeading, fontSize, leftInset } of [...panels, ...modals]) {
-      assert.ok(namedByHeading, title);
-      assert.equal(fontSize, '25px', title);
-      assert.equal(leftInset, 21, title);
-    }
-  }
-});
-
-test('modal titles use an ellipsis at the character limit or when space runs out', async (t) => {
-  const page = await openCheckin(t);
-  const { exactFit, longName } = await page.evaluate(() => {
-    const exactFit = 'i'.repeat(14);
-    const longName = `${'i'.repeat(12)}👩‍🎨abcdefghijklmnop`;
-    const input = document.querySelector('#pin-name');
-    for (const name of [exactFit, longName]) {
-      input.value = name;
-      document.querySelector('#pin-form button').click();
-    }
-    return { exactFit, longName };
-  });
-
-  const readTitles = () => Array.from(document.querySelectorAll('#pinned-list li')).flatMap((row) =>
-    Array.from(row.querySelectorAll('button')).map((trigger) => {
-      trigger.click();
-      const dialog = document.querySelector('dialog:modal');
-      const header = dialog.querySelector('.dialog-header');
-      const heading = header.querySelector('h2');
-      const close = header.querySelector('button');
-      const style = getComputedStyle(heading);
-      const result = {
-        title: heading.innerText,
-        fullTitle: heading.title,
-        accessibleTitle: heading.getAttribute('aria-label') ?? heading.textContent,
-        singleLine: style.whiteSpace === 'nowrap' && style.overflowX === 'hidden' && style.textOverflow === 'ellipsis',
-        clipped: heading.scrollWidth > heading.clientWidth,
-        closeFits: close.getBoundingClientRect().right <= dialog.getBoundingClientRect().right,
-      };
-      close.click();
-      return result;
-    }));
-
-  await page.setViewport(1280, 900);
-  const desktop = await page.evaluate(readTitles);
-  const expectedTitles = new Map([
-    [`Activity plan for ${exactFit}`, `Activity plan for ${exactFit}`],
-    [`Activity settings for ${exactFit}`, `Activity settings for ${'i'.repeat(9)}…`],
-    [`Activity plan for ${longName}`, `Activity plan for ${'i'.repeat(12)}👩‍🎨…`],
-    [`Activity settings for ${longName}`, `Activity settings for ${'i'.repeat(9)}…`],
-  ]);
-  assert.equal(desktop.length, expectedTitles.size);
-  for (const result of desktop) {
-    assert.equal(result.title, expectedTitles.get(result.fullTitle));
-    assert.equal(result.accessibleTitle, result.fullTitle);
-    assert.ok(result.singleLine && result.closeFits);
-    assert.equal(result.clipped, false);
-  }
-
-  await page.setViewport(320, 800);
-  const mobile = await page.evaluate(readTitles);
-  assert.ok(mobile.some((result) => result.clipped));
-  assert.deepEqual(mobile.map(({ clipped, ...result }) => result), desktop.map(({ clipped, ...result }) => result));
-});
-
-test('both editors dismiss via their centered close icon or backdrop and discard drafts', async (t) => {
-  const page = await openCheckin(t);
-  await page.setViewport(360, 800);
-  await page.evaluate(() => {
-    const today = new Date();
-    const date = [today.getFullYear(), today.getMonth() + 1, today.getDate()]
-      .map((part) => String(part).padStart(2, '0')).join('-');
-    localStorage.setItem(`checkin.day.${date}`, JSON.stringify({
-      score: null, notes: '', goals: [], nextPlan: 'Saved plan',
-    }));
-    localStorage.setItem('checkin.pinned.guitar', JSON.stringify({ text: 'Guitar', pinned: true, plan: 'Saved plan' }));
-  });
-  await page.reload();
-
-  const openEditors = [
-    () => document.querySelector('#edit-plan').click(),
-    () => document.querySelector('#pinned-list [data-edit]').click(),
-  ];
-  const readPlan = () => document.querySelector('dialog[open] textarea').value;
-  const modalIsOpen = () => Boolean(document.querySelector('dialog:modal'));
-
-  for (const open of openEditors) {
-    await page.evaluate(open);
-    const { centered, closeX, closeY, insideX, insideY } = await page.evaluate(() => {
-      const dialog = document.querySelector('dialog:modal');
-      const button = dialog.querySelector('.dialog-header button');
-      const dialogBox = dialog.getBoundingClientRect();
-      const buttonBox = button.getBoundingClientRect();
-      const iconBox = button.querySelector('svg').getBoundingClientRect();
-      const closeX = buttonBox.x + buttonBox.width / 2;
-      const closeY = buttonBox.y + buttonBox.height / 2;
-      dialog.querySelector('textarea').value = 'Discard via backdrop';
-      return {
-        centered: Math.abs(closeX - iconBox.x - iconBox.width / 2) < 1
-          && Math.abs(closeY - iconBox.y - iconBox.height / 2) < 1,
-        closeX, closeY, insideX: dialogBox.left + 8, insideY: dialogBox.top + dialogBox.height / 2,
-      };
-    });
-    assert.ok(centered);
-    await page.clickAt(insideX, insideY);
-    assert.equal(await page.evaluate(modalIsOpen), true);
-    await page.clickAt(2, 2);
-    assert.equal(await page.evaluate(modalIsOpen), false);
-
-    await page.evaluate(open);
-    assert.equal(await page.evaluate(readPlan), 'Saved plan');
-    await page.evaluate(() => { document.querySelector('dialog[open] textarea').value = 'Discard via close button'; });
-    await page.clickAt(closeX, closeY);
-    assert.equal(await page.evaluate(modalIsOpen), false);
-
-    await page.reload();
-    await page.evaluate(open);
-    assert.equal(await page.evaluate(readPlan), 'Saved plan');
-    await page.clickAt(2, 2);
-  }
-});
-
-test('pinned activities remain in the shared picker while time-bound goals have their own panel', async (t) => {
-  const page = await openCheckin(t);
-  await page.setViewport(1280, 900);
-  await page.setReducedMotion('reduce');
-  const staged = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const panel = find('.journal-card');
-    const saveOffset = () => find('#save').offsetTop;
-    const initialOffset = saveOffset();
-    function pinWithPlan(text, plan, fallback = '', pickup = '') {
-      find('#pin-name').value = text;
-      find('#pin-form button').click();
-      find(`li:has([aria-label="Activity settings for ${text}"]) [data-edit]`).click();
-      find('#activity-plan').value = plan;
-      find('#activity-fallback').value = fallback;
-      find('#activity-pickup').value = pickup;
-      find('#activity-editor button[type="submit"]').click();
-    }
-    pinWithPlan('Guitar', 'After dinner, play the chorus.', 'If I get home late, play it once.', 'Start at bar 9.');
-    pinWithPlan('Writing', 'After coffee, draft a paragraph.');
-    const sidebar = find('.activities-card').getBoundingClientRect();
-    const journal = panel.getBoundingClientRect();
-    const [first, second] = find('#pinned-list').children;
-    const layout = {
-      unchangedOffset: saveOffset() === initialOffset,
-      formCount: panel.querySelectorAll('form').length,
-      submitCount: panel.querySelectorAll('[type="submit"]').length,
-      activitiesSeparate: Boolean(find('.activities-card #pin-form')),
-      goalsSeparate: Boolean(find('.activities-card + .activity-goals-card #activity-goals-title')),
-      weekByCalendar: Boolean(find('.calendar-card #week-goals')),
-      calendarStartsWithMonth: Boolean(find('.calendar-card > :first-child #calendar-title')?.innerText.trim()),
-      detailsCollapsed: !find('#details').open,
-      options: Array.from(find('#new-goal').list.options, ({ value }) => value),
-      sidebar: sidebar.left >= journal.right && Math.abs(sidebar.top - journal.top) < 1,
-      vertical: second.offsetTop > first.offsetTop,
-      firstRow: first.textContent.trim(),
-      rowButtons: first.querySelectorAll('button').length,
-      planIcon: first.querySelector('[data-edit] use').getAttribute('href'),
-      planLabel: first.querySelector('[data-edit]').getAttribute('aria-label'),
-      planTooltip: first.querySelector('[data-edit]').title,
-      trackingIcon: first.querySelector('[data-tracking] use').getAttribute('href'),
-      trackingLabel: first.querySelector('[data-tracking]').getAttribute('aria-label'),
-    };
-    find('#new-goal').value = layout.options[1];
-    find('#add-goal').click();
-    find('#new-goal').value = 'writing';
-    find('#add-goal').click();
-    const beforeSave = {
-      rows: find('#goal-list').childElementCount,
-      progress: find('[aria-label="Progress for Writing"]').value,
-      workMark: find('[data-selected]').dataset.status ?? null,
-    };
-    find('#save').click();
-    const shortcut = find('#pickup-suggestions button');
-    shortcut.click();
-    const pickupFocus = document.activeElement.id;
-    find('#activity-pickup').value = 'Continue the opening paragraph.';
-    find('#activity-editor button[type="submit"]').click();
-    return { ...beforeSave, layout, feedback: find('#feedback').textContent, pickupFocus };
-  });
-  assert.deepEqual(staged, {
-    rows: 1, progress: 'worked', workMark: null, feedback: 'Next step and note saved.',
-    pickupFocus: 'activity-pickup',
-    layout: {
-      unchangedOffset: true, formCount: 1, submitCount: 1, activitiesSeparate: true, goalsSeparate: true, weekByCalendar: true,
-      calendarStartsWithMonth: true,
-      detailsCollapsed: true, options: ['Guitar', 'Writing'],
-      sidebar: true, vertical: true, firstRow: 'Guitar', rowButtons: 2, planIcon: '#pen', trackingIcon: '#tracking-icon',
-      planLabel: 'Activity plan', planTooltip: 'Activity plan',
-      trackingLabel: 'Activity settings for Guitar',
-    },
-  });
-
-  await page.reload();
-  const reloaded = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    find('li:has([aria-label="Activity settings for Guitar"]) [data-edit]').click();
-    const guitar = {
-      guitarPlan: find('#activity-plan').value,
-      fallback: find('#activity-fallback').value,
-      pickup: find('#activity-pickup').value,
-      dialogOpen: find('#activity-editor').matches(':modal'),
-      dialogTitle: document.getElementById(find('#activity-editor').getAttribute('aria-labelledby')).textContent,
-    };
-    find('#cancel-activity-edit').click();
-    find('li:has([aria-label="Activity settings for Writing"]) [data-edit]').click();
-    return {
-      ...guitar,
-      writingPlan: find('#activity-plan').value,
-      writingPickup: find('#activity-pickup').value,
-      workMark: find('[data-selected]').dataset.status,
-    };
-  });
-  assert.deepEqual(reloaded, {
-    guitarPlan: 'After dinner, play the chorus.', fallback: 'If I get home late, play it once.',
-    pickup: 'Start at bar 9.', dialogOpen: true, dialogTitle: 'Activity plan for Guitar',
-    writingPlan: 'After coffee, draft a paragraph.',
-    writingPickup: 'Continue the opening paragraph.', workMark: 'work',
-  });
-
-  await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    find('#cancel-activity-edit').click();
-    find('li:has([aria-label="Activity settings for Guitar"]) [data-edit]').click();
-    find('#complete-activity-plan').click();
-    find('li:has([aria-label="Activity settings for Writing"]) [data-edit]').click();
-    find('#activity-plan').value = 'After lunch, draft a paragraph.';
-    find('#activity-editor button[type="submit"]').click();
-    find('li:has([aria-label="Activity settings for Guitar"]) [data-edit]').click();
-    find('#unpin-activity').click();
-  });
-  await page.reload();
-  const changes = await page.evaluate(() => {
-    const find = (selector) => document.querySelector(selector);
-    const openGoal = (name) => find(`li:has([aria-label="Activity settings for ${name}"]) [data-edit]`).click();
-    const unpinned = !find('li:has([aria-label="Activity settings for Guitar"]) [data-edit]')
-      && !Array.from(find('#goal-options').options).some(({ value }) => value === 'Guitar');
-    openGoal('Writing');
-    const rescheduled = find('#activity-plan').value;
-    find('#dismiss-activity-plan').click();
-    openGoal('Writing');
-    const writingPlan = find('#activity-plan').value;
-    find('#cancel-activity-edit').click();
-    find('#pin-name').value = 'Guitar';
-    find('#pin-form button').click();
-    openGoal('Guitar');
-    return {
-      unpinned, rescheduled, writingPlan,
-      guitarPlan: find('#activity-plan').value,
-      guitarFallback: find('#activity-fallback').value,
-      pickup: find('#activity-pickup').value,
-      completeHidden: find('#complete-activity-plan').hidden,
-    };
-  });
-  assert.deepEqual(changes, {
-    unpinned: true, rescheduled: 'After lunch, draft a paragraph.', writingPlan: '', guitarPlan: '',
-    guitarFallback: '', pickup: 'Start at bar 9.', completeHidden: true,
-  });
-
-  await page.evaluate(() => document.querySelector('#cancel-activity-edit').click());
-  await page.setViewport(360, 800);
-  assert.equal(await page.evaluate(() => {
-    const journal = document.querySelector('.journal-card').getBoundingClientRect();
-    const sidebar = document.querySelector('.activities-card').getBoundingClientRect();
-    return sidebar.top >= journal.bottom && sidebar.left === journal.left && sidebar.right === journal.right;
-  }), true);
+  assert.ok(ripple.after > ripple.before + 100);
 });

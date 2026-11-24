@@ -3,390 +3,69 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A little daily ritual for the goals that matter to you.">
-  <meta name="theme-color" content="#15171d">
-  <title>Checkin · Your daily quest</title>
-  <link rel="icon" href="mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css">
-  <script type="module" src="app.js"></script>
+  <meta name="theme-color" content="#101119">
+  <title>Checkin</title>
+  <link rel="icon" href="/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
 </head>
 <body>
-  <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <symbol id="left" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></symbol>
-    <symbol id="right" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></symbol>
-    <symbol id="down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
-    <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-    <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
-    <symbol id="sparkle" viewBox="0 0 24 24"><path d="M12 2c1.3 6.4 3.6 8.7 10 10-6.4 1.3-8.7 3.6-10 10C10.7 15.6 8.4 13.3 2 12c6.4-1.3 8.7-3.6 10-10Z"/></symbol>
-    <symbol id="pen" viewBox="0 0 24 24"><path d="m4 20 1-5L16 4a2 2 0 0 1 4 4L9 19l-5 1zm10-14 4 4"/></symbol>
-    <symbol id="close-icon" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
-    <symbol id="tracking-icon" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="#242631"/><circle cx="15" cy="17" r="3" fill="#242631"/></symbol>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="icon-activities" viewBox="0 0 24 24">
+      <path d="M10 6h10M10 12h10M10 18h10M4 6h.01M4 12h.01M4 18h.01"/>
+    </symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24">
+      <path d="M12 5v14M5 12h14"/>
+    </symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24">
+      <path d="m6 6 12 12M18 6 6 18"/>
+    </symbol>
+    <symbol id="icon-bin" viewBox="0 0 24 24">
+      <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5m4-5v5"/>
+    </symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24">
+      <path d="m9 6 6 6-6 6"/>
+    </symbol>
   </svg>
-  <div class="shell">
-    <main>
-      <section class="hero" aria-labelledby="page-title">
-        <div class="hero-scene" aria-hidden="true">
-          <svg viewBox="0 0 1100 330" preserveAspectRatio="xMidYMid slice">
-            <defs>
-              <radialGradient id="moon-halo">
-                <stop offset=".45" stop-color="#f5e5ae" stop-opacity="0"/>
-                <stop offset=".56" stop-color="#f5e5ae" stop-opacity=".5"/>
-                <stop offset="1" stop-color="#f5e5ae" stop-opacity="0"/>
-              </radialGradient>
-              <radialGradient id="firefly-light">
-                <stop offset=".15" stop-color="#f5ffce"/>
-                <stop offset=".38" stop-color="#e4f6a3" stop-opacity=".65"/>
-                <stop offset="1" stop-color="#d6f593" stop-opacity="0"/>
-              </radialGradient>
-              <linearGradient id="meteor-light">
-                <stop stop-color="#e4e9ff" stop-opacity="0"/>
-                <stop offset="1" stop-color="#f6f4ff"/>
-              </linearGradient>
-              <linearGradient id="cloud-light">
-                <stop stop-color="#c3c9e3" stop-opacity="0"/>
-                <stop offset=".46" stop-color="#c3c9e3"/>
-                <stop offset="1" stop-color="#c3c9e3" stop-opacity="0"/>
-              </linearGradient>
-            </defs>
-            <use href="trail.svg#landscape" width="1100" height="330"/>
-            <g fill="#213141">
-              <use href="trail.svg#pine" transform="translate(601 223) scale(.41)"/>
-              <use href="trail.svg#pine" transform="translate(619 225) scale(.31)"/>
-              <g class="wind-pine" transform="translate(636 237) scale(.29)"><use href="trail.svg#pine"/></g>
-              <use href="trail.svg#pine" transform="translate(704 230) scale(.24)"/>
-              <use href="trail.svg#pine" transform="translate(831 228) scale(.3)"/>
-              <use href="trail.svg#pine" transform="translate(850 231) scale(.32)"/>
-              <g class="wind-pine" transform="translate(875 217) scale(.47)"><use href="trail.svg#pine"/></g>
-              <use href="trail.svg#pine" transform="translate(902 219) scale(.55)"/>
-              <use href="trail.svg#pine" transform="translate(918 215) scale(.58)"/>
-            </g>
-            <g fill="#17242b">
-              <use href="trail.svg#pine" transform="translate(481 222) scale(.8)"/>
-              <g class="wind-pine" transform="translate(516 225) scale(.94)"><use href="trail.svg#pine"/></g>
-              <use href="trail.svg#pine" transform="translate(546 248) scale(.51)"/>
-              <g class="wind-pine" transform="translate(560 236) scale(.98)"><use href="trail.svg#pine"/></g>
-              <g class="wind-pine" transform="translate(594 262) scale(.62)"><use href="trail.svg#pine"/></g>
-              <use href="trail.svg#pine" transform="translate(928 247) scale(.72)"/>
-              <g class="wind-pine" transform="translate(955 224) scale(1.12)"><use href="trail.svg#pine"/></g>
-              <use href="trail.svg#pine" transform="translate(986 231) scale(.88)"/>
-              <g class="wind-pine" transform="translate(1008 203) scale(1.55)"><use href="trail.svg#pine"/></g>
-              <use href="trail.svg#pine" transform="translate(1048 195) scale(1.94)"/>
-              <g class="wind-pine" transform="translate(1085 161) scale(2.66)"><use href="trail.svg#pine"/></g>
-            </g>
-            <use href="trail.svg#trail-finish"/>
-            <g fill="url(#cloud-light)">
-              <path class="sky-cloud" d="M535 82h31l13-4h30l13-5h24l11 4h22l13 4h26l17 5H535z"/>
-              <path class="sky-cloud" d="M616 105h26l14-3h29l15-4h17l12 4h20l17 7H616z"/>
-            </g>
-            <g class="river-current" fill="none" stroke="#f1edcb" stroke-linecap="round">
-              <path pathLength="100" stroke-width="2" d="M750 237 C738 243 792 243 787 249 S703 263 704 275 S795 291 828 307 Q855 320 876 329"/>
-              <path pathLength="100" stroke-width="1.3" d="M754 263 C727 271 733 277 766 284 S852 296 898 321"/>
-            </g>
-            <circle class="moon-halo" cx="805" cy="102" r="120" fill="url(#moon-halo)"/>
-            <g>
-              <path class="sky-star" d="M720 36l1 3 3 1-3 1-1 3-1-3-3-1 3-1Z"/>
-              <path class="sky-star" d="M895 30l1 3 3 1-3 1-1 3-1-3-3-1 3-1Z"/>
-              <path class="sky-star" d="M963 91l1 3 3 1-3 1-1 3-1-3-3-1 3-1Z"/>
-            </g>
-            <path class="sky-meteor" d="m683 8 31 14" fill="none" stroke="url(#meteor-light)" stroke-width="1.7" stroke-linecap="round"/>
-            <g class="sky-owl">
-              <path fill="#bab8d3" d="M-13 2-6-1C-3-4 2-4 6-2L7-5 9-3Q12-4 14-1L16 0 13 1Q10 5 3 4L-5 3-12 5-10 2Z"/>
-              <g class="owl-wing">
-                <path fill="#ddd9ee" d="M7 1C1-3-4-12-16-14Q-14-10-10-7L-14-9Q-11-3-6-1L-10-3Q-5 4 3 4Z"/>
-                <path fill="none" stroke="#a39fbe" stroke-width=".8" stroke-linecap="round" d="M-11-10Q-5-8 0-2"/>
-              </g>
-            </g>
-            <g fill="url(#firefly-light)">
-              <circle class="firefly" cx="658" cy="264" r="6"/>
-              <circle class="firefly" cx="724" cy="222" r="5"/>
-              <circle class="firefly" cx="823" cy="265" r="7"/>
-              <circle class="firefly" cx="887" cy="241" r="6"/>
-              <circle class="firefly" cx="953" cy="260" r="5"/>
-            </g>
-            <path id="trail-route" fill="none" d="M788 292 C753 288 715 281 709 273 C700 262 766 257 777 251 C787 245 748 246 749 239 Q751 236 759 234"/>
-            <g id="trail-waypoints"/>
-          </svg>
-        </div>
-        <div class="hero-copy">
-          <p class="eyebrow"><span></span> THE DAILY QUEST LOG</p>
-          <h1 id="page-title"><span>The way</span><br> <em>forward.</em></h1>
-          <p class="hero-subtitle">A little ritual for the goals that matter.</p>
-        </div>
-        <div class="hero-tag" aria-hidden="true"><span>✦</span> THE MOONLIT TRAIL</div>
-      </section>
 
-      <div class="dashboard">
-        <section class="card calendar-card reveal" aria-labelledby="calendar-title">
-          <div class="calendar-header">
-            <h2 id="calendar-title"></h2>
-            <div class="calendar-controls">
-              <button type="button" id="previous" class="icon-button" aria-label="Previous month"><svg class="icon"><use href="#left"/></svg></button>
-              <button type="button" id="today" class="today-button">Today</button>
-              <button type="button" id="next" class="icon-button" aria-label="Next month"><svg class="icon"><use href="#right"/></svg></button>
-            </div>
-          </div>
-          <div class="weekday-row" aria-hidden="true">
-            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-          </div>
-          <div id="calendar" class="calendar-grid" role="group" aria-labelledby="calendar-title"></div>
-          <div class="legend">
-            <span><i class="legend-work"></i> Work logged</span>
-            <span><i class="legend-full"></i> 100% score</span>
-            <span><i class="legend-partial"></i> Other score</span>
-            <span><i class="legend-note"></i> Details only</span>
-            <span><i class="legend-blank"></i> Open</span>
-          </div>
-          <div class="week-progress">
-            <span class="progress-icon"><svg class="icon"><use href="#sparkle"/></svg></span>
-            <div><strong id="week-title">This week on the trail</strong><ul id="week-goals"></ul><p id="week-empty">No activity logged this week.</p></div>
-          </div>
-        </section>
+  <header class="toolbar">
+    <button type="button" id="back-today" class="today-button" hidden>Today</button>
+    <button type="button" id="manage" class="icon-button manage-button" aria-label="Manage activities" title="Manage activities">
+      <svg class="icon" aria-hidden="true"><use href="#icon-activities"></use></svg>
+    </button>
+  </header>
 
-        <section class="card journal-card reveal" aria-labelledby="journal-title">
-          <div class="journal-top">
-            <h2 id="journal-title">Daily check-in</h2>
-            <span id="day-tag" class="day-tag"></span>
-          </div>
-          <p id="selected-date" class="selected-date"></p>
-          <p id="journal-copy" class="journal-copy" hidden></p>
-          <form id="entry-form" novalidate>
-            <fieldset id="goals">
-              <legend>What did you work on?</legend>
-              <div id="goal-list"></div>
-              <div class="goal-add">
-                <input id="new-goal" type="text" maxlength="140" aria-label="Add or find an activity" placeholder="Add or find an activity…" list="goal-options">
-                <button id="add-goal" type="button" class="save-button icon-button" aria-label="Add activity to check-in" title="Add">
-                  <svg class="icon" aria-hidden="true"><use href="#plus"/></svg>
-                </button>
-              </div>
-            </fieldset>
-            <details id="details">
-              <summary><svg class="icon"><use href="#pen"/></svg> Notes &amp; score <svg class="icon chevron"><use href="#down"/></svg></summary>
-              <div class="detail-fields">
-                <label for="notes">Notes <span class="optional">optional</span></label>
-                <textarea id="notes" rows="3" maxlength="4000" placeholder="What helped? What felt good about the work?"></textarea>
-                <div class="score-field">
-                  <label for="score">Daily score (%) <span class="optional">optional</span></label>
-                  <input id="score" type="number" min="0" max="100" step="1" placeholder="0–100">
-                </div>
-                <button type="button" id="complete" class="save-button">Mark all done + set score to 100%</button>
-              </div>
-            </details>
-            <button type="submit" id="save" class="primary"><svg class="icon"><use href="#check"/></svg> Save check-in</button>
-            <p id="feedback" class="feedback" role="status"></p>
-            <div id="pickup-suggestions" class="editor-actions" hidden></div>
-          </form>
-          <button type="button" id="edit-plan" class="text-button" hidden>Previous plan</button>
-        </section>
+  <main>
+    <section id="timeline" class="timeline" aria-label="Daily activity timeline" aria-describedby="timeline-help">
+      <p class="sr-only" id="timeline-help">Swipe, drag, or use the arrow keys to move between days. Select a day to view its activity.</p>
+      <div class="graph-paper" aria-hidden="true"></div>
+      <canvas id="graph" aria-hidden="true"></canvas>
+      <div id="year-labels" class="year-labels" aria-hidden="true"></div>
+      <div id="days" class="days"></div>
+    </section>
 
-        <div class="dashboard-sidebar">
-          <section class="card activities-card reveal" aria-labelledby="pinned-title">
-            <h2 id="pinned-title">Activities</h2>
-            <form id="pin-form">
-              <input id="pin-name" type="text" maxlength="140" list="recent-goals" aria-label="Activity to pin" placeholder="Activity name">
-              <button type="submit" class="save-button icon-button" aria-label="Add pinned activity" title="Add">
-                <svg class="icon" aria-hidden="true"><use href="#plus"/></svg>
-              </button>
-            </form>
-            <p id="pin-feedback" class="feedback" role="status"></p>
-            <ul id="pinned-list"></ul>
-          </section>
-          <section class="card activity-goals-card reveal" aria-labelledby="activity-goals-title">
-            <h2 id="activity-goals-title">Goals</h2>
-            <p id="activity-goals-empty" class="tracking-hint">Set a goal for an activity over a week or a date range.</p>
-            <ul id="activity-goals-list"></ul>
-            <button type="button" id="open-goal-settings" class="save-button" aria-haspopup="dialog">Add goal</button>
-          </section>
-        </div>
-      </div>
-      <button type="button" id="open-backup" class="text-button" aria-haspopup="dialog">Backup &amp; restore</button>
-      <p id="backup-status" class="feedback" role="status"></p>
-    </main>
-  </div>
-  <datalist id="goal-options"></datalist>
-  <datalist id="recent-goals"></datalist>
-  <template id="activity-row-template">
-    <div class="goal-row">
-      <div class="activity-row-header">
-        <input class="activity-input" type="text" maxlength="140" aria-label="Activity name">
-        <button type="button" class="icon-button" data-tracking aria-haspopup="dialog" title="Activity settings">
-          <svg class="icon" aria-hidden="true"><use href="#tracking-icon"/></svg>
+    <section id="day-drawer" class="day-drawer" aria-labelledby="selected-date" hidden>
+      <header class="drawer-header">
+        <h1 id="selected-date"></h1>
+        <button type="button" id="close-day" class="icon-button quiet" aria-label="Close day" title="Close day">
+          <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
         </button>
-        <button type="button" class="icon-button" data-remove aria-label="Remove activity" title="Remove activity">
-          <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
+      </header>
+      <div id="day-content" class="drawer-content"></div>
+    </section>
+    <p id="announcement" class="sr-only" role="status"></p>
+  </main>
+
+  <dialog id="dialog" aria-labelledby="dialog-title">
+    <div class="dialog-panel">
+      <header class="dialog-header">
+        <h2 id="dialog-title"></h2>
+        <button type="button" id="close-dialog" class="icon-button quiet" aria-label="Close dialog" title="Close dialog">
+          <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
         </button>
-      </div>
-      <select>
-        <option value="open">No work logged</option>
-        <option value="worked">Worked on it</option>
-        <option value="done">Done</option>
-      </select>
-      <div class="tracking-pair daily-measures">
-        <label class="tracking-field" data-amount-field>
-          <span data-unit></span>
-          <input type="number" data-amount min="0" max="1000000000" step="any" placeholder="Optional">
-        </label>
-        <label class="tracking-field" data-minutes-field>
-          <span>Minutes</span>
-          <input type="number" data-minutes min="1" max="1440" step="1" placeholder="Optional">
-        </label>
-      </div>
-      <details class="daily-distance">
-        <summary><span data-distance-label>Distance per unit</span> <svg class="icon chevron" aria-hidden="true"><use href="#down"/></svg></summary>
-        <label class="detail-fields tracking-field">Meters per unit for this check-in
-          <input type="number" data-factor min="0" max="1000000000" step="any" placeholder="e.g. 400">
-        </label>
-      </details>
-      <p class="daily-metrics tracking-hint" hidden></p>
-    </div>
-  </template>
-  <template id="pinned-activity-card">
-    <li class="pinned-activity">
-      <span class="activity-name"></span>
-      <button type="button" data-tracking class="icon-button" aria-haspopup="dialog" title="Activity settings">
-        <svg class="icon" aria-hidden="true"><use href="#tracking-icon"/></svg>
-      </button>
-      <button type="button" data-edit class="icon-button" aria-haspopup="dialog" aria-label="Activity plan" title="Activity plan">
-        <svg class="icon" aria-hidden="true"><use href="#pen"/></svg>
-      </button>
-    </li>
-  </template>
-  <dialog id="plan-editor" aria-labelledby="plan-editor-title" aria-describedby="plan-date" closedby="any">
-    <form id="plan-editor-form">
-      <div class="dialog-header">
-        <h2 id="plan-editor-title">Previous plan</h2>
-        <button type="button" id="cancel-plan-edit" class="icon-button" aria-label="Close previous plan" title="Close">
-          <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
-        </button>
-      </div>
-      <p id="plan-date"></p>
-      <label for="next-plan">When will you start, and what would make it enjoyable?</label>
-      <textarea id="next-plan" rows="3" maxlength="240" autofocus></textarea>
-      <p id="plan-feedback" class="feedback" role="status"></p>
-      <div class="editor-actions">
-        <button type="submit" class="save-button">Save plan</button>
-      </div>
-    </form>
-  </dialog>
-  <dialog id="activity-editor" aria-labelledby="activity-editor-title" closedby="any">
-    <form id="activity-editor-form">
-      <div class="dialog-header">
-        <h2 id="activity-editor-title"></h2>
-        <button type="button" id="cancel-activity-edit" class="icon-button" aria-label="Close activity plan" title="Close">
-          <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
-        </button>
-      </div>
-      <label for="activity-plan">Next step</label>
-      <textarea id="activity-plan" rows="2" maxlength="240" placeholder="After dinner, play the chorus slowly." autofocus></textarea>
-      <label for="activity-fallback">If something gets in the way <span>optional</span></label>
-      <textarea id="activity-fallback" rows="2" maxlength="240" placeholder="If I get home late, play it once."></textarea>
-      <label for="activity-pickup">Where should I pick up? <span>optional</span></label>
-      <textarea id="activity-pickup" rows="2" maxlength="240" placeholder="Start with bars 9–12 at half speed."></textarea>
-      <p id="activity-editor-feedback" class="feedback" role="status"></p>
-      <div class="editor-actions">
-        <button type="submit" class="save-button">Save next step and note</button>
-      </div>
-      <div class="editor-actions">
-        <button type="button" id="complete-activity-plan" class="save-button">Mark plan done</button>
-        <button type="button" id="dismiss-activity-plan" class="save-button">Dismiss plan</button>
-        <button type="button" id="unpin-activity" class="save-button">Unpin activity</button>
-      </div>
-    </form>
-  </dialog>
-  <dialog id="activity-settings" aria-labelledby="activity-settings-title" closedby="any">
-    <div class="dialog-header">
-      <h2 id="activity-settings-title"></h2>
-      <button type="button" id="close-activity-settings" class="icon-button" aria-label="Close activity settings" title="Close">
-        <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
-      </button>
-    </div>
-    <form id="measurement-form" class="tracking-section">
-      <h3>Daily tracking</h3>
-      <label class="tracking-field">Measure
-        <select id="measurement-mode">
-          <option value="minutes">Time in minutes</option>
-          <option value="custom">Custom unit</option>
-        </select>
-      </label>
-      <div id="measurement-custom" class="tracking-fields" hidden>
-        <label class="tracking-field">Unit of work
-          <input id="measurement-unit" type="text" maxlength="32" placeholder="e.g. laps, km, sets" disabled>
-        </label>
-        <label class="tracking-field" id="measurement-factor-field">Meters per unit <span class="optional">optional</span>
-          <input id="measurement-factor" type="number" min="0" max="1000000000" step="any" placeholder="e.g. 400" disabled>
-        </label>
-        <label class="tracking-check"><input id="measurement-minutes" type="checkbox" checked> Also log minutes</label>
-      </div>
-      <p class="tracking-hint">Settings apply when you add this activity to a check-in. Saved measurements keep their original units.</p>
-      <p id="measurement-feedback" class="feedback" role="status"></p>
-      <div><button type="submit" class="save-button">Save activity settings</button></div>
-    </form>
-  </dialog>
-  <dialog id="goal-settings" aria-labelledby="goal-settings-title" closedby="any">
-    <div class="dialog-header">
-      <h2 id="goal-settings-title">Goal settings</h2>
-      <button type="button" id="close-goal-settings" class="icon-button" aria-label="Close goal settings" title="Close">
-        <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
-      </button>
-    </div>
-    <div class="tracking-section">
-      <label class="tracking-field">Activity
-        <input id="goal-activity" type="text" maxlength="140" list="goal-activity-options" form="activity-goal-form" placeholder="Choose or enter an activity" required autofocus>
-      </label>
-      <datalist id="goal-activity-options"></datalist>
-      <ul id="tracking-goals-list"></ul>
-      <details id="new-activity-goal">
-        <summary>Add a goal <svg class="icon chevron" aria-hidden="true"><use href="#down"/></svg></summary>
-        <form id="activity-goal-form" class="detail-fields">
-          <label class="tracking-field">Measure progress by
-            <select id="activity-goal-metric">
-              <option value="days">Days worked</option>
-              <option value="amount">Amount logged</option>
-              <option value="minutes">Minutes logged</option>
-            </select>
-          </label>
-          <div class="tracking-pair">
-            <label class="tracking-field"><span id="activity-goal-amount-label">Days</span>
-              <input id="activity-goal-amount" type="number" min="0" max="1000000000" step="1" required>
-            </label>
-            <label class="tracking-field" id="activity-goal-unit-field" hidden>Unit
-              <input id="activity-goal-unit" type="text" maxlength="32" placeholder="e.g. laps or km" disabled>
-            </label>
-          </div>
-          <label class="tracking-field">Schedule
-            <select id="activity-goal-repeat">
-              <option value="weekly">Every week (Monday–Sunday)</option>
-              <option value="week">Selected week only</option>
-              <option value="range">Specific date range</option>
-            </select>
-          </label>
-          <div class="tracking-pair">
-            <label class="tracking-field" id="activity-goal-start-field">Start date<input id="activity-goal-start" type="date" required></label>
-            <label class="tracking-field" id="activity-goal-end-field" hidden>End date<input id="activity-goal-end" type="date" disabled></label>
-          </div>
-          <p id="activity-goal-hint" class="tracking-hint"></p>
-          <div><button type="submit" class="save-button">Create goal</button></div>
-        </form>
-      </details>
-      <p id="activity-goal-feedback" class="feedback" role="status"></p>
+      </header>
+      <div id="dialog-content"></div>
     </div>
   </dialog>
-  <dialog id="backup-dialog" aria-labelledby="backup-title" closedby="any">
-    <div class="dialog-header">
-      <h2 id="backup-title">Backup &amp; restore</h2>
-      <button type="button" id="close-backup" class="icon-button" aria-label="Close backup and restore">
-        <svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg>
-      </button>
-    </div>
-    <p>Download your saved check-ins, activities, and goals. The file contains your notes in plain text.</p>
-    <button type="button" id="download-backup" class="save-button">Download backup</button>
-    <p id="download-feedback" class="feedback" role="status"></p>
-    <p>Restore adds missing check-ins and activity records. It keeps the records already in this browser.</p>
-    <label for="backup-file">Choose a Checkin backup file</label>
-    <input type="file" id="backup-file" accept=".json,application/json">
-    <p id="backup-feedback" class="feedback" role="status"></p>
-    <button type="button" id="restore-backup" class="save-button" hidden>Restore missing records</button>
-  </dialog>
-  <canvas id="effects" aria-hidden="true"></canvas>
 </body>
 </html>

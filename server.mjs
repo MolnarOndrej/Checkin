@@ -5,9 +5,8 @@ import { extname } from 'node:path';
 const host = '127.0.0.1';
 const port = Number(process.env.PORT ?? 4173);
 const assets = new Set([
-  'index.html', 'styles.css', 'app.js', 'calendar.js', 'celebration.js', 'pinned-goals.js', 'backup.js',
-  'activity-row.js', 'measurements.js', 'tracking.js', 'dialog-title.js', 'feedback.js', 'journal-storage.js',
-  'trail.svg', 'mark.svg',
+  'index.html', 'styles.css', 'app.js', 'calendar.js', 'measurements.js', 'journal-storage.js',
+  'timeline.js', 'timeline-data.js', 'graph.js', 'mark.svg',
 ]);
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
