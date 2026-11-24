@@ -58,60 +58,38 @@ const companionTracks = { 'crossing-lights': 'heads', 'twin-ribbons': 'ribbons' 
 const paletteColors = ['accent', 'secondary', 'spark'];
 const borders = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
 const inkFade = 1050;
+const accelerationTime = 450;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-function planTravel(center, today, reach, duration, started) {
-  const direction = Math.sign(today - center);
-  const distance = Math.abs(today - center);
-  const speed = 2 * reach / duration;
-  const acceleration = .000012;
-  const coast = Math.min(distance, reach * 1.5);
-  const half = (distance - coast) / 2;
-  const peakSpeed = Math.sqrt(speed ** 2 + 2 * acceleration * half);
-  const rampTime = 2 * half / (peakSpeed + speed);
-  const coastTime = coast / speed;
-  return {
-    started, direction, from: center - direction * reach, distance, speed, acceleration,
-    coast, coastTime, rampTime, duration: coastTime + 2 * rampTime,
-  };
-}
 
 export function randomWave({ center, visibleDays, today, now, countAt }) {
   const choice = Math.random() * effects.length;
   const index = Math.floor(choice);
   const [kind, duration] = effects[index];
   const variation = choice - index;
-  let direction = index === 1 ? -1 : index < 3 || variation < .5 ? 1 : -1;
+  let direction = index < 3 || variation < .5 ? 1 : -1;
   const side = (variation * 4) % 2 < 1 ? -1 : 1;
   const ink = Math.random() < .3 ? paletteColors[Math.floor(Math.random() * paletteColors.length)] : null;
   const radius = Math.max(.5, visibleDays / 2 - .35);
-  const first = Math.ceil(today - radius);
-  const last = Math.floor(today + radius);
+  const first = Math.ceil(center - radius);
+  const last = Math.floor(center + radius);
   const reach = visibleDays / 2 + 9;
-  const travel = Math.round(center) === today ? null : planTravel(center, today, reach, duration, now);
-  let anchor = today;
+  let anchor = Math.abs(today - center) <= visibleDays * .43 ? today : Math.round(center);
   let entry;
-  if (kind === 'sky-ribbon' && !travel) {
+  if (kind === 'sky-ribbon') {
     anchor = first + Math.floor(Math.random() * (last - first + 1));
   } else if (kind === 'beacon-landing') {
-    if (!travel) {
-      for (let day = first; day <= last; day++) {
-        const difference = countAt(day) - countAt(anchor);
-        if (difference > 0 || (difference === 0 && Math.abs(day - today) < Math.abs(anchor - today))) anchor = day;
-      }
+    anchor = Math.round(center);
+    for (let day = first; day <= last; day++) {
+      const difference = countAt(day) - countAt(anchor);
+      if (difference > 0 || (difference === 0 && Math.abs(day - center) < Math.abs(anchor - center))) anchor = day;
     }
     const [x, y] = borders[Math.floor(Math.random() * borders.length)];
-    const day = travel ? today - travel.direction * reach : x ? today + reach * x : mix(first, last, Math.random());
-    entry = { day, y };
+    entry = { day: x ? center + reach * x : mix(first, last, Math.random()), y };
   }
-  if (travel) {
-    direction = travel.direction;
-  } else if ((kind === 'sky-ribbon' || kind === 'beacon-landing') && anchor !== today) {
-    direction = Math.sign(today - anchor);
-  }
+  if ((kind === 'sky-ribbon' || kind === 'beacon-landing') && anchor !== center) direction = Math.sign(center - anchor);
   return {
-    kind, direction, side, anchor, entry, ink, travel, started: now + (travel?.duration ?? 0), duration,
-    from: today - direction * reach, to: today + direction * reach,
+    kind, direction, side, anchor, entry, ink, started: now, duration,
+    from: center - direction * reach, to: center + direction * reach,
   };
 }
 
@@ -177,14 +155,15 @@ function pause(wave, progress, colors) {
   }
   const time = clamp((progress - arrives) / (leaves - arrives), 0, 1);
   const outward = Math.max(0, (progress - leaves) / (1 - leaves));
+  const style = Math.min(1, outward);
   const reach = 1.08 * (1 - (1 - time) ** 2.2);
   return {
     heads: [-1, 1].map((side) => {
       const day = mix(anchor + side * reach, side === direction ? to : from, outward ** 1.55);
       return {
-        ...head(day, side, colors.spark, mix(.70 + .18 * Math.sin(Math.PI * time), 1, outward), mix(1.2, 4, outward)),
-        lead: mix(.32, .75, outward),
-        trailOpacity: mix(.66, .24, outward),
+        ...head(day, side, colors.spark, mix(.70 + .18 * Math.sin(Math.PI * time), 1, style), mix(1.2, 4, style)),
+        lead: mix(.32, .75, style),
+        trailOpacity: mix(.66, .24, style),
       };
     }),
   };
@@ -260,26 +239,12 @@ function ribbon(route, progress, options, complete, trailStart = 0) {
   return { points, ...options };
 }
 
-function travelHead(wave, now, colors) {
-  const { started, direction, from, distance, speed, acceleration, coast, coastTime, rampTime, duration } = wave.travel;
-  const elapsed = now - started;
-  const rampDistance = (time) => (speed + acceleration * time / 2) * time;
-  // Leave time to follow the glow before speeding up, then slow for the effect around today.
-  const covered = elapsed < coastTime ? speed * elapsed
-    : elapsed < coastTime + rampTime ? coast + rampDistance(elapsed - coastTime)
-      : distance - rampDistance(duration - elapsed);
-  const color = wave.kind === 'backlight-sweep' ? colors.secondary : colors.accent;
-  const strength = wave.kind === 'sky-ribbon' ? smooth(clamp((distance - covered) / 2, 0, 1)) : 1;
-  return head(from + direction * covered, direction, color, strength, wave.kind === 'backlight-sweep' ? 2.9 : 5.7);
-}
-
 function traversalAt(wave, now, colors, yAt, height, { complete = true, after } = {}) {
-  if (!wave) return {};
-  if (now < wave.started) {
-    return wave.travel && now >= wave.travel.started ? { heads: [travelHead(wave, now, colors)] } : {};
-  }
-  const progress = (now - wave.started) / wave.duration;
-  if (progress >= 1) return {};
+  if (!wave || now < wave.started) return {};
+  const elapsed = now - wave.started;
+  const extra = Math.max(0, elapsed - wave.duration);
+  // Extend the route at its existing speed, then accelerate away from the viewport.
+  const progress = (elapsed + accelerationTime * (extra / accelerationTime) ** 3) / wave.duration;
   const { from, to, direction } = wave;
   const trailStart = after === undefined ? 0 : clamp((after - wave.started) / wave.duration, 0, progress);
   const drawRibbon = (route, options) => ribbon(route, progress, options, complete, trailStart);
@@ -288,7 +253,7 @@ function traversalAt(wave, now, colors, yAt, height, { complete = true, after } 
     case 'daybreak-sweep':
       return { heads: [head(mix(from, to, progress), direction, colors.accent, 1, 5.7)] };
     case 'backlight-sweep':
-      return { heads: [head(mix(from, to, progress), direction, colors.secondary, 1, 2.9)] };
+      return { heads: [head(mix(to, from, progress), -direction, colors.secondary, 1, 2.9)] };
     case 'crossing-lights':
       return {
         heads: [
@@ -403,11 +368,11 @@ function inkOnGraph(wave, now, colors, yAt, height) {
   if (!wave?.ink) return null;
   const marks = [];
   const visitStart = wave.started + (wave.visit?.begin ?? 0);
-  const start = wave.travel?.started ?? wave.started;
-  const leadSince = wave.visit?.delay > 0 && now >= visitStart ? visitStart + wave.visit.delay : start;
-  const earliest = companionTracks[wave.kind] ? start : leadSince;
+  const leadSince = wave.visit?.delay > 0 && now >= visitStart ? visitStart + wave.visit.delay : wave.started;
+  const earliest = companionTracks[wave.kind] ? wave.started : leadSince;
   for (let age = 0; age < inkFade && now - age >= earliest; age += 20) {
     const time = now - age;
+    if (wave.departed !== undefined && time >= wave.departed) continue;
     const phase = waveFrameAt(wave, time);
     const { heads = [], ribbons, ball } = traversalOnGraph(wave, phase, colors, yAt, height, {
       complete: false, includeLead: time >= leadSince,
@@ -621,7 +586,7 @@ function planVisit(wave, visit, width, colors, worldToX, yAt, height) {
 
 function waveFrameAt(wave, now) {
   const visit = wave?.visit;
-  if (!visit || now < wave.started) return { time: now, uninterruptedTime: now, loop: null, rejoin: null };
+  if (!visit) return { time: now, uninterruptedTime: now, loop: null, rejoin: null };
   const elapsed = now - wave.started;
   const intoVisit = elapsed - visit.begin;
   const detouring = intoVisit >= 0 && intoVisit < visit.delay;
@@ -659,6 +624,17 @@ function traversalOnGraph(wave, phase, colors, yAt, height, { complete = true, i
     effects[track] = [effects[track]?.[0], companion].filter(Boolean);
   }
   return effects;
+}
+
+function traversalInView({ heads = [], ribbons = [], ball }, worldToX, width) {
+  const overlaps = (a, b = a) => {
+    const first = worldToX(a);
+    const last = worldToX(b);
+    return Math.max(first, last) >= -64 && Math.min(first, last) <= width + 64;
+  };
+  return (ball && overlaps(ball.day))
+    || heads.some(({ day, direction, tail }) => overlaps(day, day - direction * tail))
+    || ribbons.some(({ points }) => overlaps(points[0].day, points.at(-1).day));
 }
 
 function sampleRim(panel, direction) {
@@ -775,7 +751,7 @@ export function paintGraph(canvas, frame) {
   };
   const dye = wave?.ink && colors[wave.ink];
   const waveColors = dye ? { accent: dye, secondary: dye, spark: dye } : colors;
-  if (wave?.panel && visit && now >= wave.started && wave.visit === undefined) {
+  if (wave?.panel && visit && wave.visit === undefined) {
     wave.visit = planVisit(wave, visit, width, waveColors, worldToX, yAt, height);
   } else if (wave?.visit && !visit) {
     wave.visit.delay = clamp(now - wave.started - wave.visit.begin, 0, wave.visit.delay);
@@ -787,9 +763,16 @@ export function paintGraph(canvas, frame) {
     atRejoin ?? traversalAt(wave, phase.time, waveColors, yAt, height, { complete: false }));
   if (lead) paintVisit(drawerGlow, visit, lead, loopProgress, worldToX, yAt, ratio);
   else drawerGlow.hidden = true;
-  const onGraph = traversalOnGraph(wave, phase, waveColors, yAt, height, { startingHeads: atRejoin?.heads });
-  if (wave && wave.ends === undefined && phase.time >= wave.started + wave.duration) {
-    wave.ends = now + (wave.ink ? inkFade : 0);
+  let onGraph = wave?.departed === undefined
+    ? traversalOnGraph(wave, phase, waveColors, yAt, height, { startingHeads: atRejoin?.heads })
+    : {};
+  if (wave && phase.time >= wave.started + wave.duration && wave.departed === undefined) {
+    wave.escaping = traversalInView(onGraph, worldToX, width);
+    if (!wave.escaping) {
+      wave.departed = now;
+      wave.ends = now + (wave.ink ? inkFade : 0);
+      onGraph = {};
+    }
   }
   const ink = inkOnGraph(wave, now, waveColors, yAt, height);
   const heads = [...(onGraph.heads ?? []), ...rippleHeads(ripple, now, colors)];

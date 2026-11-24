@@ -8,8 +8,6 @@ A day's dot rises with the number and values of its activities. Days that stand 
 
 ## Timeline effects
 
-When browsing another date, the glow passes through the timeline toward today. It starts at an easy pace, gradually speeds up on longer trips, and plays its effect around today. Sky Ribbon and Beacon Landing use today's dot when they arrive from another date.
-
 | Effect | Motion |
 | --- | --- |
 | Daybreak Sweep | A wide glow travels left to right. |
