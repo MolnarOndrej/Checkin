@@ -817,7 +817,7 @@ test('ambient effects pause out of focus and resume from the same frame', async 
   assert.notEqual(frames.resumed.accent, frames.moving.accent);
 });
 
-test('new logs play a random sound and the save ripple follows its playback clock', async (t) => {
+test('new log sounds and save ripples fade with the playback clock', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects, () => {
     const activities = ['Reading', 'Walking', 'Writing'].map((text) => ({
       id: text, text, type: 'minutes', unit: 'min', goals: [],
@@ -890,20 +890,20 @@ test('new logs play a random sound and the save ripple follows its playback cloc
     const random = Math.random;
     day.click();
 
-    function alphaAt(x, y) {
-      const pixels = context.getImageData(Math.round(x) - 1, Math.round(y) - 1, 3, 3).data;
+    function alphaAt(x, y, height = 3) {
+      const pixels = context.getImageData(Math.round(x) - 1, Math.round(y) - Math.floor(height / 2), 3, height).data;
       return Math.max(...pixels.filter((_, index) => index % 4 === 3));
     }
 
     function ringAlpha() {
       const box = day.getBoundingClientRect();
-      return alphaAt(box.left + box.width / 2, box.top - canvas.getBoundingClientRect().top + 21 - 32);
+      return alphaAt(box.left + box.width / 2, box.top - canvas.getBoundingClientRect().top + 21 - 35, 17);
     }
 
-    function waveAlpha() {
+    function waveAlpha(progress) {
       const box = day.getBoundingClientRect();
       const neighbour = day.previousElementSibling.getBoundingClientRect();
-      const spread = 4.2 * (1 - (1 - .65) ** 2);
+      const spread = 4.2 * (1 - (1 - progress) ** 2);
       const x = box.left + box.width / 2 - (box.left - neighbour.left) * spread;
       return alphaAt(x, neighbour.top - canvas.getBoundingClientRect().top + 21);
     }
@@ -927,13 +927,13 @@ test('new logs play a random sound and the save ripple follows its playback cloc
       const sound = window.playedSounds.at(-1);
       window.audioTime = sound.started + sound.duration / 4;
       await frame();
-      const ring = ringAlpha();
+      const early = { ring: ringAlpha(), wave: waveAlpha(.25) };
       window.audioTime = sound.started + sound.duration * .65;
       await frame();
-      const wave = waveAlpha();
+      const late = { ring: ringAlpha(), wave: waveAlpha(.65) };
       window.audioTime = sound.started + sound.duration;
       await frame();
-      return { ring, wave, ringAfter: ringAlpha(), waveAfter: waveAlpha() };
+      return { early, late, after: { ring: ringAlpha(), earlyWave: waveAlpha(.25), lateWave: waveAlpha(.65) } };
     }
 
     const first = await save('Reading', 5, 'submitsounds/2.mp3');
@@ -949,12 +949,17 @@ test('new logs play a random sound and the save ripple follows its playback cloc
     assert.equal(sound.started, started);
     assert.equal(sound.offset, 0);
     assert.equal(sound.duration, 4);
-    assert.deepEqual(sound.gain, [['level', .6, started], ['level', .6, started + 3.25], ['fade', 0, started + 4]]);
+    assert.deepEqual(sound.gain, [['level', .4, started], ['level', .4, started + 3.25], ['fade', 0, started + 4]]);
   }
-  assert.deepEqual(result.played[2], { started: 8, offset: 0, duration: 2, original: 2, gain: [['level', .6, 8]] });
-  for (const ripple of [result.first, result.short]) {
-    assert.ok(ripple.ring > ripple.ringAfter + 40, JSON.stringify(ripple));
-    assert.ok(ripple.wave > ripple.waveAfter + 12, JSON.stringify(ripple));
+  assert.deepEqual(result.played[2], {
+    started: 8, offset: 0, duration: 2, original: 2,
+    gain: [['level', .4, 8], ['level', .4, 9.25], ['fade', 0, 10]],
+  });
+  for (const { early, late, after } of [result.first, result.short]) {
+    const earlyWave = early.wave - after.earlyWave;
+    const lateWave = late.wave - after.lateWave;
+    assert.ok(early.ring > late.ring + 50 && late.ring > after.ring + 5, JSON.stringify({ early, late, after }));
+    assert.ok(earlyWave > lateWave + 15 && lateWave > 12, JSON.stringify({ early, late, after }));
   }
 
   await page.reload();

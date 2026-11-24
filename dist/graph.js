@@ -300,7 +300,7 @@ function rippleHeads({ index, progress }, colors) {
     day: index + direction * spread,
     direction,
     color: direction === 1 ? colors.accent : colors.spark,
-    strength: (1 - progress) ** 1.4,
+    strength: 1.65 * (1 - progress) ** 2,
     tail: 1.5,
   }));
 }
@@ -837,11 +837,11 @@ export function paintGraph(canvas, frame) {
 
   for (const { index, progress } of ripples) {
     const origin = points[index - first.index];
-    const age = progress * 2;
-    if (!origin || age >= 1) continue;
-    circle(context, origin.x, origin.y, 6 + 35 * (1 - (1 - age) ** 2));
-    context.strokeStyle = tint(colors.spark, .67 * (1 - age));
-    context.lineWidth = 1.5;
+    if (!origin) continue;
+    const remaining = 1 - progress;
+    circle(context, origin.x, origin.y, 6 + 35 * (1 - remaining ** 4));
+    context.strokeStyle = tint(colors.spark, .92 * remaining ** 3);
+    context.lineWidth = 1.5 + remaining;
     context.stroke();
   }
 }

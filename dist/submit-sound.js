@@ -1,6 +1,6 @@
 const maxDuration = 4;
 const fadeDuration = .75;
-const playbackGain = .6;
+const playbackGain = .4;
 let audio;
 let sounds;
 
@@ -41,11 +41,12 @@ export async function playSubmitSound() {
     };
 
     const started = audio.currentTime;
+    const ends = started + duration;
     volume.gain.setValueAtTime(playbackGain, started);
-    if (buffer.duration > maxDuration) {
-      volume.gain.setValueAtTime(playbackGain, started + duration - fadeDuration);
-      volume.gain.linearRampToValueAtTime(0, started + duration);
+    if (duration > fadeDuration) {
+      volume.gain.setValueAtTime(playbackGain, ends - fadeDuration);
     }
+    volume.gain.linearRampToValueAtTime(0, ends);
     source.start(started, 0, duration);
     return () => (audio.currentTime - started) / duration;
   } catch {
