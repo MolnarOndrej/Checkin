@@ -58,6 +58,7 @@ const companionTracks = { 'crossing-lights': 'heads', 'twin-ribbons': 'ribbons' 
 const paletteColors = ['accent', 'secondary', 'spark'];
 const borders = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
 const inkFade = 1050;
+const inkReach = .51;
 const accelerationTime = 450;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -304,7 +305,7 @@ function rippleHeads({ index, progress }, colors) {
   }));
 }
 
-function trace(points) {
+export function traceCurve(points) {
   const path = new Path2D();
   path.moveTo(points[0].x, points[0].y);
   for (let index = 1; index < points.length; index++) {
@@ -363,7 +364,7 @@ function ribbonTips(ribbons = []) {
 
 function inkOnGraph(wave, now, colors, yAt, height) {
   if (!wave?.ink) return null;
-  const marks = [];
+  const marks = new Map();
   const visitStart = wave.started + (wave.visit?.begin ?? 0);
   const leadSince = wave.visit?.delay > 0 && now >= visitStart ? visitStart + wave.visit.delay : wave.started;
   const earliest = companionTracks[wave.kind] ? wave.started : leadSince;
@@ -379,17 +380,29 @@ function inkOnGraph(wave, now, colors, yAt, height) {
     for (const { day, y, strength } of contacts) {
       const distance = y === undefined ? 0 : (y - yAt(day)) / 18;
       const brightness = Math.exp(-(distance ** 2)) * strength * (1 - age / inkFade) ** 1.35;
-      if (brightness > .025) marks.push({ day, brightness });
+      if (!(brightness > .025)) continue;
+      const bucket = Math.floor(day);
+      let nearby = marks.get(bucket);
+      if (!nearby) {
+        nearby = [];
+        marks.set(bucket, nearby);
+      }
+      nearby.push({ day, brightness });
     }
   }
-  if (!marks.length) return null;
+  if (!marks.size) return null;
   return {
     color: colors.accent,
     at(day) {
       let strength = 0;
-      for (const mark of marks) {
-        const distance = Math.abs(mark.day - day);
-        if (distance < .51) strength = Math.max(strength, mark.brightness * smooth(1 - distance / .51));
+      const last = Math.floor(day + inkReach);
+      for (let bucket = Math.floor(day - inkReach); bucket <= last; bucket++) {
+        const nearby = marks.get(bucket);
+        if (!nearby) continue;
+        for (const mark of nearby) {
+          const distance = Math.abs(mark.day - day);
+          if (distance < inkReach) strength = Math.max(strength, mark.brightness * smooth(1 - distance / inkReach));
+        }
       }
       return strength;
     },
@@ -398,12 +411,16 @@ function inkOnGraph(wave, now, colors, yAt, height) {
 
 function paintInk(context, path, ink, firstDay, width, spacing) {
   if (!ink) return;
-  const gradient = context.createLinearGradient(0, 0, width, 0);
   const steps = Math.ceil(width / spacing * 9);
+  const strengths = Array.from({ length: steps + 1 }, (_, step) => ink.at(firstDay + step / steps * width / spacing));
+  if (!strengths.some(Boolean)) return;
+  const gradient = context.createLinearGradient(0, 0, width, 0);
   for (let step = 0; step <= steps; step++) {
-    const position = step / steps;
-    const strength = ink.at(firstDay + position * width / spacing);
-    gradient.addColorStop(position, tint(ink.color, Math.min(1, strength * 1.15)));
+    const strength = strengths[step];
+    // Keep the transparent stop on each edge of the fade.
+    if (strength || strengths[step - 1] || strengths[step + 1]) {
+      gradient.addColorStop(step / steps, tint(ink.color, Math.min(1, strength * 1.15)));
+    }
   }
   context.save();
   context.globalAlpha = .2;
@@ -776,7 +793,7 @@ export function paintGraph(canvas, frame) {
   const ribbons = onGraph.ribbons ?? [];
   const contacts = ribbonTips(ribbons);
   if (onGraph.ball && !onGraph.heads) contacts.push(onGraph.ball);
-  const path = trace(points);
+  const path = frame.curve ?? traceCurve(points);
 
   const axis = new Path2D();
   axis.moveTo(0, baseline + .5);

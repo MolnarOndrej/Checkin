@@ -678,6 +678,72 @@ function controlTimelineEffects() {
   window.advanceCheckin = (duration) => { time += duration; };
 }
 
+test('stationary frames skip duplicate paints and reuse the curve for color changes and effects', async (t) => {
+  const page = await openCheckin(t, controlTimelineEffects);
+  await page.setReducedMotion('no-preference');
+  await settle(page);
+  const rendering = await page.evaluate(async () => {
+    const canvas = document.querySelector('#graph');
+    const context = canvas.getContext('2d');
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const waitForColorTick = () => new Promise((resolve) => setTimeout(() => requestAnimationFrame(resolve), 100));
+    const today = document.querySelector('[aria-current="date"]');
+    let paints = 0;
+    let curve;
+    let mostGradientStops = 0;
+    const clear = context.clearRect.bind(context);
+    const stroke = context.stroke.bind(context);
+    const createGradient = context.createLinearGradient.bind(context);
+    context.clearRect = (...args) => {
+      paints++;
+      clear(...args);
+    };
+    context.stroke = (...args) => {
+      if (context.lineWidth === 18) curve = args[0];
+      stroke(...args);
+    };
+    context.createLinearGradient = (x0, y0, x1, y1) => {
+      const gradient = createGradient(x0, y0, x1, y1);
+      if (x0 === 0 && x1 === canvas.width && y0 === 0 && y1 === 0) {
+        const add = gradient.addColorStop.bind(gradient);
+        let stops = 0;
+        gradient.addColorStop = (...args) => {
+          mostGradientStops = Math.max(mostGradientStops, ++stops);
+          add(...args);
+        };
+      }
+      return gradient;
+    };
+
+    today.click();
+    await frame();
+    const stationaryCurve = curve;
+    const beforeIdle = paints;
+    await waitForColorTick();
+    const duplicatePaints = paints - beforeIdle;
+
+    window.advanceCheckin(1600);
+    await waitForColorTick();
+    const recolored = paints > beforeIdle && curve === stationaryCurve;
+
+    const beforeWave = paints;
+    window.traverse(0, [.29, .95]);
+    window.advanceCheckin(1980);
+    await frame();
+    const animated = paints > beforeWave && curve === stationaryCurve;
+
+    today.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    window.advanceCheckin(300);
+    await frame();
+    return { duplicatePaints, recolored, animated, mostGradientStops, panned: curve !== stationaryCurve };
+  });
+  assert.equal(rendering.duplicatePaints, 0);
+  assert.equal(rendering.recolored, true);
+  assert.equal(rendering.animated, true);
+  assert.ok(rendering.mostGradientStops > 5 && rendering.mostGradientStops < 150, JSON.stringify(rendering));
+  assert.equal(rendering.panned, true);
+});
+
 test('ambient effects pause out of focus and resume from the same frame', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects);
   await page.setReducedMotion('no-preference');
@@ -965,19 +1031,20 @@ test('swiping after a traveling glow reveals it accelerating beyond both ends of
 
 test('random effects can follow, leave, pulse, and recolor the graph, or land on the busiest day', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects);
+  await page.setReducedMotion('no-preference');
   await settle(page);
   const colorSteps = await page.evaluate(async () => {
     const accent = () => document.documentElement.style.getPropertyValue('--accent');
     const result = [accent()];
     for (const step of [120, 3000, 3000]) {
       window.advanceCheckin(step);
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(() => requestAnimationFrame(resolve), 100));
       result.push(accent());
     }
     return result.map((color) => parseInt(color.slice(3, 5), 16));
   });
   assert.ok(Math.abs(colorSteps[1] - colorSteps[0]) <= 3);
-  assert.ok(colorSteps[1] > colorSteps[2] && colorSteps[2] > colorSteps[3]);
+  assert.ok(colorSteps[1] > colorSteps[2] && colorSteps[2] > colorSteps[3], JSON.stringify(colorSteps));
 
   const alpha = await page.evaluate(async () => {
     const canvas = document.querySelector('#graph');

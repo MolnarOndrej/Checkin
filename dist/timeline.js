@@ -1,5 +1,5 @@
 import { dateForIndex, fullLabel, indexForKey, keyForIndex, shortLabel, todayIndex } from './timeline-data.js';
-import { blendPalettes, driftPalette, paintGraph, paletteFor, randomWave } from './graph.js';
+import { blendPalettes, driftPalette, paintGraph, paletteFor, randomWave, traceCurve } from './graph.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const emptyScore = { height: 0, power: 0, count: 0 };
@@ -20,6 +20,8 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   let changedAt = 0;
   let wave;
   let ripples = [];
+  let geometry;
+  let paintedEffects = false;
   let animation = 0;
   let previousFrame = 0;
   let colorTimer;
@@ -56,6 +58,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     spacing = Math.max(width < 680 ? 51 : 61, width / 21);
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(height * ratio);
+    geometry = undefined;
     scheduleLayout();
   }
 
@@ -68,6 +71,20 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
       x: width / 2 + (index - camera) * spacing,
       y: baseline - lift * height * .49,
     };
+  }
+
+  function createGeometry(progress) {
+    const first = Math.floor(camera - width / (2 * spacing)) - 2;
+    const last = Math.ceil(camera + width / (2 * spacing)) + 2;
+    const baseline = height * .56;
+    const pointCache = new Map();
+    const pointAt = (index) => {
+      if (!pointCache.has(index)) pointCache.set(index, pointFor(index, baseline, progress));
+      return pointCache.get(index);
+    };
+    const points = [];
+    for (let index = first; index <= last; index++) points.push(pointAt(index));
+    return { camera, baseline, points, pointAt, curve: traceCurve(points) };
   }
 
   function buttonFor(point) {
@@ -155,10 +172,14 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
       themeBegan = now;
     }
     const next = motion.matches ? theme : driftPalette(interpolated(), now);
+    let changed = false;
     for (const [name, value] of Object.entries(next)) {
-      if (colors[name] !== value) document.documentElement.style.setProperty('--' + name, value);
+      if (colors[name] === value) continue;
+      document.documentElement.style.setProperty('--' + name, value);
+      changed = true;
     }
     colors = next;
+    return changed;
   }
 
   function ambientTime(now) {
@@ -186,29 +207,27 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     else camera += (target - camera) * (1 - Math.exp(-elapsed / (gesture?.dragging ? 27 : 82)));
 
     const progress = motion.matches ? 1 : 1 - (1 - clamp((now - changedAt) / 440, 0, 1)) ** 3;
-    const first = Math.floor(camera - width / (2 * spacing)) - 2;
-    const last = Math.ceil(camera + width / (2 * spacing)) + 2;
-    const baseline = height * .56;
-    const pointCache = new Map();
-    const pointAt = (index) => {
-      if (!pointCache.has(index)) pointCache.set(index, pointFor(index, baseline, progress));
-      return pointCache.get(index);
-    };
-    const points = [];
-    for (let index = first; index <= last; index++) points.push(pointAt(index));
+    const geometryChanged = geometry?.camera !== camera || heights.size > 0;
+    if (geometryChanged) geometry = createGeometry(progress);
+    const { points, pointAt, baseline, curve } = geometry;
     const selectedIsVisible = selected !== null && Math.abs(selected - camera) * spacing < width / 2;
     const ambientNow = ambientTime(now);
-    updateColors(paletteFor(score(selectedIsVisible ? selected : Math.round(camera), today)), ambientNow);
+    const paletteChanged = updateColors(paletteFor(score(selectedIsVisible ? selected : Math.round(camera), today)), ambientNow);
     if (wave && ambientNow >= wave.ends) wave = undefined;
     ripples = ripples.filter((ripple) => {
       ripple.progress = Math.max(0, ripple.progressAt(now));
       return ripple.progress < 1;
     });
-    const panel = wave?.panel?.getBoundingClientRect();
-    const visit = panel?.height ? { panel, stage: stage.getBoundingClientRect() } : null;
-    paintGraph(canvas, {
-      width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripples, now: ambientNow, visit, drawerGlow,
-    });
+    const effects = Boolean(wave || ripples.length);
+    if (geometryChanged || layoutDirty || paletteChanged || effects || paintedEffects) {
+      const panel = wave?.panel?.getBoundingClientRect();
+      const visit = panel?.height ? { panel, stage: stage.getBoundingClientRect() } : null;
+      paintGraph(canvas, {
+        width, height, ratio, points, pointAt, curve, colors, today, selected, baseline, spacing,
+        wave, ripples, now: ambientNow, visit, drawerGlow,
+      });
+      paintedEffects = effects;
+    }
     if (layoutDirty || camera !== lastCamera || heights.size || arrivedToday) {
       updateDays(points);
       updateYears(points);
@@ -332,6 +351,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
       if (todaySwipe) target = next;
       else if (Math.round(target) === today) moveTo(next);
       today = next;
+      geometry = undefined;
       onSelect(selected);
       scheduleLayout();
     }
@@ -417,6 +437,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
       }
       changedAt = now;
       score = nextScore;
+      geometry = undefined;
       scheduleLayout();
     },
   };
