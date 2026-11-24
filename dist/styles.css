@@ -282,7 +282,8 @@ main.dragging, main.dragging .day {
   position: relative;
   cursor: auto;
   z-index: 1;
-  inline-size: min(calc(100% - 32px), 480px);
+  inline-size: calc(100% - 32px);
+  max-inline-size: 384px;
   margin: calc(-1 * var(--drawer-overlap)) auto 0;
   padding-block-end: max(12px, env(safe-area-inset-bottom));
   animation: appear 240ms ease both;

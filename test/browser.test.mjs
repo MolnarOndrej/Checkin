@@ -421,7 +421,7 @@ test('the logging shortcut preselects the last activity created through it', asy
   assert.deepEqual(logs, ['Walk\n30 min', 'Read\n12 pages']);
 });
 
-test('all dialogs share a compact width on desktop and narrow phones', async (t) => {
+test('the day drawer and dialogs stay compact from phones to 4K', async (t) => {
   const page = await openCheckin(t);
   await page.setReducedMotion('reduce');
   await settle(page);
@@ -435,10 +435,16 @@ test('all dialogs share a compact width on desktop and narrow phones', async (t)
   await page.reload();
 
   const titles = ['Activities', 'Add activity', 'Edit activity', 'Remove Walk?', 'Walk'];
-  for (const [width, height, dialogWidth] of [[1440, 900, 340], [320, 640, 292]]) {
+  const viewports = [
+    { width: 3840, height: 2160, dialogWidth: 340, drawerWidth: 384 },
+    { width: 1440, height: 900, dialogWidth: 340, drawerWidth: 384 },
+    { width: 500, height: 844, dialogWidth: 340, drawerWidth: 384 },
+    { width: 320, height: 640, dialogWidth: 292, drawerWidth: 294 },
+  ];
+  for (const { width, height, dialogWidth, drawerWidth } of viewports) {
     await page.setViewport(width, height);
     await settle(page);
-    const dialogs = await page.evaluate(() => {
+    const layout = await page.evaluate(() => {
       const find = (selector) => document.querySelector(selector);
       const measure = () => [find('#dialog-title').innerText, find('dialog[open]').getBoundingClientRect().width];
       const cancel = () => find('dialog .actions [type="button"]').click();
@@ -452,13 +458,14 @@ test('all dialogs share a compact width on desktop and narrow phones', async (t)
       }
       find('#close-dialog').click();
       find('[aria-current="date"]').click();
+      const drawerWidth = find('#day-drawer').getBoundingClientRect().width;
       find('.log-row').click();
       results.push(measure());
       find('#close-dialog').click();
       find('#close-day').click();
-      return results;
+      return { dialogs: results, drawerWidth };
     });
-    assert.deepEqual(dialogs, titles.map((title) => [title, dialogWidth]));
+    assert.deepEqual(layout, { dialogs: titles.map((title) => [title, dialogWidth]), drawerWidth });
   }
 });
 
