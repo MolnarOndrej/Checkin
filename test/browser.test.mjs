@@ -85,6 +85,59 @@ test('today starts centered with 21 dated dots, and year labels and touch swipes
   assert.equal(await page.evaluate(() => document.querySelector('.day[tabindex="0"]').dataset.date), '2026-12-31');
 });
 
+test('Today swipes back from either direction and finishes long trips within two seconds', async (t) => {
+  const page = await openCheckin(t, controlTimelineEffects);
+  await page.setReducedMotion('no-preference');
+  await settle(page);
+  const trips = await page.evaluate(async () => {
+    const stage = document.querySelector('#timeline');
+    const shortcut = document.querySelector('#back-today');
+    const currentDay = () => document.querySelector('[aria-current="date"]');
+    const today = Date.parse(currentDay().dataset.date);
+    const { left, width } = stage.getBoundingClientRect();
+    const spacing = width / 21;
+    const center = () => {
+      const day = document.querySelector('.day');
+      const bounds = day.getBoundingClientRect();
+      const offset = (Date.parse(day.dataset.date) - today) / 86_400_000;
+      return Math.round(offset + (left + width / 2 - bounds.left - bounds.width / 2) / spacing);
+    };
+    const frame = async (elapsed) => {
+      window.advanceCheckin(elapsed);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    };
+
+    const results = [];
+    for (const offset of [5, -500, 500]) {
+      stage.dispatchEvent(new WheelEvent('wheel', { deltaX: offset * spacing, bubbles: true, cancelable: true }));
+      for (let i = 0; i < 24; i++) await frame(45);
+      const positions = [center()];
+      shortcut.focus();
+      shortcut.click();
+      await frame(150);
+      const shortcutVisible = !shortcut.hidden;
+      positions.push(center());
+      for (const elapsed of [350, 750, 750]) {
+        await frame(elapsed);
+        positions.push(center());
+      }
+      results.push({ positions, shortcutVisible, arrived: shortcut.hidden && document.activeElement === currentDay() });
+    }
+    return results;
+  });
+
+  assert.equal(trips[0].positions[0], 5);
+  assert.ok(trips[0].positions[1] > 0 && trips[0].positions[1] < 5);
+  assert.equal(trips[0].positions[2], 0);
+  for (const [trip, direction] of [[trips[1], -1], [trips[2], 1]]) {
+    const [start, early, moving, approaching] = trip.positions.map((position) => position * direction);
+    assert.equal(start, 500);
+    assert.ok(start > early && early > moving && moving > approaching && approaching > 0);
+    assert.equal(trip.positions.at(-1), 0);
+  }
+  assert.ok(trips.every((trip) => trip.shortcutVisible && trip.arrived));
+});
+
 test('activities can be managed, logged, edited, deleted and reloaded on a phone', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(390, 844);

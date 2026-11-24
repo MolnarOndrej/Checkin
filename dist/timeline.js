@@ -13,6 +13,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   let today = todayIndex();
   let camera = today;
   let target = today;
+  let todaySwipe;
   let selected = null;
   let score = () => emptyScore;
   let heights = new Map();
@@ -85,7 +86,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
 
   function updateDays(points) {
     const visible = new Set();
-    const focusedDay = Math.round(target);
+    const focusedDay = Math.round(todaySwipe ? camera : target);
     for (const point of points) {
       const { index, x, y, power } = point;
       if (x < 0 || x > width) continue;
@@ -163,7 +164,18 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     const elapsed = Math.min(45, now - previousFrame);
     const lastCamera = camera;
     previousFrame = now;
-    if (motion.matches || Math.abs(target - camera) < .002) camera = target;
+    let arrivedToday = false;
+    if (todaySwipe) {
+      const progress = motion.matches ? 1 : clamp((now - todaySwipe.startedAt) / todaySwipe.duration, 0, 1);
+      if (progress === 1) {
+        camera = target;
+        todaySwipe = undefined;
+        arrivedToday = true;
+      } else {
+        const eased = progress * progress * (3 - 2 * progress);
+        camera = todaySwipe.from + (target - todaySwipe.from) * eased;
+      }
+    } else if (motion.matches || Math.abs(target - camera) < .002) camera = target;
     else camera += (target - camera) * (1 - Math.exp(-elapsed / (gesture?.dragging ? 27 : 82)));
 
     const progress = motion.matches ? 1 : 1 - (1 - clamp((now - changedAt) / 440, 0, 1)) ** 3;
@@ -189,13 +201,16 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     paintGraph(canvas, {
       width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripples, now, visit, drawerGlow,
     });
-    if (layoutDirty || camera !== lastCamera || heights.size) {
+    if (layoutDirty || camera !== lastCamera || heights.size || arrivedToday) {
       updateDays(points);
       updateYears(points);
-      backToday.hidden = Math.abs(target - today) < .55;
+      if (arrivedToday && document.activeElement === backToday) {
+        nodes.get(today)?.button.focus({ preventScroll: true });
+      }
+      backToday.hidden = !todaySwipe && Math.abs(target - today) < .55;
       layoutDirty = false;
     }
-    if (camera !== target || wave || ripples.length || (heights.size && progress < 1)) schedule();
+    if (todaySwipe || camera !== target || wave || ripples.length || (heights.size && progress < 1)) schedule();
     else if (!motion.matches && !document.hidden) colorTimer = setTimeout(schedule, 40);
     if (progress === 1) heights.clear();
   }
@@ -215,6 +230,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   }
 
   function moveTo(index, focus = false) {
+    todaySwipe = undefined;
     target = index;
     layoutDirty = true;
     if (focus && !nodes.has(index)) {
@@ -296,7 +312,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     if (!delta || (!event.shiftKey && Math.abs(delta) < Math.abs(event.deltaY))) return;
     event.preventDefault();
     const units = [1, 16, width][event.deltaMode] ?? 1;
-    moveTo(target + delta * units / spacing);
+    moveTo((todaySwipe ? camera : target) + delta * units / spacing);
     clearTimeout(wheelTimer);
     wheelTimer = setTimeout(() => moveTo(Math.round(target)), 140);
   }, { passive: false });
@@ -304,7 +320,8 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   function followToday() {
     const next = todayIndex();
     if (next !== today) {
-      if (Math.round(target) === today) moveTo(next);
+      if (todaySwipe) target = next;
+      else if (Math.round(target) === today) moveTo(next);
       today = next;
       onSelect(selected);
       scheduleLayout();
@@ -324,7 +341,18 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     schedule();
   }
 
-  backToday.addEventListener('click', () => moveTo(today, true));
+  backToday.addEventListener('click', () => {
+    followToday();
+    if (todaySwipe) return;
+    clearTimeout(wheelTimer);
+    todaySwipe = {
+      from: camera,
+      startedAt: performance.now(),
+      duration: Math.min(1900, 240 + 12 * Math.abs(today - camera)),
+    };
+    target = today;
+    scheduleLayout();
+  });
   motion.addEventListener('change', () => {
     if (motion.matches) {
       wave = undefined;
