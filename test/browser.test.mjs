@@ -319,7 +319,15 @@ test('an empty day offers Add activity directly and opens logging with the new a
     find('#day-content [type="submit"]').click();
     await waitFor(() => Boolean(find('.log-value')));
     find('[aria-label="Log activity"]').click();
-    return { empty, title, nameFocused, returned, activityFields, titleLeft, log, allLoggedLabel: add().innerText };
+    const message = find('#day-content .inline-note').getBoundingClientRect();
+    const shortcut = add().getBoundingClientRect();
+    const allLogged = {
+      label: add().innerText,
+      besideMessage: shortcut.left >= message.right
+        && Math.abs(shortcut.top + shortcut.height / 2 - (message.top + message.height / 2)) < 1,
+      fitsDrawer: shortcut.right <= find('#day-content').getBoundingClientRect().right,
+    };
+    return { empty, title, nameFocused, returned, activityFields, titleLeft, log, allLogged };
   });
   assert.deepEqual(flow.empty, { label: 'Add activity', visible: true, logToggle: false });
   assert.equal(flow.title, 'Add activity');
@@ -332,7 +340,7 @@ test('an empty day offers Add activity directly and opens logging with the new a
   assert.equal(flow.log.amountFocused, true);
   assert.deepEqual(flow.log.fields[0], flow.log.fields[1]);
   assert.equal(flow.log.viewport.scrollWidth, flow.log.viewport.width);
-  assert.equal(flow.allLoggedLabel, flow.empty.label);
+  assert.deepEqual(flow.allLogged, { label: flow.empty.label, besideMessage: true, fitsDrawer: true });
 
   await page.reload();
   await settle(page);

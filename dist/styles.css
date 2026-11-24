@@ -575,19 +575,21 @@ dialog::backdrop {
 }
 
 .activity-prompt {
-  display: grid;
-  justify-items: start;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding-inline: 3px;
 }
 
 .activity-prompt .inline-note {
-  padding: 4px 10px;
+  padding: 0;
+  padding-inline-start: 10px;
   animation: none;
 }
 
 .activity-shortcut {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 8px;
   padding-inline: 10px 13px;
