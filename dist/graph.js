@@ -50,7 +50,7 @@ const effects = [
 const companionTracks = { 'crossing-lights': 'heads', 'twin-ribbons': 'ribbons' };
 const paletteColors = ['accent', 'secondary', 'spark'];
 const borders = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
-const inkFade = 1050;
+const glowFade = 1050;
 const inkReach = .51;
 const glowSpeed = .81; // CSS pixels per millisecond along the path.
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -113,6 +113,11 @@ function measurePath(pointAt, steps) {
   const length = distances.at(-1);
   return {
     length,
+    distanceAt(position) {
+      const step = position * steps;
+      const left = Math.floor(step);
+      return mix(distances[left], distances[Math.min(left + 1, steps)], step - left);
+    },
     positionAt(distance) {
       if (distance <= 0) return 0;
       if (distance >= length) return 1;
@@ -129,7 +134,9 @@ function measurePath(pointAt, steps) {
 }
 
 function graphTrack(route, layout, extend = false) {
-  const steps = Math.max(96, Math.ceil(Math.abs(route(1, layout).day - route(0, layout).day) * 24));
+  const startDay = route(0, layout).day;
+  const span = route(1, layout).day - startDay;
+  const steps = Math.max(96, Math.ceil(Math.abs(span) * 24));
   const measure = (segment) => measurePath((position) => {
     const { day, y } = route(segment + position, layout);
     return { x: day * layout.spacing, y };
@@ -138,6 +145,18 @@ function graphTrack(route, layout, extend = false) {
   const length = segments[0].length;
   return {
     length,
+    // Node crossings use tracks with a linear day coordinate.
+    distanceAtDay(day) {
+      if (!span) return undefined;
+      const position = (day - startDay) / span;
+      if (position < 0) return undefined;
+      const segment = extend ? Math.min(Math.floor(position), segments.length - 1) : 0;
+      const fraction = position - segment;
+      if (fraction > 1) return undefined;
+      let offset = 0;
+      for (let index = 0; index < segment; index++) offset += segments[index].length;
+      return offset + segments[segment].distanceAt(fraction);
+    },
     at(distance, currentLayout) {
       let segment = 0;
       // A swipe can reveal the continuation of a route beyond its original viewport.
@@ -186,7 +205,10 @@ function prepareWave(wave, layout) {
   const { from, to, anchor, direction, side, entry } = wave;
   const track = (route, extend) => graphTrack(route, layout, extend);
   const across = (start, end) => track(followGraph(start, end), true);
-  const together = (tracks) => ({ tracks, length: Math.max(...tracks.map(({ length }) => length)) });
+  const together = (tracks) => ({
+    tracks, length: Math.max(...tracks.map(({ length }) => length)),
+    nodeTracks: tracks.map((track, contact) => ({ track, contact })),
+  });
   switch (wave.kind) {
     case 'daybreak-sweep': return together([across(from, to)]);
     case 'backlight-sweep': return together([across(to, from)]);
@@ -213,7 +235,11 @@ function prepareWave(wave, layout) {
           return distance <= fall.length ? fall.at(distance, currentLayout) : exit.at(distance - fall.length, currentLayout);
         },
       };
-      return { ...together([ribbon]), visitFrom: fall.length, visitTo: fall.length + exit.length * .9 };
+      return {
+        ...together([ribbon]),
+        nodeTracks: [{ track: exit, offset: fall.length }],
+        visitFrom: fall.length, visitTo: fall.length + exit.length * .9,
+      };
     }
     case 'split-pulse': {
       const arrival = track(followGraph(from, anchor));
@@ -225,7 +251,11 @@ function prepareWave(wave, layout) {
         };
       });
       const length = arrival.length + splitHold + Math.max(...branches.map(({ reach, exit }) => reach.length + exit.length));
-      return { arrival, branches, length, visitTo: arrival.length * .96 };
+      const nodeTracks = [{ track: arrival }, ...branches.flatMap(({ reach, exit }, contact) => [
+        { track: reach, offset: arrival.length, contact },
+        { track: exit, offset: arrival.length + reach.length + splitHold, contact },
+      ])];
+      return { arrival, branches, length, nodeTracks, visitTo: arrival.length * .96 };
     }
     case 'beacon-landing': {
       const arrival = track((position, currentLayout) => {
@@ -240,7 +270,10 @@ function prepareWave(wave, layout) {
       });
       const exit = across(anchor, to);
       const visitFrom = arrival.length + beaconHold + descent.length;
-      return { arrival, descent, exit, length: visitFrom + exit.length, visitFrom, visitTo: visitFrom + exit.length * .93 };
+      return {
+        arrival, descent, exit, length: visitFrom + exit.length, visitFrom, visitTo: visitFrom + exit.length * .93,
+        nodeTracks: [{ track: arrival }, { track: exit, offset: visitFrom }],
+      };
     }
   }
 }
@@ -470,24 +503,49 @@ function ribbonTips(ribbons = []) {
     .map(({ points, tip, opacity = 1 }) => ({ ...points.at(-1), color: tip, strength: .92 * opacity }));
 }
 
+function graphContacts({ heads, ribbons, ball }) {
+  return heads ?? (ball ? [ball] : ribbonTips(ribbons));
+}
+
+function nodeLightAt(wave, now, colors, layout) {
+  const { kind, started, departed = Infinity, motion, visit } = wave;
+  return ({ index, y }) => {
+    let light;
+    for (const { track, offset = 0, contact = 0 } of motion.nodeTracks) {
+      const crossing = track.distanceAtDay(index);
+      if (crossing === undefined) continue;
+      const elapsed = (offset + crossing) / glowSpeed;
+      const followsLead = contact === 0 || !companionTracks[kind];
+      const paused = followsLead && visit && elapsed >= visit.begin ? visit.delay : 0;
+      const arrived = started + elapsed + paused;
+      const age = now - arrived;
+      if (age < -1e-6 || age >= glowFade || arrived >= departed || (light && arrived <= light.arrived)) continue;
+      const effects = traversalAt(wave, started + elapsed, colors, layout, { complete: false });
+      const tip = graphContacts(effects)[contact];
+      // A tip passing over the same day can still be above or below the node.
+      if (!tip || Math.abs(tip.day - index) > 1e-6 || Math.abs((tip.y ?? y) - y) > .5) continue;
+      light = { arrived, color: tip.color, charge: 1 - smooth(Math.max(0, age) / glowFade) };
+    }
+    return light;
+  };
+}
+
 function inkOnGraph(wave, now, colors, layout) {
   if (!wave?.ink) return null;
   const marks = new Map();
   const visitStart = wave.started + (wave.visit?.begin ?? 0);
   const leadSince = wave.visit?.delay > 0 && now >= visitStart ? visitStart + wave.visit.delay : wave.started;
   const earliest = companionTracks[wave.kind] ? wave.started : leadSince;
-  for (let age = 0; age < inkFade && now - age >= earliest; age += 20) {
+  for (let age = 0; age < glowFade && now - age >= earliest; age += 20) {
     const time = now - age;
     if (wave.departed !== undefined && time >= wave.departed) continue;
     const phase = waveFrameAt(wave, time);
-    const { heads = [], ribbons, ball } = traversalOnGraph(wave, phase, colors, layout, {
+    const effects = traversalOnGraph(wave, phase, colors, layout, {
       complete: false, includeLead: time >= leadSince,
     });
-    const contacts = [...heads, ...ribbonTips(ribbons)];
-    if (ball && !heads.length) contacts.push(ball);
-    for (const { day, y, strength } of contacts) {
+    for (const { day, y, strength } of graphContacts(effects)) {
       const distance = y === undefined ? 0 : (y - layout.yAt(day)) / 18;
-      const brightness = Math.exp(-(distance ** 2)) * strength * (1 - age / inkFade) ** 1.35;
+      const brightness = Math.exp(-(distance ** 2)) * strength * (1 - age / glowFade) ** 1.35;
       if (!(brightness > .025)) continue;
       const bucket = Math.floor(day);
       let nearby = marks.get(bucket);
@@ -614,32 +672,37 @@ function paintRibbon(context, ribbon, worldToX, width, height) {
   paintTrail(context, pixels, ribbon, width, height);
 }
 
-function drawPoints(context, points, heads, colors, today, selected, width, ink) {
+function drawNodeGlow(context, x, y, size, power, color, charge) {
+  if (charge < .015) return;
+  halo(context, x, y, 24 + power * 29, color, charge * (.3 + .42 * power));
+  circle(context, x, y, size + 1 + charge * (2 + power * 6));
+  context.strokeStyle = tint(color, charge * (.28 + .31 * power));
+  context.lineWidth = 1 + power;
+  context.stroke();
+}
+
+function drawPoints(context, points, ripples, colors, today, selected, width, nodeLight, dye) {
   for (const point of points) {
     if (point.x < -48 || point.x > width + 48) continue;
     const { x, y, index, power, count } = point;
     const current = index === today;
     const chosen = index === selected;
     const future = index > today;
-    const dyed = ink?.at(index) ?? 0;
+    const light = nodeLight?.(point);
+    const dyed = dye && light ? light.charge : 0;
     const size = 3 + (current || chosen ? 1.65 : 0) + (count ? .85 : 0) + power * 3.1 + dyed * .7;
     const base = power > .58 ? colors.spark : count || current || chosen ? colors.accent : colors.secondary;
-    const color = dyed ? mixColor(base, ink.color, Math.min(1, dyed * 1.45)) : base;
+    const color = dyed ? mixColor(base, dye, Math.min(1, dyed * 1.45)) : base;
 
     if (current || count || chosen) {
       halo(context, x, y, 13 + power * 16, color, .17 + .19 * power);
     }
-    if (dyed > .025) halo(context, x, y, 19 + power * 12, ink.color, dyed * .48);
-    for (const head of heads) {
-      const distance = index - head.day;
-      const rise = head.y === undefined ? 0 : (y - head.y) / 36;
-      const charge = Math.exp(-(distance ** 2) / (.53 + power * .75) - rise ** 2) * head.strength;
-      if (charge < .015) continue;
-      halo(context, x, y, 24 + power * 29, head.color, charge * (.3 + .42 * power));
-      circle(context, x, y, size + 1 + charge * (2 + power * 6));
-      context.strokeStyle = tint(head.color, charge * (.28 + .31 * power));
-      context.lineWidth = 1 + power;
-      context.stroke();
+    if (dyed > .025) halo(context, x, y, 19 + power * 12, dye, dyed * .48);
+    if (light) drawNodeGlow(context, x, y, size, power, light.color, light.charge);
+    for (const ripple of ripples) {
+      const distance = index - ripple.day;
+      const charge = Math.exp(-(distance ** 2) / (.53 + power * .75)) * ripple.strength;
+      drawNodeGlow(context, x, y, size, power, ripple.color, charge);
     }
 
     if (current || chosen) {
@@ -900,15 +963,15 @@ export function paintGraph(canvas, frame) {
   if (wave && (phase.time - wave.started) * glowSpeed >= wave.motion.length && wave.departed === undefined) {
     if (!traversalInView(onGraph, worldToX, width)) {
       wave.departed = now;
-      wave.ends = now + (wave.ink ? inkFade : 0);
+      wave.ends = now + glowFade;
       onGraph = {};
     }
   }
   const ink = inkOnGraph(wave, now, waveColors, layout);
-  const heads = [...(onGraph.heads ?? []), ...ripples.flatMap((ripple) => rippleHeads(ripple, colors, layout))];
+  const nodeLight = wave && nodeLightAt(wave, now, waveColors, layout);
+  const rippleLights = ripples.flatMap((ripple) => rippleHeads(ripple, colors, layout));
+  const heads = [...(onGraph.heads ?? []), ...rippleLights];
   const ribbons = onGraph.ribbons ?? [];
-  const contacts = ribbonTips(ribbons);
-  if (onGraph.ball && !onGraph.heads) contacts.push(onGraph.ball);
   const path = frame.curve ?? traceCurve(points);
 
   const axis = new Path2D();
@@ -945,7 +1008,7 @@ export function paintGraph(canvas, frame) {
   paintInk(context, path, ink, first.index - first.x / spacing, width, spacing);
   for (const head of heads) lineWave(context, path, head, worldToX, spacing);
   for (const ribbon of ribbons) paintRibbon(context, ribbon, worldToX, width, height);
-  drawPoints(context, points, [...heads, ...contacts], colors, today, selected, width, ink);
+  drawPoints(context, points, rippleLights, colors, today, selected, width, nodeLight, dye);
   for (const head of heads) {
     if (head.strength > .025) waveTip(context, yAt, head, worldToX, width);
   }

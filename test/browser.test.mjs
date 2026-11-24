@@ -1290,6 +1290,70 @@ test('traveling effects and silent ripples cover the same screen distance on fla
   assert.ok(result['split-pulse'].holds > 0 && result['beacon-landing'].holds > 0);
 });
 
+test('traveling lights charge nodes on contact and fade after passing', async (t) => {
+  const page = await openCheckin(t);
+  const result = await page.evaluate(async () => {
+    const { paintGraph } = await import('/graph.js');
+    const canvas = document.createElement('canvas');
+    const width = canvas.width = 960;
+    const height = canvas.height = 540;
+    const spacing = 60;
+    const baseline = height * .56;
+    const pointAt = (index) => ({ index, x: width / 2 + index * spacing, y: baseline, count: 0, power: 0 });
+    const frame = {
+      width, height, spacing, baseline, ratio: 1, today: 100, drawerGlow: {}, pointAt,
+      points: Array.from({ length: 17 }, (_, index) => pointAt(index - 8)),
+      colors: { accent: '#9bfae2', secondary: '#aaa1ff', spark: '#efbaf4' },
+    };
+    const context = canvas.getContext('2d');
+    const createGradient = context.createRadialGradient.bind(context);
+    const charges = new Map();
+    context.createRadialGradient = (x, y, inner, endX, endY, radius) => {
+      const gradient = createGradient(x, y, inner, endX, endY, radius);
+      // Capture the opacity actually painted at the center of each node halo.
+      if (radius === 24) {
+        const add = gradient.addColorStop.bind(gradient);
+        gradient.addColorStop = (position, color) => {
+          if (position === 0) charges.set(x, parseInt(color.slice(-2), 16));
+          add(position, color);
+        };
+      }
+      return gradient;
+    };
+    const makeWave = (kind, options) => ({
+      kind, started: 0, from: -12, to: 12, anchor: 0, direction: 1, side: -1, ...options,
+    });
+    function draw(wave, now, day = 0) {
+      charges.clear();
+      paintGraph(canvas, { ...frame, wave, now });
+      return charges.get(pointAt(day).x) ?? 0;
+    }
+    const approach = 12 * spacing / .81;
+    const sweep = makeWave('daybreak-sweep');
+    const inkedReverse = makeWave('backlight-sweep', { ink: 'spark' });
+    const weave = makeWave('over-under');
+    draw(weave, 0);
+    const weaveContact = weave.motion.length / 2 / .81;
+    const beacon = makeWave('beacon-landing', { entry: { day: -12, y: -1 } });
+    draw(beacon, 0);
+    const hover = beacon.motion.arrival.length / .81;
+    const landing = hover + 700 + beacon.motion.descent.length / .81;
+    return {
+      forwards: [-35, -1, 0, 250, 600, 1100].map((offset) => draw(sweep, approach + offset)),
+      backwards: [-1, 0, 600].map((offset) => draw(inkedReverse, approach + offset)),
+      weave: [draw(weave, weaveContact, 0), draw(weave, weaveContact + 180, 1)],
+      beacon: [draw(beacon, hover + 350), draw(beacon, landing - 1), draw(beacon, landing), draw(beacon, landing + 600)],
+    };
+  });
+  const [approaching, before, peak, fading, faint, settled] = result.forwards;
+  assert.deepEqual([approaching, before, settled], [0, 0, 0]);
+  assert.equal(peak, Math.round(.3 * 255));
+  assert.ok(peak > fading && fading > faint && faint > settled, JSON.stringify(result));
+  assert.deepEqual(result.backwards, [0, peak, faint]);
+  assert.deepEqual(result.weave, [peak, 0]);
+  assert.deepEqual(result.beacon, [0, 0, peak, faint]);
+});
+
 test('random effects can follow, leave, pulse, and recolor the graph, or land on the busiest day', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects);
   await page.setReducedMotion('no-preference');
@@ -1495,6 +1559,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     };
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
     const baseline = Math.floor(graph.clientHeight * .56);
+    const spacing = graph.clientWidth / 21;
     const x = 100;
     const width = Math.floor(drawer.left) - x - 55;
 
@@ -1503,7 +1568,12 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       let total = 0;
       for (let y = 0; y < graph.height; y += 3) {
         if (ribbon ? Math.abs(y - baseline) <= 26 : Math.abs(y - baseline) > 5) continue;
-        for (let column = 0; column < width; column += 3) total += data[(y * width + column) * 4 + 3];
+        for (let column = 0; column < width; column += 3) {
+          const day = (x + column - graph.clientWidth / 2) / spacing;
+          // Measure the traveling trail between nodes, where their afterglow cannot reach.
+          if (!ribbon && Math.abs(day - Math.round(day)) * spacing <= 25) continue;
+          total += data[(y * width + column) * 4 + 3];
+        }
       }
       return total;
     }
