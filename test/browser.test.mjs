@@ -580,6 +580,50 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     assert.equal(effect.loopCleared, true);
   }
 
+  const companions = await page.evaluate(async () => {
+    const graph = document.querySelector('#graph');
+    const glow = document.querySelector('#drawer-glow');
+    const context = graph.getContext('2d');
+    const { clientWidth: width, clientHeight: height } = graph;
+    const baseline = height * .56;
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const samples = [.65, .72];
+
+    async function trace(kind, travelDuration, offsetFor, yFor) {
+      const tipOpacity = (progress) => {
+        const offset = offsetFor(progress);
+        const x = width * (.5 + offset / 21);
+        const y = yFor(offset);
+        const { data } = context.getImageData(Math.round(x) - 2, Math.round(y) - 2, 5, 5);
+        return Math.max(...data.filter((_, index) => index % 4 === 3));
+      };
+      window.advanceCheckin(5000);
+      await frame();
+      const idle = samples.map(tipOpacity);
+      window.traverse(kind, [.99, .399]);
+      let previous = 0;
+      const moving = [];
+      for (const progress of samples) {
+        window.advanceCheckin(travelDuration * (progress - previous));
+        await frame();
+        moving.push({ looping: !glow.hidden, opacity: tipOpacity(progress) });
+        previous = progress;
+      }
+      return { idle, moving };
+    }
+
+    const offset = (progress) => 39 * (progress - .5);
+    return {
+      crossing: await trace(2, 3020, (progress) => -offset(progress), () => baseline),
+      ribbons: await trace(7, 3300, offset, (day) => baseline + height * .29 * Math.sin(day * Math.PI / 6)),
+    };
+  });
+  for (const [name, { idle, moving }] of Object.entries(companions)) {
+    for (const [index, { looping, opacity }] of moving.entries()) {
+      assert.ok(looping && opacity > idle[index] + 35, JSON.stringify({ name, idle, moving }));
+    }
+  }
+
   const eligible = await page.evaluate(async () => {
     const glow = document.querySelector('#drawer-glow');
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));

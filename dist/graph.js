@@ -54,6 +54,7 @@ const effects = [
   ['twin-ribbons', 3900],
   ['beacon-landing', 4400],
 ];
+const companionTracks = { 'crossing-lights': 'heads', 'twin-ribbons': 'ribbons' };
 const paletteColors = ['accent', 'secondary', 'spark'];
 const borders = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
 const inkFade = 1050;
@@ -361,10 +362,14 @@ function inkOnGraph(wave, now, colors, yAt, height) {
   if (!wave?.ink) return null;
   const marks = [];
   const visitStart = wave.started + (wave.visit?.begin ?? 0);
-  const earliest = wave.visit?.delay > 0 && now >= visitStart ? visitStart + wave.visit.delay : wave.started;
+  const leadSince = wave.visit?.delay > 0 && now >= visitStart ? visitStart + wave.visit.delay : wave.started;
+  const earliest = companionTracks[wave.kind] ? wave.started : leadSince;
   for (let age = 0; age < inkFade && now - age >= earliest; age += 20) {
-    const frame = waveFrameAt(wave, now - age);
-    const { heads = [], ribbons, ball } = traversalAt(wave, frame.time, colors, yAt, height, { complete: false });
+    const time = now - age;
+    const phase = waveFrameAt(wave, time);
+    const { heads = [], ribbons, ball } = traversalOnGraph(wave, phase, colors, yAt, height, {
+      complete: false, includeLead: time >= leadSince,
+    });
     const contacts = [...heads, ...ribbonTips(ribbons)];
     if (ball && !heads.length) contacts.push(ball);
     for (const { day, y, strength } of contacts) {
@@ -573,7 +578,7 @@ function planVisit(wave, visit, width, colors, worldToX, yAt, height) {
 
 function waveFrameAt(wave, now) {
   const visit = wave?.visit;
-  if (!visit) return { time: now, loop: null, rejoin: null };
+  if (!visit) return { time: now, uninterruptedTime: now, loop: null, rejoin: null };
   const elapsed = now - wave.started;
   const intoVisit = elapsed - visit.begin;
   const detouring = intoVisit >= 0 && intoVisit < visit.delay;
@@ -584,17 +589,33 @@ function waveFrameAt(wave, now) {
   } : null;
   return {
     time: wave.started + (elapsed - spentVisiting) * wave.duration / visit.duration,
+    uninterruptedTime: wave.started + elapsed * wave.duration / visit.duration,
     loop: detouring ? intoVisit / visit.delay : null,
     rejoin,
   };
 }
 
-function rejoinedHeads(heads, startingHeads, secondaryLight) {
-  return heads.map((head, index) => {
+function rejoinedHeads(heads, startingHeads) {
+  return heads.map((head) => {
     const start = startingHeads.find(({ direction }) => direction === head.direction);
     const tail = start ? clamp((head.day - start.day) * head.direction, 0, head.tail) : head.tail;
-    return { ...head, tail, strength: index === 0 ? head.strength : head.strength * secondaryLight };
+    return { ...head, tail };
   });
+}
+
+function traversalOnGraph(wave, phase, colors, yAt, height, { complete = true, includeLead = true, startingHeads } = {}) {
+  const leadOnGraph = includeLead && phase.loop === null;
+  const effects = leadOnGraph
+    ? traversalAt(wave, phase.time, colors, yAt, height, { complete, after: phase.rejoin?.time })
+    : {};
+  if (startingHeads && effects.heads) effects.heads = rejoinedHeads(effects.heads, startingHeads);
+
+  const track = companionTracks[wave?.kind];
+  if (track && (!leadOnGraph || phase.time !== phase.uninterruptedTime)) {
+    const companion = traversalAt(wave, phase.uninterruptedTime, colors, yAt, height, { complete })[track]?.[1];
+    effects[track] = [effects[track]?.[0], companion].filter(Boolean);
+  }
+  return effects;
 }
 
 function sampleRim(panel, direction) {
@@ -720,25 +741,16 @@ export function paintGraph(canvas, frame) {
     wave.visit.delay = interrupted;
   }
   const phase = waveFrameAt(wave, now);
-  const looping = phase.loop !== null;
-  const effects = traversalAt(wave, phase.time, waveColors, yAt, height, {
-    complete: !looping, after: phase.rejoin?.time,
-  });
   const atRejoin = phase.rejoin && traversalAt(wave, phase.rejoin.time, waveColors, yAt, height, { complete: false });
   const loopProgress = phase.loop ?? (phase.rejoin ? 1 + phase.rejoin.age / wave.visit.delay : null);
-  const lead = visit && loopProgress !== null && loopProgress < 1 + loopTrailLength
-    && leadOf(wave, looping ? effects : atRejoin);
+  const lead = visit && loopProgress !== null && loopProgress < 1 + loopTrailLength && leadOf(wave,
+    atRejoin ?? traversalAt(wave, phase.time, waveColors, yAt, height, { complete: false }));
   if (lead) paintVisit(drawerGlow, visit, lead, loopProgress, worldToX, yAt, ratio);
   else drawerGlow.hidden = true;
-  const onGraph = looping ? {} : effects;
+  const onGraph = traversalOnGraph(wave, phase, waveColors, yAt, height, { startingHeads: atRejoin?.heads });
   const ink = inkOnGraph(wave, now, waveColors, yAt, height);
-  const secondaryLight = phase.rejoin ? smooth(clamp(phase.rejoin.age / 150, 0, 1)) : 1;
-  const graphHeads = atRejoin
-    ? rejoinedHeads(onGraph.heads ?? [], atRejoin.heads ?? [], secondaryLight)
-    : onGraph.heads ?? [];
-  const heads = [...graphHeads, ...rippleHeads(ripple, now, colors)];
-  const ribbons = (onGraph.ribbons ?? []).map((ribbon, index) =>
-    index === 0 || secondaryLight === 1 ? ribbon : { ...ribbon, opacity: (ribbon.opacity ?? 1) * secondaryLight });
+  const heads = [...(onGraph.heads ?? []), ...rippleHeads(ripple, now, colors)];
+  const ribbons = onGraph.ribbons ?? [];
   const contacts = ribbonTips(ribbons);
   if (onGraph.ball && !onGraph.heads) contacts.push(onGraph.ball);
   const path = trace(points);
