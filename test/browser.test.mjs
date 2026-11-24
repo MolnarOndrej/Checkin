@@ -1003,3 +1003,61 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
   });
   assert.ok(ripple.after > ripple.before + 100);
 });
+
+test('Beacon Landing bloom fades before the upper and lower graph edges', async (t) => {
+  const page = await openCheckin(t);
+  const cases = await page.evaluate(async () => {
+    const { paintGraph } = await import('/graph.js');
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const colors = { accent: '#9bfae2', secondary: '#aaa1ff', spark: '#efbaf4' };
+
+    function sample(width, height, nodeFraction, side, progress) {
+      canvas.width = width;
+      canvas.height = height;
+      const x = width / 2;
+      const nodeY = height * nodeFraction;
+      const pointAt = (index) => ({ index, x: x + index * 61, y: nodeY, count: 0, power: 0 });
+      const wave = {
+        kind: 'beacon-landing', anchor: 0, side, direction: 1, to: 20,
+        entry: { day: -20, y: 0 }, started: 0, duration: 4400,
+      };
+      paintGraph(canvas, {
+        width, height, ratio: 1, points: [-1, 0, 1].map(pointAt), pointAt, colors,
+        today: 100, baseline: height * .56, spacing: 61, wave, now: progress * wave.duration,
+        drawerGlow: {},
+      });
+
+      const alpha = (column, row) => context.getImageData(column, row, 1, 1).data[3];
+      const core = context.getImageData(x, 0, 1, height).data;
+      let center = 0;
+      for (let row = 1; row < height; row++) {
+        if (core[row * 4 + 3] > core[center * 4 + 3]) center = row;
+      }
+      return {
+        lift: (center - nodeY) * side,
+        core: alpha(x, center),
+        halo: alpha(x + Math.round(height * .085), center),
+        top: alpha(x, Math.floor(height * .05)),
+        bottom: alpha(x, Math.ceil(height * .96)),
+      };
+    }
+
+    return [[1440, 648], [390, 330]].map(([width, height]) => ({
+      width,
+      above: sample(width, height, .28, -1, .49),
+      below: sample(width, height, .72, 1, .49),
+      descendingFromBelow: sample(width, height, .127, 1, .66),
+    }));
+  });
+
+  for (const result of cases) {
+    for (const bloom of [result.above, result.below]) {
+      assert.ok(bloom.lift > 20 && bloom.core > 200 && bloom.halo > 35, JSON.stringify(result));
+    }
+    assert.ok(result.descendingFromBelow.core > 200, JSON.stringify(result));
+    for (const bloom of [result.above, result.below, result.descendingFromBelow]) {
+      assert.equal(bloom.top + bloom.bottom, 0, JSON.stringify(result));
+    }
+  }
+});

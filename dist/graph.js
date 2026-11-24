@@ -94,9 +94,11 @@ export function randomWave({ center, visibleDays, today, now, countAt }) {
 }
 
 const head = (day, direction, color, strength = 1, tail = 4) => ({ day, direction, color, strength, tail });
+const effectTop = .07;
+const effectBottom = .94;
 
 function roomFor(y, height, sign, amount) {
-  const room = sign < 0 ? y - height * .07 : height * .94 - y;
+  const room = sign < 0 ? y - height * effectTop : height * effectBottom - y;
   return sign * clamp(room, 0, height * amount);
 }
 
@@ -176,9 +178,10 @@ function landBall(wave, progress, color, yAt, height, complete, trailStart) {
   const nodeY = yAt(anchor);
   let lift = roomFor(nodeY, height, side, .27);
   if (Math.abs(lift) < height * .19) lift = roomFor(nodeY, height, -side, .27);
-  const hover = nodeY + lift;
+  // Leave room for the full bloom inside the graph's edge fade.
+  const hover = clamp(nodeY + lift, height * effectTop + large, height * effectBottom - large);
 
-  const startY = entry.y ? height * (entry.y < 0 ? -.14 : 1.14) : hover + lift * .26;
+  const startY = entry.y ? height * (entry.y < 0 ? -.14 : 1.14) : hover + (hover - nodeY) * .26;
   const hoverTime = expanded - approach;
   // Hold the trail in place while the beacon hovers.
   const travelTime = (time) => time - clamp(time - approach, 0, hoverTime);
@@ -413,9 +416,10 @@ function paintBall(context, ball, worldToX, width, height) {
   const { y, radius, color, bloom, bloomRadius } = ball;
   const x = worldToX(ball.day);
   const glow = radius * 2.8 + 11;
-  const extent = bloom > 0 ? bloomRadius : glow;
+  const visibleBloom = bloom > 0 ? Math.min(bloomRadius, y - height * effectTop, height * effectBottom - y) : 0;
+  const extent = Math.max(glow, visibleBloom);
   if (x < -extent || x > width + extent || y < -extent || y > height + extent) return;
-  if (bloom > 0) halo(context, x, y, bloomRadius, color, bloom * .92);
+  if (visibleBloom > 0) halo(context, x, y, visibleBloom, color, bloom * .92);
   halo(context, x, y, glow, color, .64);
   const core = context.createRadialGradient(x, y, 0, x, y, radius);
   core.addColorStop(0, tint('#ffffff', .97));
