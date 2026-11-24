@@ -200,6 +200,37 @@ function hops(wave) {
 
 const splitHold = 850 * glowSpeed;
 const beaconHold = 700 * glowSpeed;
+const beaconEase = 65 * glowSpeed;
+const beaconFade = 500 * glowSpeed;
+
+function easeBeaconTrack(track, { start = false, end = false }) {
+  const ease = Math.min(beaconEase, track.length / 2);
+  const lead = start ? ease : 0;
+  const tail = end ? ease : 0;
+  // Each eased end averages half the cruising speed, so it needs twice the time.
+  const length = track.length + lead + tail;
+  return {
+    length,
+    at(distance, layout) {
+      const remaining = length - distance;
+      if (distance < 2 * lead) return track.at(distance ** 2 / (4 * lead), layout);
+      if (remaining >= 0 && remaining < 2 * tail) {
+        return track.at(track.length - remaining ** 2 / (4 * tail), layout);
+      }
+      return track.at(distance - lead - (remaining < 0 ? tail : 0), layout);
+    },
+    distanceAtDay(day) {
+      const distance = track.distanceAtDay(day);
+      if (distance === undefined) return undefined;
+      // Invert the easing so a node lights up at the actual moment of contact.
+      if (distance < lead) return 2 * Math.sqrt(distance * lead);
+      const remaining = track.length - distance;
+      if (remaining < 0) return distance + lead + tail;
+      if (remaining < tail) return length - 2 * Math.sqrt(remaining * tail);
+      return distance + lead;
+    },
+  };
+}
 
 function prepareWave(wave, layout) {
   const { from, to, anchor, direction, side, entry } = wave;
@@ -258,17 +289,17 @@ function prepareWave(wave, layout) {
       return { arrival, branches, length, nodeTracks, visitTo: arrival.length * .96 };
     }
     case 'beacon-landing': {
-      const arrival = track((position, currentLayout) => {
+      const arrival = easeBeaconTrack(track((position, currentLayout) => {
         const { hover, nodeY } = beaconHeights(wave, currentLayout);
         const { height } = currentLayout;
         const start = entry.y ? height * (entry.y < 0 ? -.14 : 1.14) : hover + (hover - nodeY) * .26;
         return { day: mix(entry.day, anchor, position), y: mix(start, hover, position) };
-      });
-      const descent = track((position, currentLayout) => {
+      }), { end: true });
+      const descent = easeBeaconTrack(track((position, currentLayout) => {
         const { hover, nodeY } = beaconHeights(wave, currentLayout);
         return { day: anchor, y: mix(hover, nodeY, position) };
-      });
-      const exit = across(anchor, to);
+      }), { start: true, end: true });
+      const exit = easeBeaconTrack(across(anchor, to), { start: true });
       const visitFrom = arrival.length + beaconHold + descent.length;
       return {
         arrival, descent, exit, length: visitFrom + exit.length, visitFrom, visitTo: visitFrom + exit.length * .93,
@@ -322,15 +353,13 @@ function landBall(wave, motion, distance, color, layout, complete, trailStart) {
     return exit.at(position - landed, layout);
   };
   const position = traveled(distance);
-  const ball = { ...route(position), radius: 4.5, color, strength: 1, bloomRadius: large, bloom: 0 };
-  if (distance >= approach && distance < expanded) {
-    const gathering = smooth((distance - approach) / beaconHold);
-    ball.bloomRadius = mix(24, large, gathering);
-    ball.bloom = gathering;
-  } else if (distance >= expanded && position < landed) {
-    const drop = (position - approach) / descent.length;
-    ball.bloom = 1 - smooth(clamp((drop - .26) / .74, 0, 1));
-  }
+  const gathering = smooth(clamp((distance - approach) / beaconHold, 0, 1));
+  const fading = smooth(clamp((distance - expanded) / (descent.length + beaconFade), 0, 1));
+  const bloom = gathering * (1 - fading);
+  const ball = {
+    ...route(position), radius: mix(4.5, 8, bloom), color, strength: 1, bloom,
+    bloomRadius: mix(24, large, bloom),
+  };
   const leaving = clamp((position - landed) / exit.length, 0, 1);
   const movingLength = landed + exit.length;
   const start = Math.max(traveled(trailStart), position - movingLength * mix(.12, .05, smooth(leaving)));

@@ -1210,7 +1210,7 @@ test('traveling effects and silent ripples cover the same screen distance on fla
       context.fill = (...args) => {
         const color = context.fillStyle;
         const white = typeof color === 'string' && (color.startsWith('#ffffff') || color.startsWith('rgba(255, 255, 255,'));
-        if (center && (white || center.radius === 4.5)) {
+        if (center && (white || color instanceof CanvasGradient)) {
           tips.push(center);
         }
         fill(...args);
@@ -1264,8 +1264,8 @@ test('traveling effects and silent ripples cover the same screen distance on fla
           const hovering = arrival.length / .81;
           const dropping = hovering + 700;
           const landing = dropping + descent.length / .81;
-          // A sample that straddles a hold or a sharp turn does not trace a single moving leg.
-          if ([hovering, dropping, landing].some((boundary) => now < boundary && boundary < now + 4)) continue;
+          const easing = [[hovering - 130, hovering], [dropping, dropping + 130], [landing - 130, landing + 130]];
+          if (easing.some(([start, end]) => now < end && now + 4 > start)) continue;
         }
         for (const [index, start] of before.entries()) {
           const end = after[index];
@@ -1338,11 +1338,13 @@ test('traveling lights charge nodes on contact and fade after passing', async (t
     draw(beacon, 0);
     const hover = beacon.motion.arrival.length / .81;
     const landing = hover + 700 + beacon.motion.descent.length / .81;
+    const nextNode = landing + beacon.motion.exit.distanceAtDay(1) / .81;
     return {
       forwards: [-35, -1, 0, 250, 600, 1100].map((offset) => draw(sweep, approach + offset)),
       backwards: [-1, 0, 600].map((offset) => draw(inkedReverse, approach + offset)),
       weave: [draw(weave, weaveContact, 0), draw(weave, weaveContact + 180, 1)],
       beacon: [draw(beacon, hover + 350), draw(beacon, landing - 1), draw(beacon, landing), draw(beacon, landing + 600)],
+      beaconNext: [-1, 0, 600].map((offset) => draw(beacon, nextNode + offset, 1)),
     };
   });
   const [approaching, before, peak, fading, faint, settled] = result.forwards;
@@ -1352,6 +1354,7 @@ test('traveling lights charge nodes on contact and fade after passing', async (t
   assert.deepEqual(result.backwards, [0, peak, faint]);
   assert.deepEqual(result.weave, [peak, 0]);
   assert.deepEqual(result.beacon, [0, 0, peak, faint]);
+  assert.deepEqual(result.beaconNext, [0, peak, faint]);
 });
 
 test('random effects can follow, leave, pulse, and recolor the graph, or land on the busiest day', async (t) => {
@@ -1778,14 +1781,17 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const entryX = canvas.clientWidth * (.5 + 19.5 / 21);
     const entryY = -.14 * height;
     const alongFlight = (position) => sample(entryX + (x - entryX) * position, entryY + (hover - entryY) * position);
-    const flight = Math.hypot(x - entryX, hover - entryY) / .81;
-    const drop = Math.abs(hover - nodeY) / .81;
+    const inboundTime = Math.hypot(x - entryX, hover - entryY) / .81;
+    const dropTime = Math.abs(hover - nodeY) / .81;
+    const easeTime = (cruiseTime) => Math.min(65, cruiseTime / 2);
+    const flight = inboundTime + easeTime(inboundTime);
+    const drop = dropTime + 2 * easeTime(dropTime);
     const expansion = flight + 700;
     const trailContrast = (fraction) => {
       const y = hover + (nodeY - hover) * fraction;
       return sample(x, y) - sample(x + 12, y);
     };
-    await go(flight * .7);
+    await go(inboundTime * .7);
     const incoming = alongFlight(.7);
     const trail = alongFlight(.63);
     await go(flight + 12);
@@ -1811,14 +1817,14 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       return getY(left) + (getY(left + 1) - getY(left)) * fraction ** 2 * (3 - 2 * fraction);
     };
     const exitTime = window.glowTravelTime((day) => [day * spacing, yAt(day)], -1, exitOffset);
-    await go(expansion + drop + exitTime);
+    await go(expansion + drop + exitTime + 65);
     const leaving = sample(canvas.clientWidth * (.5 + exitOffset / 21), yAt(exitOffset));
     await window.finishGlow();
     elapsed = 0;
     window.traverse(8, [.99, hover < nodeY ? .44 : .31, .45]);
     const reverseEntryY = height * (hover < nodeY ? 1.14 : -.14);
     const reverseFlight = Math.abs(hover - reverseEntryY) / .81;
-    await go(reverseFlight + 700 + drop * .35);
+    await go(reverseFlight + easeTime(reverseFlight) + 700 + drop * .35);
     const reversingTrail = trailContrast(.12);
     await window.finishGlow();
     return { incoming, trail, small, hovering, expanded, hoverTrail, dropping, descendingHalo, descendingTrail, landingTrail, leaving, reversingTrail };
@@ -1864,6 +1870,78 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     return { before, after: sample() };
   });
   assert.ok(ripple.after > ripple.before + 100);
+});
+
+test('Beacon Landing eases into place, blooms while still, and fades as it travels away', async (t) => {
+  const page = await openCheckin(t);
+  const result = await page.evaluate(async () => {
+    const { paintGraph } = await import('/graph.js');
+    const canvas = document.createElement('canvas');
+    const width = canvas.width = 960;
+    const height = canvas.height = 540;
+    const spacing = 60;
+    const baseline = height * .56;
+    const pointAt = (index) => ({ index, x: width / 2 + index * spacing, y: baseline, count: 0, power: 0 });
+    const wave = {
+      kind: 'beacon-landing', started: 0, anchor: 0, side: -1, direction: 1, to: 12, entry: { day: -12, y: -1 },
+    };
+    const frame = {
+      width, height, spacing, baseline, ratio: 1, today: 100, drawerGlow: {}, pointAt, wave,
+      points: Array.from({ length: 17 }, (_, index) => pointAt(index - 8)),
+      colors: { accent: '#9bfae2', secondary: '#aaa1ff', spark: '#efbaf4' },
+    };
+
+    const context = canvas.getContext('2d');
+    const createGradient = context.createRadialGradient.bind(context);
+    const gradients = [];
+    context.createRadialGradient = (x, y, inner, endX, endY, radius) => {
+      const gradient = createGradient(x, y, inner, endX, endY, radius);
+      const sample = { x, y, radius };
+      gradients.push(sample);
+      const add = gradient.addColorStop.bind(gradient);
+      gradient.addColorStop = (position, color) => {
+        if (position === 0) sample.alpha = parseInt(color.slice(-2), 16);
+        add(position, color);
+      };
+      return gradient;
+    };
+
+    function draw(now) {
+      gradients.length = 0;
+      paintGraph(canvas, { ...frame, now });
+      const [halo, core] = gradients.slice(-2);
+      const outer = gradients.at(-3);
+      const bloom = outer?.alpha > 0 && outer.x === core.x && outer.y === core.y ? outer : null;
+      return { ...core, halo: halo.radius, bloom: bloom?.radius ?? 0, brightness: bloom?.alpha ?? 0 };
+    }
+
+    paintGraph(canvas, { ...frame, now: 0 });
+    const hover = wave.motion.arrival.length / .81;
+    const drop = hover + 700;
+    const landing = wave.motion.visitFrom / .81;
+    return {
+      approach: [-170, -150, -20, 0].map((offset) => draw(hover + offset)),
+      gathering: [0, 175, 350, 525, 699, 700].map((offset) => draw(hover + offset)),
+      descent: [0, 20, 40].map((offset) => draw(drop + offset)),
+      departure: [-40, -20, 0, 20, 40, 200, 350, 500].map((offset) => draw(landing + offset)),
+    };
+  });
+
+  const { approach, gathering, descent, departure } = result;
+  const moved = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+  assert.ok(moved(approach[0], approach[1]) > 15 && moved(approach[2], approach[3]) < 2);
+  assert.ok(gathering.every((sample) => moved(sample, gathering[0]) < .01));
+  for (const property of ['radius', 'halo', 'bloom', 'brightness']) {
+    assert.ok(gathering.slice(1, 5).every((sample, index) => sample[property] > gathering[index][property]), property);
+    assert.ok(Math.abs(gathering[4][property] - gathering[5][property]) < .01, property);
+    assert.ok(gathering[5][property] > departure[2][property], property);
+    assert.ok(departure.slice(5).every((sample, index) => sample[property] < departure[index + 4][property]), property);
+    assert.equal(departure.at(-1)[property], gathering[0][property]);
+  }
+  assert.ok(moved(descent[0], descent[1]) < 2 && moved(descent[1], descent[2]) > 3);
+  assert.ok(moved(departure[0], departure[1]) > 3 && moved(departure[1], departure[2]) < 2);
+  assert.ok(departure[3].x > departure[2].x && departure[4].x > departure[3].x);
+  assert.ok(moved(departure[2], departure[3]) < 2 && moved(departure[3], departure[4]) > 3);
 });
 
 test('Beacon Landing bloom fades before the upper and lower graph edges', async (t) => {
