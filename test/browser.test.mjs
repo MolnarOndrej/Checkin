@@ -440,7 +440,7 @@ test('an empty day offers Add activity directly and opens logging with the new a
   assert.deepEqual(logs, ['Hike\n2.5 km']);
 });
 
-test('the logging shortcut preselects the last activity created through it', async (t) => {
+test('logging preselects the sole available activity or the last one created through the shortcut', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(390, 844);
   await page.setReducedMotion('reduce');
@@ -473,7 +473,14 @@ test('the logging shortcut preselects the last activity created through it', asy
         await new Promise((resolve) => requestAnimationFrame(resolve));
       }
     }
-    find('[aria-current="date"]').click();
+    const today = find('[aria-current="date"]');
+    today.previousElementSibling.click();
+    const onlyActivity = {
+      name: selectedActivity(),
+      unit: find('#day-content .amount-group .unit').innerText,
+      amountVisible: find('#day-content input').checkVisibility(),
+    };
+    today.click();
     find('[aria-label="Log activity"]').click();
     find('#day-content .activity-shortcut').click();
     await addActivity('Stretch');
@@ -491,10 +498,11 @@ test('the logging shortcut preselects the last activity created through it', asy
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
     find('[aria-label="Log activity"]').click();
-    return { first, last, unit, amountVisible, next: selectedActivity() };
+    return { onlyActivity, first, last, unit, amountVisible, next: selectedActivity() };
   });
   assert.deepEqual(preselection, {
-    first: 'Stretch', last: 'Read', unit: 'pages', amountVisible: true, next: 'Choose an activity',
+    onlyActivity: { name: 'Walk', unit: 'min', amountVisible: true },
+    first: 'Stretch', last: 'Read', unit: 'pages', amountVisible: true, next: 'Stretch',
   });
 
   await page.reload();

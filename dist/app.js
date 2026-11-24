@@ -301,7 +301,8 @@ function addLogForm(index, values, draft) {
   }
 
   const picker = makeSelect(available.map(({ id, text }) => [id, text]), 'Choose an activity');
-  if (available.some(({ id }) => id === draft.preselectedActivityId)) picker.value = draft.preselectedActivityId;
+  if (available.length === 1) picker.value = available[0].id;
+  else if (available.some(({ id }) => id === draft.preselectedActivityId)) picker.value = draft.preselectedActivityId;
   const amount = amountField();
   const { label, suffix } = valueLabel(amount);
   const { form, error } = makeForm((message) => {
