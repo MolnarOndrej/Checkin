@@ -58,6 +58,7 @@ const companionTracks = { 'crossing-lights': 'heads', 'twin-ribbons': 'ribbons' 
 const paletteColors = ['accent', 'secondary', 'spark'];
 const borders = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
 const inkFade = 1050;
+const accelerationTime = 450;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export function randomWave({ center, visibleDays, today, now, countAt }) {
@@ -88,7 +89,6 @@ export function randomWave({ center, visibleDays, today, now, countAt }) {
   if ((kind === 'sky-ribbon' || kind === 'beacon-landing') && anchor !== center) direction = Math.sign(center - anchor);
   return {
     kind, direction, side, anchor, entry, ink, started: now, duration,
-    ends: now + duration + (ink ? inkFade : 0),
     from: center - direction * reach, to: center + direction * reach,
   };
 }
@@ -154,15 +154,16 @@ function pause(wave, progress, colors) {
     return { heads: [head(mix(from, anchor, 1 - (1 - progress / arrives) ** 1.4), direction, colors.spark)] };
   }
   const time = clamp((progress - arrives) / (leaves - arrives), 0, 1);
-  const outward = clamp((progress - leaves) / (1 - leaves), 0, 1);
+  const outward = Math.max(0, (progress - leaves) / (1 - leaves));
+  const style = Math.min(1, outward);
   const reach = 1.08 * (1 - (1 - time) ** 2.2);
   return {
     heads: [-1, 1].map((side) => {
       const day = mix(anchor + side * reach, side === direction ? to : from, outward ** 1.55);
       return {
-        ...head(day, side, colors.spark, mix(.70 + .18 * Math.sin(Math.PI * time), 1, outward), mix(1.2, 4, outward)),
-        lead: mix(.32, .75, outward),
-        trailOpacity: mix(.66, .24, outward),
+        ...head(day, side, colors.spark, mix(.70 + .18 * Math.sin(Math.PI * time), 1, style), mix(1.2, 4, style)),
+        lead: mix(.32, .75, style),
+        trailOpacity: mix(.66, .24, style),
       };
     }),
   };
@@ -239,9 +240,11 @@ function ribbon(route, progress, options, complete, trailStart = 0) {
 }
 
 function traversalAt(wave, now, colors, yAt, height, { complete = true, after } = {}) {
-  if (!wave) return {};
-  const progress = (now - wave.started) / wave.duration;
-  if (progress < 0 || progress >= 1) return {};
+  if (!wave || now < wave.started) return {};
+  const elapsed = now - wave.started;
+  const extra = Math.max(0, elapsed - wave.duration);
+  // Extend the route at its existing speed, then accelerate away from the viewport.
+  const progress = (elapsed + accelerationTime * (extra / accelerationTime) ** 3) / wave.duration;
   const { from, to, direction } = wave;
   const trailStart = after === undefined ? 0 : clamp((after - wave.started) / wave.duration, 0, progress);
   const drawRibbon = (route, options) => ribbon(route, progress, options, complete, trailStart);
@@ -369,6 +372,7 @@ function inkOnGraph(wave, now, colors, yAt, height) {
   const earliest = companionTracks[wave.kind] ? wave.started : leadSince;
   for (let age = 0; age < inkFade && now - age >= earliest; age += 20) {
     const time = now - age;
+    if (wave.departed !== undefined && time >= wave.departed) continue;
     const phase = waveFrameAt(wave, time);
     const { heads = [], ribbons, ball } = traversalOnGraph(wave, phase, colors, yAt, height, {
       complete: false, includeLead: time >= leadSince,
@@ -622,6 +626,17 @@ function traversalOnGraph(wave, phase, colors, yAt, height, { complete = true, i
   return effects;
 }
 
+function traversalInView({ heads = [], ribbons = [], ball }, worldToX, width) {
+  const overlaps = (a, b = a) => {
+    const first = worldToX(a);
+    const last = worldToX(b);
+    return Math.max(first, last) >= -64 && Math.min(first, last) <= width + 64;
+  };
+  return (ball && overlaps(ball.day))
+    || heads.some(({ day, direction, tail }) => overlaps(day, day - direction * tail))
+    || ribbons.some(({ points }) => overlaps(points[0].day, points.at(-1).day));
+}
+
 function sampleRim(panel, direction) {
   const gutter = 5;
   const left = panel.left - gutter;
@@ -738,11 +753,8 @@ export function paintGraph(canvas, frame) {
   const waveColors = dye ? { accent: dye, secondary: dye, spark: dye } : colors;
   if (wave?.panel && visit && wave.visit === undefined) {
     wave.visit = planVisit(wave, visit, width, waveColors, worldToX, yAt, height);
-    if (wave.visit) wave.ends += wave.visit.duration + wave.visit.delay - wave.duration;
   } else if (wave?.visit && !visit) {
-    const interrupted = clamp(now - wave.started - wave.visit.begin, 0, wave.visit.delay);
-    wave.ends += interrupted - wave.visit.delay;
-    wave.visit.delay = interrupted;
+    wave.visit.delay = clamp(now - wave.started - wave.visit.begin, 0, wave.visit.delay);
   }
   const phase = waveFrameAt(wave, now);
   const atRejoin = phase.rejoin && traversalAt(wave, phase.rejoin.time, waveColors, yAt, height, { complete: false });
@@ -751,7 +763,17 @@ export function paintGraph(canvas, frame) {
     atRejoin ?? traversalAt(wave, phase.time, waveColors, yAt, height, { complete: false }));
   if (lead) paintVisit(drawerGlow, visit, lead, loopProgress, worldToX, yAt, ratio);
   else drawerGlow.hidden = true;
-  const onGraph = traversalOnGraph(wave, phase, waveColors, yAt, height, { startingHeads: atRejoin?.heads });
+  let onGraph = wave?.departed === undefined
+    ? traversalOnGraph(wave, phase, waveColors, yAt, height, { startingHeads: atRejoin?.heads })
+    : {};
+  if (wave && phase.time >= wave.started + wave.duration && wave.departed === undefined) {
+    wave.escaping = traversalInView(onGraph, worldToX, width);
+    if (!wave.escaping) {
+      wave.departed = now;
+      wave.ends = now + (wave.ink ? inkFade : 0);
+      onGraph = {};
+    }
+  }
   const ink = inkOnGraph(wave, now, waveColors, yAt, height);
   const heads = [...(onGraph.heads ?? []), ...rippleHeads(ripple, now, colors)];
   const ribbons = onGraph.ribbons ?? [];

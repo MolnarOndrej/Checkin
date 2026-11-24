@@ -602,28 +602,95 @@ test('an activity edit keeps old logs and the open log editor leaves room to swi
   assert.equal(reopened.newUnit, 'km');
 });
 
-test('random effects can follow, leave, pulse, and recolor the graph, or land on the busiest day', async (t) => {
-  const page = await openCheckin(t, () => {
-    let time = 1000;
-    const frame = requestAnimationFrame;
-    window.requestAnimationFrame = (callback) => frame(() => callback(time));
-    performance.now = () => time;
-    const interval = window.setInterval;
-    window.setInterval = (callback, delay) => {
-      if (delay !== 5000) return interval(callback, delay);
-      window.traverse = (kind, rolls = []) => {
-        const random = Math.random;
-        let index = -1;
-        Math.random = () => (++index === 0 ? (kind + .2) / 9 : rolls[index - 1] ?? (index === 1 ? .99 : .5));
-        try {
-          callback();
-        } finally {
-          Math.random = random;
+function controlTimelineEffects() {
+  let time = 1000;
+  const frame = requestAnimationFrame;
+  window.requestAnimationFrame = (callback) => frame(() => callback(time));
+  performance.now = () => time;
+  const interval = window.setInterval;
+  window.setInterval = (callback, delay) => {
+    if (delay !== 5000) return interval(callback, delay);
+    window.traverse = (kind, rolls = []) => {
+      const random = Math.random;
+      let index = -1;
+      Math.random = () => (++index === 0 ? (kind + .2) / 9 : rolls[index - 1] ?? (index === 1 ? .99 : .5));
+      try {
+        callback();
+      } finally {
+        Math.random = random;
+      }
+    };
+  };
+  window.advanceCheckin = (duration) => { time += duration; };
+}
+
+test('swiping after a traveling glow reveals it accelerating beyond both ends of its original route', async (t) => {
+  const page = await openCheckin(t, controlTimelineEffects);
+
+  for (const direction of [1, -1]) {
+    await settle(page);
+    const y = await page.evaluate(() => {
+      const graph = document.querySelector('#graph');
+      const context = graph.getContext('2d');
+      const { width, height } = graph;
+      const today = Date.parse(document.querySelector('[aria-current="date"]').dataset.date);
+      window.glowDay = () => {
+        const { data } = context.getImageData(0, Math.floor(height * .56), width, 1);
+        const day = document.querySelector('.day');
+        const origin = (Date.parse(day.dataset.date) - today) / 86_400_000;
+        const x = parseFloat(day.style.translate);
+        for (let pixel = 0; pixel < width; pixel++) {
+          const i = pixel * 4;
+          if (data[i] > 235 && data[i + 1] > 235 && data[i + 2] > 235 && data[i + 3] > 220) {
+            return origin + (pixel - x) / (width / 21);
+          }
+        }
+        return null;
+      };
+      window.stepGlow = async (duration) => {
+        for (let remaining = duration; remaining > 0; remaining -= 40) {
+          window.advanceCheckin(Math.min(40, remaining));
+          await new Promise((resolve) => requestAnimationFrame(resolve));
         }
       };
-    };
-    window.advanceCheckin = (duration) => { time += duration; };
-  });
+      return Math.round(graph.getBoundingClientRect().top + height * .42);
+    });
+    await page.evaluate(direction > 0 ? () => window.traverse(0) : () => window.traverse(1));
+    await page.evaluate(() => { window.advanceCheckin(2500); });
+    await settle(page);
+    const swipe = () => page.swipe(direction > 0 ? 1290 : 125, direction > 0 ? 125 : 1290, y);
+    await swipe();
+
+    const days = await page.evaluate(async () => {
+      await window.stepGlow(800);
+      const positions = [window.glowDay()];
+      await window.stepGlow(180);
+      positions.push(window.glowDay());
+      window.traverse(2);
+      await window.stepGlow(180);
+      positions.push(window.glowDay());
+      return positions;
+    });
+    assert.ok(days.every((day) => day !== null), JSON.stringify({ direction, days }));
+    const [end, first, second] = days.map((day) => day * direction);
+    assert.ok(Math.abs(end - 19.5) < .1, JSON.stringify({ direction, days }));
+    assert.ok(first > end + 2 && second - first > (first - end) * 1.5, JSON.stringify({ direction, days }));
+
+    const centeredDate = () => document.querySelector('.day[tabindex="0"]').dataset.date;
+    const beforeChase = await page.evaluate(centeredDate);
+    await swipe();
+    const afterChase = await page.evaluate(async () => {
+      await window.stepGlow(600);
+      return { glow: window.glowDay(), center: document.querySelector('.day[tabindex="0"]').dataset.date };
+    });
+    assert.equal(afterChase.glow, null);
+    assert.ok(direction * (Date.parse(afterChase.center) - Date.parse(beforeChase)) > 10 * 86_400_000);
+    if (direction > 0) await page.reload();
+  }
+});
+
+test('random effects can follow, leave, pulse, and recolor the graph, or land on the busiest day', async (t) => {
+  const page = await openCheckin(t, controlTimelineEffects);
   await settle(page);
   const colorSteps = await page.evaluate(async () => {
     const accent = () => document.documentElement.style.getPropertyValue('--accent');

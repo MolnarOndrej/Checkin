@@ -309,7 +309,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
 
   function traverse() {
     followToday();
-    if (motion.matches || document.hidden || !width) return;
+    if (motion.matches || document.hidden || !width || wave?.escaping) return;
     wave = randomWave({
       center: camera, visibleDays: width / spacing, today, now: performance.now(),
       countAt: (day) => score(day, today).count,
