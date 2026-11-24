@@ -23,6 +23,9 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   let animation = 0;
   let previousFrame = 0;
   let colorTimer;
+  let traversalTimer;
+  let ambientPausedAt = performance.now();
+  let ambientPauseDuration = 0;
   let layoutDirty = true;
   let width = 0;
   let height = 0;
@@ -158,6 +161,10 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     colors = next;
   }
 
+  function ambientTime(now) {
+    return (ambientPausedAt ?? now) - ambientPauseDuration;
+  }
+
   function render(now) {
     animation = 0;
     if (!width || !height) return;
@@ -190,8 +197,9 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     const points = [];
     for (let index = first; index <= last; index++) points.push(pointAt(index));
     const selectedIsVisible = selected !== null && Math.abs(selected - camera) * spacing < width / 2;
-    updateColors(paletteFor(score(selectedIsVisible ? selected : Math.round(camera), today)), now);
-    if (wave && now >= wave.ends) wave = undefined;
+    const ambientNow = ambientTime(now);
+    updateColors(paletteFor(score(selectedIsVisible ? selected : Math.round(camera), today)), ambientNow);
+    if (wave && ambientNow >= wave.ends) wave = undefined;
     ripples = ripples.filter((ripple) => {
       ripple.progress = Math.max(0, ripple.progressAt(now));
       return ripple.progress < 1;
@@ -199,7 +207,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     const panel = wave?.panel?.getBoundingClientRect();
     const visit = panel?.height ? { panel, stage: stage.getBoundingClientRect() } : null;
     paintGraph(canvas, {
-      width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripples, now, visit, drawerGlow,
+      width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripples, now: ambientNow, visit, drawerGlow,
     });
     if (layoutDirty || camera !== lastCamera || heights.size || arrivedToday) {
       updateDays(points);
@@ -210,8 +218,9 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
       backToday.hidden = !todaySwipe && Math.abs(target - today) < .55;
       layoutDirty = false;
     }
-    if (todaySwipe || camera !== target || wave || ripples.length || (heights.size && progress < 1)) schedule();
-    else if (!motion.matches && !document.hidden) colorTimer = setTimeout(schedule, 40);
+    const ambientRunning = ambientPausedAt === null;
+    if (todaySwipe || camera !== target || (ambientRunning && wave) || ripples.length || (heights.size && progress < 1)) schedule();
+    else if (!motion.matches && ambientRunning) colorTimer = setTimeout(schedule, 40);
     if (progress === 1) heights.clear();
   }
 
@@ -330,14 +339,30 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
 
   function traverse() {
     followToday();
-    if (motion.matches || document.hidden || !width || wave?.escaping) return;
+    if (motion.matches || ambientPausedAt !== null || !width || wave?.escaping) return;
     wave = randomWave({
-      center: camera, visibleDays: width / spacing, today, now: performance.now(),
+      center: camera, visibleDays: width / spacing, today, now: ambientTime(performance.now()),
       countAt: (day) => score(day, today).count,
     });
     if (!drawer.hidden && Math.random() < .4) {
       wave.panel = dialog.open && dialog.classList.contains('log-dialog') ? dialog : drawer;
     }
+    schedule();
+  }
+
+  function updateAmbientFocus() {
+    if (document.hidden || !document.hasFocus()) {
+      if (ambientPausedAt !== null) return;
+      ambientPausedAt = performance.now();
+      clearTimeout(colorTimer);
+      clearInterval(traversalTimer);
+      return;
+    }
+    if (ambientPausedAt === null) return;
+    ambientPauseDuration += performance.now() - ambientPausedAt;
+    ambientPausedAt = null;
+    traversalTimer = setInterval(traverse, 5000);
+    followToday();
     schedule();
   }
 
@@ -360,13 +385,12 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     }
     schedule();
   });
-  document.addEventListener('visibilitychange', () => {
-    followToday();
-    if (!document.hidden) schedule();
-  });
+  window.addEventListener('blur', updateAmbientFocus);
+  window.addEventListener('focus', updateAmbientFocus);
+  document.addEventListener('visibilitychange', updateAmbientFocus);
   new ResizeObserver(resize).observe(stage);
   resize();
-  setInterval(traverse, 5000);
+  updateAmbientFocus();
 
   return {
     closeSelected,

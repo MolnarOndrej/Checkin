@@ -657,6 +657,7 @@ test('an activity edit keeps old logs and the open log editor leaves room to swi
 
 function controlTimelineEffects() {
   let time = 1000;
+  document.hasFocus = () => true;
   const frame = requestAnimationFrame;
   window.requestAnimationFrame = (callback) => frame(() => callback(time));
   performance.now = () => time;
@@ -676,6 +677,79 @@ function controlTimelineEffects() {
   };
   window.advanceCheckin = (duration) => { time += duration; };
 }
+
+test('ambient effects pause out of focus and resume from the same frame', async (t) => {
+  const page = await openCheckin(t, controlTimelineEffects);
+  await page.setReducedMotion('no-preference');
+  await settle(page);
+  const frames = await page.evaluate(async () => {
+    const canvas = document.querySelector('#graph');
+    const context = canvas.getContext('2d');
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const sample = () => {
+      const { width, height } = canvas;
+      const { data } = context.getImageData(0, Math.floor(height * .56), width, 1);
+      const accent = document.documentElement.style.getPropertyValue('--accent');
+      for (let x = 0; x < width; x++) {
+        if (Math.abs(x - width / 2) < 12) continue;
+        const i = x * 4;
+        if (data[i] > 235 && data[i + 1] > 235 && data[i + 2] > 235 && data[i + 3] > 220) return { x, accent };
+      }
+      return { x: null, accent };
+    };
+
+    const idle = sample();
+    window.traverse(0);
+    window.advanceCheckin(1400);
+    await frame();
+    const moving = sample();
+
+    let focused = false;
+    let hidden = false;
+    document.hasFocus = () => focused;
+    Object.defineProperty(document, 'hidden', { get: () => hidden });
+    window.dispatchEvent(new Event('blur'));
+    await frame();
+    let redraws = 0;
+    const clear = context.clearRect.bind(context);
+    context.clearRect = (...args) => {
+      redraws++;
+      clear(...args);
+    };
+    window.advanceCheckin(5000);
+    window.traverse(1);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const unfocused = sample();
+
+    hidden = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    focused = true;
+    window.dispatchEvent(new Event('focus'));
+    window.advanceCheckin(5000);
+    await frame();
+    const hiddenRedraws = redraws;
+    const background = sample();
+
+    hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await frame();
+    const returned = sample();
+    window.advanceCheckin(550);
+    await frame();
+    const resumed = sample();
+    return { idle, moving, unfocused, background, hiddenRedraws, returned, resumed };
+  });
+
+  assert.equal(frames.idle.x, null);
+  assert.ok(frames.moving.x > 0);
+  assert.equal(frames.hiddenRedraws, 0);
+  for (const still of [frames.unfocused, frames.background, frames.returned]) {
+    assert.ok(still.x > 0 && Math.abs(still.x - frames.moving.x) < 5, JSON.stringify(frames));
+    assert.equal(still.accent, frames.moving.accent);
+  }
+  assert.ok(frames.resumed.x > frames.moving.x + 200, JSON.stringify(frames));
+  assert.notEqual(frames.resumed.accent, frames.moving.accent);
+});
 
 test('new logs play a random sound and the save ripple follows its playback clock', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects, () => {
