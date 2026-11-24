@@ -323,6 +323,8 @@ test('an empty day offers Add activity directly and opens logging with the new a
     const shortcut = add().getBoundingClientRect();
     const allLogged = {
       label: add().innerText,
+      underline: getComputedStyle(add()).textDecorationLine,
+      hasIcon: Boolean(add().querySelector('svg')),
       besideMessage: shortcut.left >= message.right
         && Math.abs(shortcut.top + shortcut.height / 2 - (message.top + message.height / 2)) < 1,
       fitsDrawer: shortcut.right <= find('#day-content').getBoundingClientRect().right,
@@ -340,7 +342,9 @@ test('an empty day offers Add activity directly and opens logging with the new a
   assert.equal(flow.log.amountFocused, true);
   assert.deepEqual(flow.log.fields[0], flow.log.fields[1]);
   assert.equal(flow.log.viewport.scrollWidth, flow.log.viewport.width);
-  assert.deepEqual(flow.allLogged, { label: flow.empty.label, besideMessage: true, fitsDrawer: true });
+  assert.deepEqual(flow.allLogged, {
+    label: flow.empty.label, underline: 'underline', hasIcon: false, besideMessage: true, fitsDrawer: true,
+  });
 
   await page.reload();
   await settle(page);

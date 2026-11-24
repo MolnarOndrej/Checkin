@@ -97,10 +97,11 @@ function plusButton(label, action) {
 
 function activityPrompt(action, message) {
   const prompt = element('div', 'activity-prompt');
-  const add = button('Add activity', 'text-button activity-shortcut', action);
-  add.prepend(icon('plus'));
+  const style = message ? 'activity-link' : 'text-button activity-button';
+  const add = button('Add activity', 'activity-shortcut ' + style, action);
   add.setAttribute('aria-haspopup', 'dialog');
   if (message) prompt.append(element('p', 'inline-note', message));
+  else add.prepend(icon('plus'));
   prompt.append(add);
   return prompt;
 }
