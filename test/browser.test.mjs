@@ -168,21 +168,21 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
     find('[aria-current="date"]').click();
     find('[aria-label="Log activity"]').click();
     const note = find('#day-content .inline-note');
-    const link = note.querySelector('a[href]');
+    const add = find('#day-content .activity-shortcut');
     return {
       values: [...document.querySelectorAll('.log-value')].map((value) => value.textContent),
       message: note.innerText,
-      linkText: link.innerText,
-      linkFocused: document.activeElement === link,
+      addText: add.innerText,
+      addFocused: document.activeElement === add,
     };
   });
   assert.deepEqual(persisted.values, ['100 pages', '20 min']);
-  assert.equal(persisted.message.replace(/\s+/g, ' '), 'All activities are logged for this day. Or Add activity');
-  assert.equal(persisted.linkText, 'Add activity');
-  assert.equal(persisted.linkFocused, true);
+  assert.equal(persisted.message, 'All activities are logged for this day.');
+  assert.equal(persisted.addText, 'Add activity');
+  assert.equal(persisted.addFocused, true);
 
   const manager = await page.evaluate(() => {
-    document.querySelector('#day-content .inline-note a[href]').click();
+    document.querySelector('#day-content .activity-shortcut').click();
     return {
       open: document.querySelector('dialog').matches(':modal'),
       title: document.querySelector('#dialog-title').innerText,
@@ -260,6 +260,89 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
   assert.deepEqual(finalState.activities, ['Stretch']);
 });
 
+test('an empty day offers Add activity directly and opens logging with the new activity selected', async (t) => {
+  const page = await openCheckin(t);
+  await page.setViewport(320, 640);
+  await page.setReducedMotion('reduce');
+  await settle(page);
+
+  const flow = await page.evaluate(async () => {
+    const find = (selector) => document.querySelector(selector);
+    const bounds = (control) => {
+      const { left, right, height } = control.getBoundingClientRect();
+      return { left, right, height };
+    };
+    const waitFor = async (condition) => {
+      for (let attempt = 0; !condition(); attempt++) {
+        if (attempt === 90) throw new Error('Checkin update did not finish');
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+    };
+    const add = () => find('#day-content .activity-shortcut');
+    const editor = find('dialog');
+    find('[aria-current="date"]').click();
+    const empty = {
+      label: add().innerText,
+      visible: add().checkVisibility(),
+      logToggle: Boolean(find('[aria-label="Log activity"]')),
+    };
+    add().focus();
+    add().click();
+    const title = find('#dialog-title').innerText;
+    const nameFocused = document.activeElement === find('dialog input');
+    find('dialog .actions [type="button"]').click();
+    const returned = !editor.open && document.activeElement === add();
+
+    add().click();
+    find('dialog input').value = 'Hike';
+    const measure = find('dialog select');
+    measure.value = 'custom';
+    measure.dispatchEvent(new Event('change'));
+    const unitInput = find('dialog input[placeholder]');
+    unitInput.value = 'km';
+    const activityFields = [find('dialog input'), measure, unitInput].map(bounds);
+    const titleLeft = find('#dialog-title').getBoundingClientRect().left;
+    find('dialog [type="submit"]').click();
+    await waitFor(() => !editor.open);
+
+    const picker = find('#day-content select');
+    const valueField = find('#day-content .amount-group');
+    const amount = valueField.querySelector('input');
+    const log = {
+      activity: picker.selectedOptions[0].text,
+      unit: valueField.querySelector('.unit').innerText,
+      amountFocused: document.activeElement === amount,
+      fields: [picker, valueField].map(bounds),
+      viewport: { width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth },
+    };
+    amount.value = '2.5';
+    find('#day-content [type="submit"]').click();
+    await waitFor(() => Boolean(find('.log-value')));
+    find('[aria-label="Log activity"]').click();
+    return { empty, title, nameFocused, returned, activityFields, titleLeft, log, allLoggedLabel: add().innerText };
+  });
+  assert.deepEqual(flow.empty, { label: 'Add activity', visible: true, logToggle: false });
+  assert.equal(flow.title, 'Add activity');
+  assert.equal(flow.nameFocused, true);
+  assert.equal(flow.returned, true);
+  assert.deepEqual(flow.activityFields, Array(3).fill(flow.activityFields[0]));
+  assert.equal(flow.titleLeft, flow.activityFields[0].left);
+  assert.equal(flow.log.activity, 'Hike');
+  assert.equal(flow.log.unit, 'km');
+  assert.equal(flow.log.amountFocused, true);
+  assert.deepEqual(flow.log.fields[0], flow.log.fields[1]);
+  assert.equal(flow.log.viewport.scrollWidth, flow.log.viewport.width);
+  assert.equal(flow.allLoggedLabel, flow.empty.label);
+
+  await page.reload();
+  await settle(page);
+  const logs = await page.evaluate(() => {
+    document.querySelector('[aria-current="date"]').click();
+    return [...document.querySelectorAll('.log-row')].map((row) => row.innerText.trim());
+  });
+  assert.deepEqual(logs, ['Hike\n2.5 km']);
+});
+
 test('the logging shortcut preselects the last activity created through it', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(390, 844);
@@ -295,7 +378,7 @@ test('the logging shortcut preselects the last activity created through it', asy
     }
     find('[aria-current="date"]').click();
     find('[aria-label="Log activity"]').click();
-    find('#day-content .manage-shortcut').click();
+    find('#day-content .activity-shortcut').click();
     await addActivity('Stretch');
     const first = selectedActivity();
     await addActivity('Read', 'pages');

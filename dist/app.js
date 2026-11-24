@@ -95,6 +95,16 @@ function plusButton(label, action) {
   return plus;
 }
 
+function activityPrompt(action, message) {
+  const prompt = element('div', 'activity-prompt');
+  const add = button('Add activity', 'text-button activity-shortcut', action);
+  add.prepend(icon('plus'));
+  add.setAttribute('aria-haspopup', 'dialog');
+  if (message) prompt.append(element('p', 'inline-note', message));
+  prompt.append(add);
+  return prompt;
+}
+
 function setDialog(title, body, focus, logging = false) {
   dialogVersion++;
   const modal = !logging;
@@ -147,14 +157,14 @@ async function persist(change, error, { pulse, after = () => {} } = {}) {
 
 function showManager({ focusId, focusRemove = false, draft } = {}) {
   const list = element('div', 'activity-list');
-  const add = plusButton('New activity', () => showActivityForm(undefined, draft));
+  const add = plusButton('New activity', () => showActivityForm({ draft }));
   const firstRow = element('div', 'add-row');
   firstRow.append(add);
   list.append(firstRow);
   let focus = add;
   for (const activity of journal.activities) {
     const row = element('div', 'activity-row');
-    const edit = iconButton('pencil', 'Edit ' + activity.text, () => showActivityForm(activity, draft));
+    const edit = iconButton('pencil', 'Edit ' + activity.text, () => showActivityForm({ existing: activity, draft }));
     const remove = iconButton('bin', 'Remove ' + activity.text, () => confirmRemoval(activity, draft));
     row.append(element('span', 'activity-name', activity.text), element('span', 'unit', activity.unit), edit, remove);
     list.append(row);
@@ -163,7 +173,7 @@ function showManager({ focusId, focusRemove = false, draft } = {}) {
   setDialog('Activities', list, focus);
 }
 
-function showActivityForm(existing, draft) {
+function showActivityForm({ existing, draft, returnToLog = false }) {
   const name = element('input');
   name.required = true;
   name.maxLength = 60;
@@ -189,8 +199,15 @@ function showActivityForm(existing, draft) {
     persist((state) => saveActivity(state, activity), message, {
       after: (sameDialog) => {
         if (!existing && draft) draft.preselectedActivityId = activity.id;
-        if (dialog.open && sameDialog) showManager({ focusId: existing?.id, draft });
+        const resumeLogging = dialog.open && sameDialog && returnToLog;
+        if (resumeLogging) {
+          logDraft = { preselectedActivityId: activity.id };
+          closeDialog();
+        } else if (dialog.open && sameDialog) {
+          showManager({ focusId: existing?.id, draft });
+        }
         renderDay();
+        if (resumeLogging) dayContent.querySelector('.inline-editor input')?.focus();
         announcement.textContent = activity.text + (existing ? ' updated.' : ' added.');
       },
     });
@@ -205,9 +222,10 @@ function showActivityForm(existing, draft) {
   kind.addEventListener('change', updateUnit);
   updateUnit();
   const actions = element('div', 'actions');
-  actions.append(button('Cancel', 'text-button', () => showManager({ focusId: existing?.id, draft })), submitButton('Save'));
+  const cancel = returnToLog ? closeDialog : () => showManager({ focusId: existing?.id, draft });
+  actions.append(button('Cancel', 'text-button', cancel), submitButton('Save'));
   form.append(labelled('Name', name), labelled('Measure in', kind), custom, error, actions);
-  setDialog(existing ? 'Edit activity' : 'New activity', form, name);
+  setDialog(existing ? 'Edit activity' : 'Add activity', form, name);
 }
 
 function confirmRemoval(activity, draft) {
@@ -272,17 +290,7 @@ function finishLog(index, activity, amount, message) {
 function addLogForm(index, values, draft) {
   const available = journal.activities.filter(({ id }) => !values[id]);
   if (!available.length) {
-    if (!journal.activities.length) return button('Create an activity', 'text-button create-shortcut', () => showActivityForm());
-    const note = element('p', 'inline-note', 'All activities are logged for this day. Or ');
-    const link = element('a', 'manage-shortcut', 'Add activity');
-    link.href = '#manage';
-    link.setAttribute('aria-haspopup', 'dialog');
-    link.addEventListener('click', (event) => {
-      event.preventDefault();
-      showManager({ draft });
-    });
-    note.append(link);
-    return note;
+    return activityPrompt(() => showManager({ draft }), 'All activities are logged for this day.');
   }
 
   const picker = makeSelect(available.map(({ id, text }) => [id, text]), 'Choose an activity');
@@ -334,20 +342,22 @@ function renderDay() {
   const values = journal.days[date]?.values ?? {};
   const content = document.createDocumentFragment();
 
-  if (index <= todayIndex()) {
+  if (index > todayIndex()) {
+    content.append(element('p', 'inline-note', 'Upcoming'));
+  } else if (!journal.activities.length) {
+    content.append(activityPrompt(() => showActivityForm({ returnToLog: true })));
+  } else {
     const addRow = element('div', 'add-row');
     const add = plusButton('Log activity', () => {
       logDraft = logDraft ? null : { preselectedActivityId: null };
       renderDay();
-      const focus = logDraft ? dayContent.querySelector('select, .create-shortcut, .manage-shortcut') : null;
+      const focus = logDraft ? dayContent.querySelector('select, .activity-shortcut') : null;
       (focus ?? dayContent.querySelector('.add-button'))?.focus({ preventScroll: true });
     });
     add.setAttribute('aria-expanded', String(Boolean(logDraft)));
     addRow.append(add);
     content.append(addRow);
     if (logDraft) content.append(addLogForm(index, values, logDraft));
-  } else {
-    content.append(element('p', 'inline-note', 'Upcoming'));
   }
   for (const activity of journal.activities) {
     const value = values[activity.id];
