@@ -610,6 +610,15 @@ dialog::backdrop {
   color: var(--danger);
 }
 
+.journal-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 8px;
+  padding-inline: 16px;
+}
+
 @keyframes appear {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }

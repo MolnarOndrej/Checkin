@@ -34,12 +34,16 @@
 
   <header class="toolbar">
     <button type="button" id="back-today" class="today-button" hidden>Today</button>
-    <button type="button" id="manage" class="icon-button manage-button" aria-label="Manage activities" title="Manage activities">
+    <button type="button" id="manage" class="icon-button manage-button" aria-label="Manage activities" title="Manage activities" disabled>
       <svg class="icon" aria-hidden="true"><use href="#icon-activities"></use></svg>
     </button>
   </header>
 
   <main>
+    <div class="journal-error" id="journal-error" hidden>
+      <p class="form-error" role="alert">Could not load your saved journal.</p>
+      <button type="button" class="text-button" id="retry-journal">Retry</button>
+    </div>
     <section id="timeline" class="timeline" aria-label="Daily activity timeline" aria-describedby="timeline-help">
       <p class="sr-only" id="timeline-help">Swipe, drag, or use the arrow keys to move between days. Select a day to view its activity.</p>
       <div class="graph-paper" aria-hidden="true"></div>

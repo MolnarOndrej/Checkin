@@ -1,9 +1,8 @@
 import { formatQuantity, maxAmount } from './measurements.js';
-import { readJournal, updateJournal, watchJournal } from './journal-storage.js';
+import { logFor } from './journal-data.js';
+import { journalStore } from './journal-storage.js';
 import { playSubmitSound, unlockSubmitAudio } from './submit-sound.js';
-import {
-  createActivity, dateForIndex, editActivity, fullLabel, keyForIndex, removeActivity, removeValue, saveValue, timelineScores, todayIndex,
-} from './timeline-data.js';
+import { dateForIndex, fullLabel, keyForIndex, timelineScores, todayIndex } from './timeline-data.js';
 import { createTimeline } from './timeline.js';
 
 const byId = (id) => document.getElementById(id);
@@ -13,9 +12,10 @@ const dayContent = byId('day-content');
 const dialog = byId('dialog');
 const dialogContent = byId('dialog-content');
 const manage = byId('manage');
+const journalError = byId('journal-error');
 const announcement = byId('announcement');
 
-let journal = readJournal();
+let journal;
 let selected = null;
 // Undefined uses the day's default. Null keeps the form collapsed.
 let logDraft;
@@ -141,18 +141,35 @@ dialog.addEventListener('close', () => {
   }
 });
 
-async function persist(change, error, { pulse, sound = false, after = () => {} } = {}) {
-  if (saving) return;
+function setJournal(updated) {
+  journal = updated;
+  manage.disabled = !journal;
+  journalError.hidden = Boolean(journal);
+  timeline.setScores(timelineScores(journal));
+}
+
+async function refreshJournal() {
+  let updated;
+  try {
+    updated = await journalStore.load();
+  } catch {
+    if (dialog.open) closeDialog();
+  }
+  setJournal(updated);
+  renderDay();
+}
+
+async function persist(write, error, { pulse, sound = false, after } = {}) {
+  if (!journal || saving) return;
   saving = true;
   const originatingDialog = dialogVersion;
   error.hidden = true;
   if (sound) unlockSubmitAudio();
   try {
-    journal = await updateJournal(change);
-    timeline.setScores(timelineScores(journal));
+    setJournal(await write());
     if (sound) void playSubmitSound().then((progressAt) => timeline.pulse(pulse, progressAt));
     else if (pulse !== undefined) timeline.pulse(pulse);
-    after(originatingDialog === dialogVersion);
+    after?.(originatingDialog === dialogVersion);
   } catch (failure) {
     error.textContent = failure.message || 'Could not save. Try again.';
     error.hidden = false;
@@ -199,10 +216,10 @@ function showActivityForm({ existing, draft, returnToLog = false, closeOnCancel 
   const { form, error } = makeForm((message) => {
     const activity = {
       id: existing?.id ?? crypto.randomUUID(), text: name.value.trim(), type: kind.value,
-      unit: kind.value === 'minutes' ? 'min' : unit.value.trim(), goals: [],
+      unit: kind.value === 'minutes' ? 'min' : unit.value.trim(),
     };
-    const saveActivity = existing ? editActivity : createActivity;
-    persist((state) => saveActivity(state, activity), message, {
+    const write = () => existing ? journalStore.editActivity(activity) : journalStore.createActivity(activity);
+    persist(write, message, {
       after: (sameDialog) => {
         if (!existing && draft) draft.preselectedActivityId = activity.id;
         const resumeLogging = dialog.open && sameDialog && returnToLog;
@@ -236,7 +253,7 @@ function showActivityForm({ existing, draft, returnToLog = false, closeOnCancel 
 
 function confirmRemoval(activity, draft) {
   const { form, error } = makeForm((message) => {
-    persist((state) => removeActivity(state, activity.id), message, {
+    persist(() => journalStore.removeActivity(activity.id), message, {
       after: (sameDialog) => {
         if (dialog.open && sameDialog) showManager({ draft });
         renderDay();
@@ -275,10 +292,12 @@ function valueLabel(amount, unit) {
 
 function finishLog(index, activity, amount, message, { added = false } = {}) {
   const date = keyForIndex(index);
-  const change = amount === undefined
-    ? (state) => removeValue(state, date, activity.id)
-    : (state) => saveValue(state, date, activity.id, amount);
-  persist(change, message, {
+  const write = () => {
+    if (amount === undefined) return journalStore.removeLog(date, activity.id);
+    if (added) return journalStore.addLog(date, activity.id, amount);
+    return journalStore.editLog(date, activity.id, amount);
+  };
+  persist(write, message, {
     pulse: amount === undefined ? undefined : index,
     sound: added,
     after: (sameDialog) => {
@@ -295,7 +314,7 @@ function finishLog(index, activity, amount, message, { added = false } = {}) {
 }
 
 function addLogForm(index, values, draft) {
-  const available = journal.activities.filter(({ id }) => !values[id]);
+  const available = journal.activities.filter(({ id }) => !logFor(values, id));
   if (!available.length) {
     return activityPrompt(() => showManager({ draft }), 'All activities are logged for this day.');
   }
@@ -342,8 +361,8 @@ function editLog(index, activity, value) {
 }
 
 function renderDay() {
-  drawer.hidden = selected === null;
-  if (selected === null) return;
+  drawer.hidden = selected === null || !journal;
+  if (drawer.hidden) return;
   const index = selected;
   const date = keyForIndex(index);
   byId('selected-date').textContent = fullLabel(dateForIndex(index));
@@ -369,7 +388,7 @@ function renderDay() {
     if (draft) content.append(addLogForm(index, values, draft));
   }
   for (const activity of journal.activities) {
-    const value = values[activity.id];
+    const value = logFor(values, activity.id);
     if (!value) continue;
     const row = button(undefined, 'log-row', () => editLog(index, activity, value));
     row.dataset.activity = activity.id;
@@ -392,14 +411,14 @@ const timeline = createTimeline({
   },
 });
 
-timeline.setScores(timelineScores(journal));
 manage.addEventListener('click', () => {
   if (journal.activities.length) showManager();
   else showActivityForm({ closeOnCancel: true });
 });
 byId('close-day').addEventListener('click', timeline.closeSelected);
-watchJournal((updated) => {
-  journal = updated;
-  timeline.setScores(timelineScores(journal));
-  renderDay();
+byId('retry-journal').addEventListener('click', async () => {
+  await refreshJournal();
+  if (journal) manage.focus({ preventScroll: true });
 });
+journalStore.subscribe(refreshJournal);
+void refreshJournal();

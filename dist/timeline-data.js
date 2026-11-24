@@ -1,5 +1,4 @@
-import { dayKey, goalKey } from './calendar.js';
-import { isFactor, isUnit } from './measurements.js';
+import { dayKey } from './calendar.js';
 
 const dayMilliseconds = 86_400_000;
 
@@ -30,70 +29,8 @@ export function shortLabel(date) {
 
 export const fullLabel = (date) => fullDate.format(date);
 
-function effortFor(amount, type) {
-  const effort = Math.log1p(amount / (type === 'minutes' ? 30 : 1));
-  return effort / (effort + 1.7);
-}
-
-function validateActivity(journal, activity) {
-  if (!activity.text.trim() || !isUnit(activity.unit)) throw new Error('Enter a name and a valid unit.');
-  if (journal.activities.some((existing) => existing.id !== activity.id && goalKey(existing) === goalKey(activity))) {
-    throw new Error('An activity with this name already exists.');
-  }
-}
-
-export function createActivity(journal, activity) {
-  validateActivity(journal, activity);
-  journal.activities.push(activity);
-}
-
-export function editActivity(journal, details) {
-  const activity = journal.activities.find(({ id }) => id === details.id);
-  if (!activity) throw new Error('This activity was removed.');
-  validateActivity(journal, details);
-
-  if (activity.unit !== details.unit || activity.type !== details.type) {
-    for (const day of Object.values(journal.days)) {
-      const value = day.values[activity.id];
-      if (!value) continue;
-      value.type ??= activity.type;
-      value.unit ??= activity.unit;
-    }
-  }
-  Object.assign(activity, { text: details.text, type: details.type, unit: details.unit });
-}
-
-export function saveValue(journal, key, activityId, amount) {
-  const activity = journal.activities.find(({ id }) => id === activityId);
-  if (!activity) throw new Error('This activity was removed. Close the editor to refresh the list.');
-  if (!isFactor(amount)) throw new Error('Enter a value greater than zero.');
-  const day = journal.days[key] ??= { values: {} };
-  const { type = activity.type, unit = activity.unit } = day.values[activityId] ?? {};
-  day.values[activityId] = { amount, type, unit, effort: effortFor(amount, type) };
-}
-
-export function removeValue(journal, key, activityId) {
-  const day = journal.days[key];
-  if (!day) return;
-  delete day.values[activityId];
-  if (!day.retired && Object.keys(day.values).length === 0) delete journal.days[key];
-}
-
-export function removeActivity(journal, activityId) {
-  journal.activities = journal.activities.filter(({ id }) => id !== activityId);
-  for (const day of Object.values(journal.days)) {
-    const value = day.values[activityId];
-    if (!value) continue;
-    // Keep only the anonymous contribution to the historical graph.
-    const retired = day.retired ??= { count: 0, effort: 0 };
-    retired.count += 1;
-    retired.effort += value.effort;
-    delete day.values[activityId];
-  }
-}
-
 export function timelineScores(journal) {
-  const totals = new Map(Object.entries(journal.days).map(([key, day]) => {
+  const totals = new Map(Object.entries(journal?.days ?? {}).map(([key, day]) => {
     const values = Object.values(day.values);
     const count = values.length + (day.retired?.count ?? 0);
     const effort = values.reduce((sum, value) => sum + value.effort, day.retired?.effort ?? 0);

@@ -573,7 +573,10 @@ test('an activity edit keeps old logs and the open log editor leaves room to swi
   const today = await page.evaluate(() => {
     const date = document.querySelector('[aria-current="date"]').dataset.date;
     localStorage.setItem('checkin.timeline.v1', JSON.stringify({
-      activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min', goals: [] }],
+      activities: [{
+        id: 'walk', text: 'Walk', type: 'minutes', unit: 'min',
+        goals: [{ id: 'weekly-walk', metric: 'minutes', amount: 60, repeat: 'weekly', start: date }],
+      }],
       days: { [date]: { values: { walk: { amount: 30, effort: .29 } } } },
     }));
     return date;
@@ -657,10 +660,80 @@ test('an activity edit keeps old logs and the open log editor leaves room to swi
     const picker = find('#day-content select');
     picker.selectedIndex = 1;
     picker.dispatchEvent(new Event('change'));
-    return { log, newUnit: find('#day-content .unit').textContent };
+    const { activities } = JSON.parse(localStorage.getItem('checkin.timeline.v1'));
+    return { log, newUnit: find('#day-content .unit').textContent, goals: activities[0].goals };
   });
   assert.equal(reopened.log, 'Morning walk\n42 min');
   assert.equal(reopened.newUnit, 'km');
+  assert.deepEqual(reopened.goals, [{ id: 'weekly-walk', metric: 'minutes', amount: 60, repeat: 'weekly', start: today }]);
+});
+
+test('a stale add form reports a conflict and keeps the saved log after reload', async (t) => {
+  const page = await openCheckin(t, () => {
+    const key = 'checkin.timeline.v1';
+    if (localStorage.getItem(key) === null) {
+      localStorage.setItem(key, JSON.stringify({
+        activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min' }], days: {},
+      }));
+    }
+  });
+  await settle(page);
+  await page.evaluate(async () => {
+    const today = document.querySelector('[aria-current="date"]');
+    today.click();
+    document.querySelector('.inline-editor input').value = '45';
+    const { journalStore } = await import('/journal-storage.js');
+    await journalStore.addLog(today.dataset.date, 'walk', 30);
+    document.querySelector('.inline-editor [type="submit"]').click();
+  });
+  await settle(page);
+  assert.match(await page.evaluate(() => document.querySelector('.inline-editor [role="alert"]:not([hidden])')?.textContent),
+    /already has a log/);
+
+  await page.reload();
+  await settle(page);
+  assert.equal(await page.evaluate(() => {
+    document.querySelector('[aria-current="date"]').click();
+    return document.querySelector('.log-row .log-value').textContent;
+  }), '30 min');
+});
+
+test('unreadable journals stay in local storage and can be loaded again after repair', async (t) => {
+  const page = await openCheckin(t, () => {
+    const key = 'checkin.timeline.v1';
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, '{broken');
+  });
+  await settle(page);
+  const readState = () => page.evaluate(() => ({
+    disabled: document.querySelector('#manage').disabled,
+    error: document.querySelector('#journal-error:not([hidden]) [role="alert"]')?.textContent ?? null,
+    saved: localStorage.getItem('checkin.timeline.v1'),
+  }));
+  const error = 'Could not load your saved journal.';
+  assert.deepEqual(await readState(), { disabled: true, error, saved: '{broken' });
+
+  const invalidShape = '{"activities":[],"days":[]}';
+  await page.evaluate(() => {
+    localStorage.setItem('checkin.timeline.v1', '{"activities":[],"days":[]}');
+    document.querySelector('#retry-journal').click();
+  });
+  await settle(page);
+  assert.deepEqual(await readState(), { disabled: true, error, saved: invalidShape });
+
+  const repaired = await page.evaluate(() => {
+    const today = document.querySelector('[aria-current="date"]');
+    today.click();
+    const saved = JSON.stringify({
+      activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min' }],
+      days: { [today.dataset.date]: { values: { walk: { amount: 30, effort: .29 } } } },
+    });
+    localStorage.setItem('checkin.timeline.v1', saved);
+    document.querySelector('#retry-journal').click();
+    return saved;
+  });
+  await settle(page);
+  assert.deepEqual(await readState(), { disabled: false, error: null, saved: repaired });
+  assert.equal(await page.evaluate(() => document.querySelector('.log-row .log-value').textContent), '30 min');
 });
 
 function controlTimelineEffects() {

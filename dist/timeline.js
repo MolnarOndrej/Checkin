@@ -66,7 +66,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     const before = heights.get(index) ?? value.height;
     const lift = before + (value.height - before) * progress;
     return {
-      ...value, index, lift,
+      ...value, index,
       x: width / 2 + (index - camera) * spacing,
       y: baseline - lift * height * .49,
     };

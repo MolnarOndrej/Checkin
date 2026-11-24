@@ -4,18 +4,8 @@ export function dayKey(date) {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-export function monthStart(date, offset = 0) {
-  return new Date(date.getFullYear(), date.getMonth() + offset, 1);
-}
-
-export function dateOffset(date, offset) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset);
-}
-
-export function weekStart(date) {
-  return dateOffset(date, -((date.getDay() + 6) % 7));
-}
-
-export function goalKey({ text }) {
-  return text.trim().replace(/\s+/g, ' ').toLowerCase();
+export function isDayKey(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }

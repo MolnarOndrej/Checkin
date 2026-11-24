@@ -5,7 +5,7 @@ import { extname } from 'node:path';
 const host = '127.0.0.1';
 const port = Number(process.env.PORT ?? 4173);
 const assets = new Set([
-  'index.html', 'styles.css', 'app.js', 'calendar.js', 'measurements.js', 'journal-storage.js',
+  'index.html', 'styles.css', 'app.js', 'calendar.js', 'measurements.js', 'journal-data.js', 'journal-storage.js',
   'timeline.js', 'timeline-data.js', 'graph.js', 'submit-sound.js', 'mark.svg',
 ]);
 const soundFiles = await readdir(new URL('./submitsounds/', import.meta.url), { withFileTypes: true });
