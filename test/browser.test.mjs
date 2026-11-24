@@ -159,10 +159,32 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
   await page.reload();
   await settle(page);
   const persisted = await page.evaluate(() => {
-    document.querySelector('[aria-current="date"]').click();
-    return [...document.querySelectorAll('.log-value')].map((value) => value.textContent);
+    const find = (selector) => document.querySelector(selector);
+    find('[aria-current="date"]').click();
+    find('[aria-label="Log activity"]').click();
+    const note = find('#day-content .inline-note');
+    const link = note.querySelector('a[href]');
+    return {
+      values: [...document.querySelectorAll('.log-value')].map((value) => value.textContent),
+      message: note.innerText,
+      linkText: link.innerText,
+      linkFocused: document.activeElement === link,
+    };
   });
-  assert.deepEqual(persisted, ['100 pages', '20 min']);
+  assert.deepEqual(persisted.values, ['100 pages', '20 min']);
+  assert.equal(persisted.message.replace(/\s+/g, ' '), 'All activities are logged for this day. Or Add activity');
+  assert.equal(persisted.linkText, 'Add activity');
+  assert.equal(persisted.linkFocused, true);
+
+  const manager = await page.evaluate(() => {
+    document.querySelector('#day-content .inline-note a[href]').click();
+    return {
+      open: document.querySelector('dialog').matches(':modal'),
+      title: document.querySelector('#dialog-title').innerText,
+      activities: [...document.querySelectorAll('dialog .activity-name')].map((name) => name.innerText),
+    };
+  });
+  assert.deepEqual(manager, { open: true, title: 'Activities', activities: ['Read', 'Stretch'] });
 
   const removed = await page.evaluate(async () => {
     const find = (selector) => document.querySelector(selector);
@@ -171,7 +193,6 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
     const remaining = () => [...document.querySelectorAll('.log-value')].map((value) => value.textContent);
     const choose = (text) => [...document.querySelectorAll('dialog .actions button')].find((button) => button.textContent === text);
     const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    find('#manage').click();
     find('[aria-label="Remove Read"]').click();
     const confirmation = find('#dialog-title').textContent;
     assertOnCancel();

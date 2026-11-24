@@ -60,7 +60,7 @@ button:disabled {
   opacity: .48;
 }
 
-button:focus-visible, select:focus-visible, input:focus-visible {
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -558,6 +558,11 @@ input, select {
 
 .inline-note {
   padding: 7px 13px;
+}
+
+.manage-shortcut {
+  color: var(--accent);
+  white-space: nowrap;
 }
 
 .create-shortcut {

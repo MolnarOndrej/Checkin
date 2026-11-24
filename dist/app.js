@@ -272,7 +272,16 @@ function addLogForm(index, values) {
   const available = journal.activities.filter(({ id }) => !values[id]);
   if (!available.length) {
     if (!journal.activities.length) return button('Create an activity', 'text-button create-shortcut', () => showActivityForm());
-    return element('p', 'inline-note', 'All activities are logged for this day.');
+    const note = element('p', 'inline-note', 'All activities are logged for this day. Or ');
+    const link = element('a', 'manage-shortcut', 'Add activity');
+    link.href = '#manage';
+    link.setAttribute('aria-haspopup', 'dialog');
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      showManager();
+    });
+    note.append(link);
+    return note;
   }
 
   const picker = makeSelect(available.map(({ id, text }) => [id, text]), 'Choose an activity');
@@ -328,7 +337,7 @@ function renderDay() {
     const add = plusButton('Log activity', () => {
       addingLog = !addingLog;
       renderDay();
-      const focus = addingLog ? dayContent.querySelector('select, .create-shortcut') : null;
+      const focus = addingLog ? dayContent.querySelector('select, .create-shortcut, .manage-shortcut') : null;
       (focus ?? dayContent.querySelector('.add-button'))?.focus({ preventScroll: true });
     });
     add.setAttribute('aria-expanded', String(addingLog));
