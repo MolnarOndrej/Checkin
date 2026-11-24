@@ -44,28 +44,21 @@ export function driftPalette(base, now) {
 }
 
 const effects = [
-  ['daybreak-sweep', 3300],
-  ['backlight-sweep', 3300],
-  ['crossing-lights', 3300],
-  ['over-under', 3850],
-  ['sky-ribbon', 3950],
-  ['split-pulse', 4100],
-  ['skipping-sparks', 3900],
-  ['twin-ribbons', 3900],
-  ['beacon-landing', 4400],
+  'daybreak-sweep', 'backlight-sweep', 'crossing-lights', 'over-under', 'sky-ribbon',
+  'split-pulse', 'skipping-sparks', 'twin-ribbons', 'beacon-landing',
 ];
 const companionTracks = { 'crossing-lights': 'heads', 'twin-ribbons': 'ribbons' };
 const paletteColors = ['accent', 'secondary', 'spark'];
 const borders = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
 const inkFade = 1050;
 const inkReach = .51;
-const accelerationTime = 450;
+const glowSpeed = .81; // CSS pixels per millisecond along the path.
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export function randomWave({ center, visibleDays, today, now, countAt }) {
   const choice = Math.random() * effects.length;
   const index = Math.floor(choice);
-  const [kind, duration] = effects[index];
+  const kind = effects[index];
   const variation = choice - index;
   let direction = index < 3 || variation < .5 ? 1 : -1;
   const side = (variation * 4) % 2 < 1 ? -1 : 1;
@@ -89,7 +82,7 @@ export function randomWave({ center, visibleDays, today, now, countAt }) {
   }
   if ((kind === 'sky-ribbon' || kind === 'beacon-landing') && anchor !== center) direction = Math.sign(center - anchor);
   return {
-    kind, direction, side, anchor, entry, ink, started: now, duration,
+    kind, direction, side, anchor, entry, ink, started: now,
     from: center - direction * reach, to: center + direction * reach,
   };
 }
@@ -108,33 +101,72 @@ function offCurve(day, yAt, height, amount, phase) {
   return y + roomFor(y, height, Math.sign(phase), amount) * Math.abs(phase);
 }
 
-function weave(wave, yAt, height, amplitude, wavelength, side) {
-  return (progress) => {
+function measurePath(pointAt, steps) {
+  // Use cumulative screen distance to sample bends at the same speed as straight sections.
+  const distances = [0];
+  let previous = pointAt(0);
+  for (let step = 1; step <= steps; step++) {
+    const point = pointAt(step / steps);
+    distances.push(distances.at(-1) + Math.hypot(point.x - previous.x, point.y - previous.y));
+    previous = point;
+  }
+  const length = distances.at(-1);
+  return {
+    length,
+    positionAt(distance) {
+      if (distance <= 0) return 0;
+      if (distance >= length) return 1;
+      let left = 0;
+      let right = steps;
+      while (right - left > 1) {
+        const middle = Math.floor((left + right) / 2);
+        if (distances[middle] <= distance) left = middle;
+        else right = middle;
+      }
+      return (left + (distance - distances[left]) / (distances[right] - distances[left])) / steps;
+    },
+  };
+}
+
+function graphTrack(route, layout, extend = false) {
+  const steps = Math.max(96, Math.ceil(Math.abs(route(1, layout).day - route(0, layout).day) * 24));
+  const measure = (segment) => measurePath((position) => {
+    const { day, y } = route(segment + position, layout);
+    return { x: day * layout.spacing, y };
+  }, steps);
+  const segments = [measure(0)];
+  const length = segments[0].length;
+  return {
+    length,
+    at(distance, currentLayout) {
+      let segment = 0;
+      // A swipe can reveal the continuation of a route beyond its original viewport.
+      while (extend && distance > segments[segment].length) {
+        distance -= segments[segment].length;
+        segment++;
+        segments[segment] ??= measure(segment);
+      }
+      // Draw against the live graph while keeping the timing measured at launch.
+      return route(segment + segments[segment].positionAt(distance), currentLayout);
+    },
+  };
+}
+
+const followGraph = (from, to) => (position, { yAt }) => {
+  const day = mix(from, to, position);
+  return { day, y: yAt(day) };
+};
+
+function weave(wave, amplitude, wavelength, side) {
+  return (progress, { yAt, height }) => {
     const day = mix(wave.from, wave.to, progress);
     const phase = side * Math.sin((day - wave.anchor) * Math.PI / wavelength);
     return { day, y: offCurve(day, yAt, height, amplitude, phase) };
   };
 }
 
-function launch(wave, yAt, height) {
-  const arrival = .34;
-  const anchorY = yAt(wave.anchor);
-  return (progress) => {
-    if (progress < arrival) {
-      const fall = progress / arrival;
-      const y = mix(wave.side < 0 ? -.14 * height : 1.14 * height, anchorY, fall ** 1.24);
-      const day = wave.anchor - wave.direction * .6 * Math.sin(Math.PI * fall);
-      return { day, y };
-    }
-    const exit = (progress - arrival) / (1 - arrival);
-    const day = mix(wave.anchor, wave.to, exit ** 1.45);
-    const phase = -wave.side * Math.sin(Math.PI * Math.min(1, exit * 2.6));
-    return { day, y: offCurve(day, yAt, height, .18, phase) };
-  };
-}
-
-function hops(wave, yAt, height) {
-  return (progress) => {
+function hops(wave) {
+  return (progress, { yAt, height }) => {
     const day = mix(wave.from, wave.to, progress);
     const interval = 3;
     const step = Math.floor((day - wave.anchor) / interval);
@@ -147,20 +179,84 @@ function hops(wave, yAt, height) {
   };
 }
 
-function pause(wave, progress, colors) {
-  const { from, to, anchor, direction } = wave;
-  const arrives = .34;
-  const leaves = .68;
-  if (progress <= arrives) {
-    return { heads: [head(mix(from, anchor, 1 - (1 - progress / arrives) ** 1.4), direction, colors.spark)] };
+const splitHold = 850 * glowSpeed;
+const beaconHold = 700 * glowSpeed;
+
+function prepareWave(wave, layout) {
+  const { from, to, anchor, direction, side, entry } = wave;
+  const track = (route, extend) => graphTrack(route, layout, extend);
+  const across = (start, end) => track(followGraph(start, end), true);
+  const together = (tracks) => ({ tracks, length: Math.max(...tracks.map(({ length }) => length)) });
+  switch (wave.kind) {
+    case 'daybreak-sweep': return together([across(from, to)]);
+    case 'backlight-sweep': return together([across(to, from)]);
+    case 'crossing-lights': return together([across(from, to), across(to, from)]);
+    case 'over-under': return together([track(weave(wave, .31, 5, side), true)]);
+    case 'twin-ribbons': return together([
+      track(weave(wave, .21, 6, side), true),
+      track(weave(wave, .29, 6, -side), true),
+    ]);
+    case 'skipping-sparks': return together([track(hops(wave), true)]);
+    case 'sky-ribbon': {
+      const fall = track((position, { yAt, height }) => ({
+        day: anchor - direction * .6 * Math.sin(Math.PI * position),
+        y: mix(side < 0 ? -.14 * height : 1.14 * height, yAt(anchor), position ** 1.24),
+      }));
+      const exit = track((position, { yAt, height }) => {
+        const day = mix(anchor, to, position);
+        const phase = -side * Math.sin(Math.PI * Math.min(1, position * 2.6));
+        return { day, y: offCurve(day, yAt, height, .18, phase) };
+      }, true);
+      const ribbon = {
+        length: fall.length + exit.length,
+        at(distance, currentLayout) {
+          return distance <= fall.length ? fall.at(distance, currentLayout) : exit.at(distance - fall.length, currentLayout);
+        },
+      };
+      return { ...together([ribbon]), visitFrom: fall.length, visitTo: fall.length + exit.length * .9 };
+    }
+    case 'split-pulse': {
+      const arrival = track(followGraph(from, anchor));
+      const branches = [-1, 1].map((side) => {
+        const flare = anchor + side * 1.08;
+        return {
+          side, reach: track(followGraph(anchor, flare)),
+          exit: across(flare, side === direction ? to : from),
+        };
+      });
+      const length = arrival.length + splitHold + Math.max(...branches.map(({ reach, exit }) => reach.length + exit.length));
+      return { arrival, branches, length, visitTo: arrival.length * .96 };
+    }
+    case 'beacon-landing': {
+      const arrival = track((position, currentLayout) => {
+        const { hover, nodeY } = beaconHeights(wave, currentLayout);
+        const { height } = currentLayout;
+        const start = entry.y ? height * (entry.y < 0 ? -.14 : 1.14) : hover + (hover - nodeY) * .26;
+        return { day: mix(entry.day, anchor, position), y: mix(start, hover, position) };
+      });
+      const descent = track((position, currentLayout) => {
+        const { hover, nodeY } = beaconHeights(wave, currentLayout);
+        return { day: anchor, y: mix(hover, nodeY, position) };
+      });
+      const exit = across(anchor, to);
+      const visitFrom = arrival.length + beaconHold + descent.length;
+      return { arrival, descent, exit, length: visitFrom + exit.length, visitFrom, visitTo: visitFrom + exit.length * .93 };
+    }
   }
-  const time = clamp((progress - arrives) / (leaves - arrives), 0, 1);
-  const outward = Math.max(0, (progress - leaves) / (1 - leaves));
-  const style = Math.min(1, outward);
-  const reach = 1.08 * (1 - (1 - time) ** 2.2);
+}
+
+function splitPulse(wave, motion, distance, colors, layout) {
+  const { arrival, branches } = motion;
+  if (distance <= arrival.length) {
+    return { heads: [head(arrival.at(distance, layout).day, wave.direction, colors.spark)] };
+  }
+  const outward = distance - arrival.length;
   return {
-    heads: [-1, 1].map((side) => {
-      const day = mix(anchor + side * reach, side === direction ? to : from, outward ** 1.55);
+    heads: branches.map(({ side, reach, exit }) => {
+      const exitDistance = outward - reach.length - splitHold;
+      const time = clamp((outward - reach.length) / splitHold, 0, 1);
+      const style = clamp(exitDistance / (layout.spacing * 3), 0, 1);
+      const { day } = exitDistance > 0 ? exit.at(exitDistance, layout) : reach.at(outward, layout);
       return {
         ...head(day, side, colors.spark, mix(.70 + .18 * Math.sin(Math.PI * time), 1, style), mix(1.2, 4, style)),
         lead: mix(.32, .75, style),
@@ -170,50 +266,42 @@ function pause(wave, progress, colors) {
   };
 }
 
-function landBall(wave, progress, color, yAt, height, complete, trailStart) {
-  const { anchor, side, to, entry } = wave;
-  const approach = .33;
-  const expanded = .49;
-  const landed = .7;
-  const radius = 4.5;
+function beaconHeights({ anchor, side }, { yAt, height }) {
   const large = clamp(height * .135, 42, 88);
   const nodeY = yAt(anchor);
   let lift = roomFor(nodeY, height, side, .27);
   if (Math.abs(lift) < height * .19) lift = roomFor(nodeY, height, -side, .27);
   // Leave room for the full bloom inside the graph's edge fade.
-  const hover = clamp(nodeY + lift, height * effectTop + large, height * effectBottom - large);
+  return { nodeY, hover: clamp(nodeY + lift, height * effectTop + large, height * effectBottom - large), large };
+}
 
-  const startY = entry.y ? height * (entry.y < 0 ? -.14 : 1.14) : hover + (hover - nodeY) * .26;
-  const hoverTime = expanded - approach;
-  // Hold the trail in place while the beacon hovers.
-  const travelTime = (time) => time - clamp(time - approach, 0, hoverTime);
-  const route = (time) => {
-    if (time <= approach) {
-      const arrival = 1 - (1 - time / approach) ** 1.6;
-      return { day: mix(entry.day, anchor, arrival), y: mix(startY, hover, arrival) };
-    }
-    const phase = time + hoverTime;
-    if (phase < landed) {
-      const descent = (phase - expanded) / (landed - expanded);
-      return { day: anchor, y: mix(hover, nodeY, smooth(descent)) };
-    }
-    const exit = (phase - landed) / (1 - landed);
-    const day = mix(anchor, to, exit ** 1.28);
-    return { day, y: yAt(day) };
+function landBall(wave, motion, distance, color, layout, complete, trailStart) {
+  const { arrival, descent, exit } = motion;
+  const { large } = beaconHeights(wave, layout);
+  const approach = arrival.length;
+  const expanded = approach + beaconHold;
+  const landed = approach + descent.length;
+  // Keep the trail at the same location while the beacon hovers.
+  const traveled = (value) => value - clamp(value - approach, 0, beaconHold);
+  const route = (position) => {
+    if (position <= approach) return arrival.at(position, layout);
+    if (position < landed) return descent.at(position - approach, layout);
+    return exit.at(position - landed, layout);
   };
-  const position = travelTime(progress);
-  const ball = { ...route(position), radius, color, strength: 1, bloomRadius: large, bloom: 0 };
-  if (progress >= approach && progress < expanded) {
-    const gathering = smooth((progress - approach) / (expanded - approach));
+  const position = traveled(distance);
+  const ball = { ...route(position), radius: 4.5, color, strength: 1, bloomRadius: large, bloom: 0 };
+  if (distance >= approach && distance < expanded) {
+    const gathering = smooth((distance - approach) / beaconHold);
     ball.bloomRadius = mix(24, large, gathering);
     ball.bloom = gathering;
-  } else if (progress >= expanded && progress < landed) {
-    const descent = (progress - expanded) / (landed - expanded);
-    ball.bloom = 1 - smooth(clamp((descent - .26) / .74, 0, 1));
+  } else if (distance >= expanded && position < landed) {
+    const drop = (position - approach) / descent.length;
+    ball.bloom = 1 - smooth(clamp((drop - .26) / .74, 0, 1));
   }
-  const exit = clamp((progress - landed) / (1 - landed), 0, 1);
-  const start = Math.max(travelTime(trailStart), position - mix(.12, .05, smooth(exit)));
-  const ribbons = complete ? beaconTrail(route, start, position, [approach, travelTime(landed)], color) : [];
+  const leaving = clamp((position - landed) / exit.length, 0, 1);
+  const movingLength = landed + exit.length;
+  const start = Math.max(traveled(trailStart), position - movingLength * mix(.12, .05, smooth(leaving)));
+  const ribbons = complete ? beaconTrail(route, start, position, [approach, landed], color) : [];
   return { ball, ribbons };
 }
 
@@ -230,74 +318,94 @@ function beaconTrail(route, start, end, turns, color) {
   });
 }
 
-function ribbon(route, progress, options, complete, trailStart = 0) {
-  const tail = options.tail ?? .19;
-  const start = Math.max(trailStart, progress - tail);
+function ribbon(route, distance, options, complete, trailStart) {
+  const start = Math.max(trailStart, distance - options.tail);
   const segments = 40;
   const points = complete
-    ? Array.from({ length: segments + 1 }, (_, index) => route(mix(start, progress, index / segments)))
-    : [route(progress)];
+    ? Array.from({ length: segments + 1 }, (_, index) => route(mix(start, distance, index / segments)))
+    : [route(distance)];
   return { points, ...options };
 }
 
-function traversalAt(wave, now, colors, yAt, height, { complete = true, after } = {}) {
+function traversalAt(wave, now, colors, layout, { complete = true, after = wave?.started } = {}) {
   if (!wave || now < wave.started) return {};
-  const elapsed = now - wave.started;
-  const extra = Math.max(0, elapsed - wave.duration);
-  // Extend the route at its existing speed, then accelerate away from the viewport.
-  const progress = (elapsed + accelerationTime * (extra / accelerationTime) ** 3) / wave.duration;
-  const { from, to, direction } = wave;
-  const trailStart = after === undefined ? 0 : clamp((after - wave.started) / wave.duration, 0, progress);
-  const drawRibbon = (route, options) => ribbon(route, progress, options, complete, trailStart);
+  const { direction, motion } = wave;
+  const distance = (now - wave.started) * glowSpeed;
+  const trailStart = (after - wave.started) * glowSpeed;
+  const at = (index) => motion.tracks[index].at(distance, layout).day;
+  const drawRibbon = (index, options) => {
+    const track = motion.tracks[index];
+    return ribbon((value) => track.at(value, layout), distance,
+      { ...options, tail: track.length * options.tail }, complete, trailStart);
+  };
 
   switch (wave.kind) {
     case 'daybreak-sweep':
-      return { heads: [head(mix(from, to, progress), direction, colors.accent, 1, 5.7)] };
+      return { heads: [head(at(0), direction, colors.accent, 1, 5.7)] };
     case 'backlight-sweep':
-      return { heads: [head(mix(to, from, progress), -direction, colors.secondary, 1, 2.9)] };
+      return { heads: [head(at(0), -direction, colors.secondary, 1, 2.9)] };
     case 'crossing-lights':
       return {
         heads: [
-          head(mix(from, to, progress), direction, colors.secondary, .85, 3.2),
-          head(mix(to, from, progress), -direction, colors.spark, .82, 3.2),
+          head(at(0), direction, colors.secondary, .85, 3.2),
+          head(at(1), -direction, colors.spark, .82, 3.2),
         ],
       };
     case 'over-under':
-      return { ribbons: [drawRibbon(weave(wave, yAt, height, .31, 5, wave.side), {
+      return { ribbons: [drawRibbon(0, {
         color: colors.accent, tip: colors.spark, width: 3.1, tail: .25,
       })] };
     case 'sky-ribbon':
-      return { ribbons: [drawRibbon(launch(wave, yAt, height), {
+      return { ribbons: [drawRibbon(0, {
         color: colors.spark, tip: colors.accent, width: 3.6, tail: .22,
       })] };
     case 'split-pulse':
-      return pause(wave, progress, colors);
+      return splitPulse(wave, motion, distance, colors, layout);
     case 'skipping-sparks':
-      return { ribbons: [drawRibbon(hops(wave, yAt, height), {
+      return { ribbons: [drawRibbon(0, {
         color: colors.secondary, tip: colors.spark, width: 2, tail: .16, beads: true,
       })] };
     case 'twin-ribbons':
       return {
         ribbons: [
-          drawRibbon(weave(wave, yAt, height, .21, 6, wave.side), {
+          drawRibbon(0, {
             color: colors.accent, tip: colors.accent, width: 2.6, tail: .25,
           }),
-          drawRibbon(weave(wave, yAt, height, .29, 6, -wave.side), {
+          drawRibbon(1, {
             color: colors.spark, tip: colors.secondary, width: 2.15, tail: .19,
           }),
         ],
       };
     case 'beacon-landing':
-      return landBall(wave, progress, colors.spark, yAt, height, complete, trailStart);
+      return landBall(wave, motion, distance, colors.spark, layout, complete, trailStart);
     default:
       return {};
   }
 }
 
-function rippleHeads({ index, progress }, colors) {
-  const spread = 4.2 * (1 - (1 - progress) ** 2);
-  return [-1, 1].map((direction) => ({
-    day: index + direction * spread,
+const rippleReach = 4.2;
+
+export function createRipple(index, started, spacing, audioProgressAt) {
+  const distance = rippleReach * spacing;
+  return {
+    index,
+    distance,
+    audioBound: Boolean(audioProgressAt),
+    progressAt: audioProgressAt ?? ((now) => (now - started) * glowSpeed / distance),
+  };
+}
+
+function rippleHeads(ripple, colors, layout) {
+  const { index, progress, audioBound, distance } = ripple;
+  const directions = [-1, 1];
+  if (!audioBound) {
+    ripple.tracks ??= directions.map((direction) => graphTrack(
+      followGraph(index, index + direction * rippleReach), layout,
+    ));
+  }
+  const spread = rippleReach * (1 - (1 - progress) ** 2);
+  return directions.map((direction, track) => ({
+    day: audioBound ? index + direction * spread : ripple.tracks[track].at(distance * progress, layout).day,
     direction,
     color: direction === 1 ? colors.accent : colors.spark,
     strength: 1.65 * (1 - progress) ** 2,
@@ -362,7 +470,7 @@ function ribbonTips(ribbons = []) {
     .map(({ points, tip, opacity = 1 }) => ({ ...points.at(-1), color: tip, strength: .92 * opacity }));
 }
 
-function inkOnGraph(wave, now, colors, yAt, height) {
+function inkOnGraph(wave, now, colors, layout) {
   if (!wave?.ink) return null;
   const marks = new Map();
   const visitStart = wave.started + (wave.visit?.begin ?? 0);
@@ -372,13 +480,13 @@ function inkOnGraph(wave, now, colors, yAt, height) {
     const time = now - age;
     if (wave.departed !== undefined && time >= wave.departed) continue;
     const phase = waveFrameAt(wave, time);
-    const { heads = [], ribbons, ball } = traversalOnGraph(wave, phase, colors, yAt, height, {
+    const { heads = [], ribbons, ball } = traversalOnGraph(wave, phase, colors, layout, {
       complete: false, includeLead: time >= leadSince,
     });
     const contacts = [...heads, ...ribbonTips(ribbons)];
     if (ball && !heads.length) contacts.push(ball);
     for (const { day, y, strength } of contacts) {
-      const distance = y === undefined ? 0 : (y - yAt(day)) / 18;
+      const distance = y === undefined ? 0 : (y - layout.yAt(day)) / 18;
       const brightness = Math.exp(-(distance ** 2)) * strength * (1 - age / inkFade) ** 1.35;
       if (!(brightness > .025)) continue;
       const bucket = Math.floor(day);
@@ -568,34 +676,35 @@ function leadOf(wave, effects) {
   return contact && { ...contact, direction: contact.direction ?? wave.direction };
 }
 
-function planVisit(wave, visit, width, colors, worldToX, yAt, height) {
-  const spans = {
-    'sky-ribbon': [.36, .9],
-    'split-pulse': [.04, .32],
-    'beacon-landing': [.71, .93],
-  };
-  const [first, last] = spans[wave.kind] ?? [.15, .85];
+function visitOrigin(visit, lead, worldToX, yAt) {
+  return { x: visit.stage.left + worldToX(lead.day), y: visit.stage.top + (lead.y ?? yAt(lead.day)) };
+}
+
+function planVisit(wave, visit, width, colors, worldToX, layout) {
+  const { length, visitFrom = length * .15, visitTo = length * .85 } = wave.motion;
   let closest = Infinity;
   let moment;
+  let selectedLead;
   for (let index = 0; index <= 48; index++) {
-    const scale = mix(first, last, index / 48);
-    const signal = traversalAt(wave, wave.started + scale * wave.duration, colors, yAt, height, { complete: false });
+    const elapsed = mix(visitFrom, visitTo, index / 48) / glowSpeed;
+    const signal = traversalAt(wave, wave.started + elapsed, colors, layout, { complete: false });
     const lead = leadOf(wave, signal);
     if (!lead) continue;
-    const x = worldToX(lead.day);
-    const y = visit.stage.top + (lead.y ?? yAt(lead.day));
-    if (x < 12 || x > width - 12 || y < 6 || y > innerHeight - 6) continue;
+    const { x, y } = visitOrigin(visit, lead, worldToX, layout.yAt);
+    if (x < visit.stage.left + 12 || x > visit.stage.left + width - 12 || y < 6 || y > innerHeight - 6) continue;
     const sideX = lead.direction > 0 ? visit.panel.left : visit.panel.right;
-    const distance = Math.abs(visit.stage.left + x - sideX) + Math.max(0, y - visit.panel.top) * .45;
+    const distance = Math.abs(x - sideX) + Math.max(0, y - visit.panel.top) * .45;
     if (distance < closest) {
       closest = distance;
-      moment = scale;
+      moment = elapsed;
+      selectedLead = lead;
     }
   }
   if (moment === undefined) return null;
-  const delay = 1560;
-  const duration = Math.min(4860, wave.duration + 1280) - delay;
-  return { begin: moment * duration, duration, delay };
+  const origin = visitOrigin(visit, selectedLead, worldToX, layout.yAt);
+  const { route } = drawerPath(visit.panel, selectedLead.direction, origin);
+  const timing = measurePath(route, 720);
+  return { begin: moment, timing, delay: timing.length / glowSpeed };
 }
 
 function waveFrameAt(wave, now) {
@@ -606,12 +715,12 @@ function waveFrameAt(wave, now) {
   const detouring = intoVisit >= 0 && intoVisit < visit.delay;
   const spentVisiting = clamp(intoVisit, 0, visit.delay);
   const rejoin = visit.delay > 0 && intoVisit >= visit.delay ? {
-    time: wave.started + visit.begin * wave.duration / visit.duration,
+    time: wave.started + visit.begin,
     age: intoVisit - visit.delay,
   } : null;
   return {
-    time: wave.started + (elapsed - spentVisiting) * wave.duration / visit.duration,
-    uninterruptedTime: wave.started + elapsed * wave.duration / visit.duration,
+    time: now - spentVisiting,
+    uninterruptedTime: now,
     loop: detouring ? intoVisit / visit.delay : null,
     rejoin,
   };
@@ -625,16 +734,16 @@ function rejoinedHeads(heads, startingHeads) {
   });
 }
 
-function traversalOnGraph(wave, phase, colors, yAt, height, { complete = true, includeLead = true, startingHeads } = {}) {
+function traversalOnGraph(wave, phase, colors, layout, { complete = true, includeLead = true, startingHeads } = {}) {
   const leadOnGraph = includeLead && phase.loop === null;
   const effects = leadOnGraph
-    ? traversalAt(wave, phase.time, colors, yAt, height, { complete, after: phase.rejoin?.time })
+    ? traversalAt(wave, phase.time, colors, layout, { complete, after: phase.rejoin?.time })
     : {};
   if (startingHeads && effects.heads) effects.heads = rejoinedHeads(effects.heads, startingHeads);
 
   const track = companionTracks[wave?.kind];
   if (track && (!leadOnGraph || phase.time !== phase.uninterruptedTime)) {
-    const companion = traversalAt(wave, phase.uninterruptedTime, colors, yAt, height, { complete })[track]?.[1];
+    const companion = traversalAt(wave, phase.uninterruptedTime, colors, layout, { complete })[track]?.[1];
     effects[track] = [effects[track]?.[0], companion].filter(Boolean);
   }
   return effects;
@@ -696,8 +805,25 @@ function cubic(a, b, c, d, t) {
 }
 
 const loopTrailLength = .19;
+const goesAround = .23;
+const rejoins = .76;
 
-function paintVisit(canvas, visit, lead, progress, worldToX, yAt, ratio) {
+function drawerPath(panel, direction, origin) {
+  const rim = sampleRim(panel, direction);
+  const entry = rim(0);
+  const route = (position) => {
+    if (position < goesAround) {
+      return cubic(origin, { x: origin.x + direction * 54, y: origin.y },
+        { x: entry.x, y: entry.y + 44 }, entry, position / goesAround);
+    }
+    if (position < rejoins) return rim((position - goesAround) / (rejoins - goesAround));
+    return cubic(entry, { x: entry.x, y: entry.y - 44 },
+      { x: origin.x - direction * 54, y: origin.y }, origin, (position - rejoins) / (1 - rejoins));
+  };
+  return { rim, entry, route };
+}
+
+function paintVisit(canvas, visit, lead, progress, timing, worldToX, yAt, ratio) {
   canvas.hidden = false;
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -714,22 +840,11 @@ function paintVisit(canvas, visit, lead, progress, worldToX, yAt, ratio) {
   context.lineCap = context.lineJoin = 'round';
 
   const { direction, color } = lead;
-  const rim = sampleRim(visit.panel, direction);
-  const entry = rim(0);
-  const origin = { x: visit.stage.left + worldToX(lead.day), y: visit.stage.top + (lead.y ?? yAt(lead.day)) };
-  const goesAround = .23;
-  const rejoins = .76;
-  const route = (position) => {
-    if (position < goesAround) {
-      return cubic(origin, { x: origin.x + direction * 54, y: origin.y },
-        { x: entry.x, y: entry.y + 44 }, entry, position / goesAround);
-    }
-    if (position < rejoins) return rim((position - goesAround) / (rejoins - goesAround));
-    return cubic(entry, { x: entry.x, y: entry.y - 44 },
-      { x: origin.x - direction * 54, y: origin.y }, origin, (position - rejoins) / (1 - rejoins));
-  };
+  const { rim, entry, route } = drawerPath(visit.panel, direction, visitOrigin(visit, lead, worldToX, yAt));
+  const positionAt = (fraction) => timing.positionAt(fraction * timing.length);
 
-  const arc = clamp((progress - goesAround) / (rejoins - goesAround), 0, 1);
+  const position = positionAt(progress);
+  const arc = clamp((position - goesAround) / (rejoins - goesAround), 0, 1);
   if (arc > 0 && progress < 1) {
     const d = new Path2D();
     d.moveTo(entry.x, entry.y);
@@ -738,14 +853,14 @@ function paintVisit(canvas, visit, lead, progress, worldToX, yAt, ratio) {
       const point = rim(arc * index / steps);
       d.lineTo(point.x, point.y);
     }
-    const fade = 1 - smooth(clamp((progress - rejoins) / (1 - rejoins), 0, 1));
+    const fade = 1 - smooth(clamp((position - rejoins) / (1 - rejoins), 0, 1));
     stroke(context, d, tint(color, .13 * fade), 13);
     stroke(context, d, tint(color, .58 * fade), 1.65);
   }
   // The last part of the loop stays attached to the graph as the glow moves on.
   const end = Math.min(1, progress);
   const tail = Math.max(0, progress - loopTrailLength);
-  const trail = Array.from({ length: 30 }, (_, index) => route(mix(tail, end, index / 29)));
+  const trail = Array.from({ length: 30 }, (_, index) => route(positionAt(mix(tail, end, index / 29))));
   const opacity = 1 - smooth(clamp((progress - 1) / loopTrailLength, 0, 1));
   paintTrail(context, trail, { color, tip: color, width: 2.9, quietTip: progress >= 1, opacity }, width, height);
 }
@@ -763,33 +878,34 @@ export function paintGraph(canvas, frame) {
     const left = Math.floor(day);
     return mix(pointAt(left).y, pointAt(left + 1).y, smooth(day - left));
   };
+  const layout = { yAt, height, spacing };
+  if (wave) wave.motion ??= prepareWave(wave, layout);
   const dye = wave?.ink && colors[wave.ink];
   const waveColors = dye ? { accent: dye, secondary: dye, spark: dye } : colors;
   if (wave?.panel && visit && wave.visit === undefined) {
-    wave.visit = planVisit(wave, visit, width, waveColors, worldToX, yAt, height);
+    wave.visit = planVisit(wave, visit, width, waveColors, worldToX, layout);
   } else if (wave?.visit && !visit) {
     wave.visit.delay = clamp(now - wave.started - wave.visit.begin, 0, wave.visit.delay);
   }
   const phase = waveFrameAt(wave, now);
-  const atRejoin = phase.rejoin && traversalAt(wave, phase.rejoin.time, waveColors, yAt, height, { complete: false });
+  const atRejoin = phase.rejoin && traversalAt(wave, phase.rejoin.time, waveColors, layout, { complete: false });
   const loopProgress = phase.loop ?? (phase.rejoin ? 1 + phase.rejoin.age / wave.visit.delay : null);
   const lead = visit && loopProgress !== null && loopProgress < 1 + loopTrailLength && leadOf(wave,
-    atRejoin ?? traversalAt(wave, phase.time, waveColors, yAt, height, { complete: false }));
-  if (lead) paintVisit(drawerGlow, visit, lead, loopProgress, worldToX, yAt, ratio);
+    atRejoin ?? traversalAt(wave, phase.time, waveColors, layout, { complete: false }));
+  if (lead) paintVisit(drawerGlow, visit, lead, loopProgress, wave.visit.timing, worldToX, yAt, ratio);
   else drawerGlow.hidden = true;
   let onGraph = wave?.departed === undefined
-    ? traversalOnGraph(wave, phase, waveColors, yAt, height, { startingHeads: atRejoin?.heads })
+    ? traversalOnGraph(wave, phase, waveColors, layout, { startingHeads: atRejoin?.heads })
     : {};
-  if (wave && phase.time >= wave.started + wave.duration && wave.departed === undefined) {
-    wave.escaping = traversalInView(onGraph, worldToX, width);
-    if (!wave.escaping) {
+  if (wave && (phase.time - wave.started) * glowSpeed >= wave.motion.length && wave.departed === undefined) {
+    if (!traversalInView(onGraph, worldToX, width)) {
       wave.departed = now;
       wave.ends = now + (wave.ink ? inkFade : 0);
       onGraph = {};
     }
   }
-  const ink = inkOnGraph(wave, now, waveColors, yAt, height);
-  const heads = [...(onGraph.heads ?? []), ...ripples.flatMap((ripple) => rippleHeads(ripple, colors))];
+  const ink = inkOnGraph(wave, now, waveColors, layout);
+  const heads = [...(onGraph.heads ?? []), ...ripples.flatMap((ripple) => rippleHeads(ripple, colors, layout))];
   const ribbons = onGraph.ribbons ?? [];
   const contacts = ribbonTips(ribbons);
   if (onGraph.ball && !onGraph.heads) contacts.push(onGraph.ball);
@@ -835,11 +951,12 @@ export function paintGraph(canvas, frame) {
   }
   if (onGraph.ball) paintBall(context, onGraph.ball, worldToX, width, height);
 
-  for (const { index, progress } of ripples) {
+  for (const { index, progress, audioBound, distance } of ripples) {
     const origin = points[index - first.index];
     if (!origin) continue;
     const remaining = 1 - progress;
-    circle(context, origin.x, origin.y, 6 + 35 * (1 - remaining ** 4));
+    const radius = audioBound ? 35 * (1 - remaining ** 4) : Math.min(35, distance * progress);
+    circle(context, origin.x, origin.y, 6 + radius);
     context.strokeStyle = tint(colors.spark, .92 * remaining ** 3);
     context.lineWidth = 1.5 + remaining;
     context.stroke();

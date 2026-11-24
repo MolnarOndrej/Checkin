@@ -1,9 +1,8 @@
 import { dateForIndex, fullLabel, indexForKey, keyForIndex, shortLabel, todayIndex } from './timeline-data.js';
-import { blendPalettes, driftPalette, paintGraph, paletteFor, randomWave, traceCurve } from './graph.js';
+import { blendPalettes, createRipple, driftPalette, paintGraph, paletteFor, randomWave, traceCurve } from './graph.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const emptyScore = { height: 0, power: 0, count: 0 };
-const silentRippleDuration = 1050;
 
 export function createTimeline({ stage, canvas, days, yearLabels, backToday, drawer, dialog, drawerGlow, onSelect }) {
   const surface = stage.parentElement;
@@ -359,7 +358,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
 
   function traverse() {
     followToday();
-    if (motion.matches || ambientPausedAt !== null || !width || wave?.escaping) return;
+    if (motion.matches || ambientPausedAt !== null || !width || (wave && wave.departed === undefined)) return;
     wave = randomWave({
       center: camera, visibleDays: width / spacing, today, now: ambientTime(performance.now()),
       countAt: (day) => score(day, today).count,
@@ -414,10 +413,9 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
 
   return {
     closeSelected,
-    pulse(index, progressAt) {
+    pulse(index, audioProgressAt) {
       if (motion.matches) return;
-      const started = performance.now();
-      ripples.push({ index, progressAt: progressAt ?? ((now) => (now - started) / silentRippleDuration) });
+      ripples.push(createRipple(index, performance.now(), spacing, audioProgressAt));
       schedule();
     },
     setScores(nextScore) {

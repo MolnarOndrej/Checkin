@@ -676,6 +676,20 @@ function controlTimelineEffects() {
     };
   };
   window.advanceCheckin = (duration) => { time += duration; };
+  window.finishGlow = async () => {
+    window.advanceCheckin(10_000);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  };
+  window.glowTravelTime = (path, start, end) => {
+    let previous = path(start);
+    let distance = 0;
+    for (let step = 1; step <= 1200; step++) {
+      const next = path(start + (end - start) * step / 1200);
+      distance += Math.hypot(next[0] - previous[0], next[1] - previous[1]);
+      previous = next;
+    }
+    return distance / .81;
+  };
 }
 
 test('stationary frames skip duplicate paints and reuse the curve for color changes and effects', async (t) => {
@@ -971,7 +985,7 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
   assert.deepEqual(logs, ['Reading\n5 min', 'Walking\n8 min', 'Writing\n12 min']);
 });
 
-test('swiping after a traveling glow reveals it accelerating beyond both ends of its original route', async (t) => {
+test('swiping reveals the glow continuing at the same speed beyond either end of its route', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects);
 
   for (const direction of [1, -1]) {
@@ -1021,7 +1035,7 @@ test('swiping after a traveling glow reveals it accelerating beyond both ends of
     assert.ok(days.every((day) => day !== null), JSON.stringify({ direction, days }));
     const [end, first, second] = days.map((day) => day * direction);
     assert.ok(Math.abs(end - 19.5) < .1, JSON.stringify({ direction, days }));
-    assert.ok(first > end + 2 && second - first > (first - end) * 1.5, JSON.stringify({ direction, days }));
+    assert.ok(first > end + 2 && Math.abs((second - first) - (first - end)) < .08, JSON.stringify({ direction, days }));
 
     const centeredDate = () => document.querySelector('.day[tabindex="0"]').dataset.date;
     const beforeChase = await page.evaluate(centeredDate);
@@ -1034,6 +1048,112 @@ test('swiping after a traveling glow reveals it accelerating beyond both ends of
     assert.ok(direction * (Date.parse(afterChase.center) - Date.parse(beforeChase)) > 10 * 86_400_000);
     if (direction > 0) await page.reload();
   }
+});
+
+test('traveling effects and silent ripples cover the same screen distance on flat and steep paths', async (t) => {
+  const page = await openCheckin(t);
+  const result = await page.evaluate(async () => {
+    const { createRipple, paintGraph } = await import('/graph.js');
+    const canvas = document.createElement('canvas');
+    const drawerGlow = document.createElement('canvas');
+    const width = 1440;
+    const height = 600;
+    canvas.width = drawerGlow.width = width;
+    canvas.height = drawerGlow.height = height;
+    drawerGlow.style.cssText = `position:fixed; inset:0; width:${width}px; height:${height}px;`;
+    document.body.append(drawerGlow);
+
+    function captureTips(target) {
+      const context = target.getContext('2d');
+      const arc = context.arc.bind(context);
+      const fill = context.fill.bind(context);
+      const tips = [];
+      let center;
+      context.arc = (x, y, radius, ...args) => {
+        center = { x, y, radius };
+        arc(x, y, radius, ...args);
+      };
+      context.fill = (...args) => {
+        const color = context.fillStyle;
+        const white = typeof color === 'string' && (color.startsWith('#ffffff') || color.startsWith('rgba(255, 255, 255,'));
+        if (center && (white || center.radius === 4.5)) {
+          tips.push(center);
+        }
+        fill(...args);
+      };
+      return tips;
+    }
+
+    const tips = captureTips(canvas);
+    const drawerTips = captureTips(drawerGlow);
+    const spacing = 61;
+    const baseline = height * .56;
+    const pointAt = (index) => ({
+      index, x: width / 2 + index * spacing, y: index === 0 ? baseline - 175 : baseline,
+      count: 0, power: 0,
+    });
+    const frame = {
+      width, height, spacing, baseline, ratio: 1, today: 100, drawerGlow, pointAt,
+      points: Array.from({ length: 23 }, (_, index) => pointAt(index - 11)),
+      colors: { accent: '#9bfae2', secondary: '#aaa1ff', spark: '#efbaf4' },
+    };
+    const kinds = [
+      'daybreak-sweep', 'backlight-sweep', 'crossing-lights', 'over-under', 'sky-ribbon',
+      'split-pulse', 'skipping-sparks', 'twin-ribbons', 'beacon-landing', 'drawer-loop', 'silent-ripple',
+    ];
+    const results = {};
+    for (const kind of kinds) {
+      const looping = kind === 'drawer-loop';
+      const silent = kind === 'silent-ripple';
+      const wave = {
+        kind: looping ? 'daybreak-sweep' : kind, started: 0, panel: looping,
+        from: -11, to: 11, anchor: 0, direction: 1, side: -1, entry: { day: -8, y: -1 },
+      };
+      const visit = looping
+        ? { panel: { left: 550, right: 890, top: 320, bottom: 550 }, stage: { left: 0, top: 0 } }
+        : null;
+      const ripple = silent && createRipple(0, 0, spacing);
+      const latest = silent ? 270 : 4500;
+      const stats = { samples: 0, farthestError: 0, holds: 0, steep: 0 };
+      function draw(now) {
+        tips.length = drawerTips.length = 0;
+        if (ripple) ripple.progress = ripple.progressAt(now);
+        paintGraph(canvas, { ...frame, now, visit, wave: silent ? undefined : wave, ripples: silent ? [ripple] : [] });
+        return [...(looping ? drawerTips : tips)];
+      }
+      for (let now = 11; now < latest; now += silent ? 14 : 67) {
+        const before = draw(now);
+        const after = draw(now + 4);
+        if (before.length !== after.length) continue;
+        if (kind === 'beacon-landing') {
+          const { arrival, descent } = wave.motion;
+          const hovering = arrival.length / .81;
+          const dropping = hovering + 700;
+          const landing = dropping + descent.length / .81;
+          // A sample that straddles a hold or a sharp turn does not trace a single moving leg.
+          if ([hovering, dropping, landing].some((boundary) => now < boundary && boundary < now + 4)) continue;
+        }
+        for (const [index, start] of before.entries()) {
+          const end = after[index];
+          const distance = Math.hypot(end.x - start.x, end.y - start.y);
+          if (distance < .01 && (kind === 'split-pulse' || kind === 'beacon-landing')) {
+            stats.holds++;
+            continue;
+          }
+          stats.samples++;
+          if (Math.abs(end.y - start.y) > 2.5) stats.steep++;
+          stats.farthestError = Math.max(stats.farthestError, Math.abs(distance - .81 * 4));
+        }
+      }
+      results[kind] = stats;
+    }
+    return results;
+  });
+  for (const [kind, stats] of Object.entries(result)) {
+    assert.ok(stats.samples >= 10 && stats.farthestError < .45, JSON.stringify({ kind, stats }));
+  }
+  assert.ok(result['daybreak-sweep'].steep >= 2);
+  assert.ok(result['split-pulse'].holds > 0 && result['beacon-landing'].holds > 0);
 });
 
 test('random effects can follow, leave, pulse, and recolor the graph, or land on the busiest day', async (t) => {
@@ -1069,7 +1189,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       window.advanceCheckin(3300 * progress);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       results.push(sample());
-      window.advanceCheckin(5000 - 3300 * progress);
+      await window.finishGlow();
     }
     return results;
   });
@@ -1088,18 +1208,19 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const spacing = canvas.clientWidth / 21;
     const baseline = height * .56;
     const reach = 19.5;
-    const progressAt = (offset) => (offset / reach + 1) / 2;
+    const time = (yAt, from, to) => window.glowTravelTime((day) => [day * spacing, yAt(day)], from, to);
+    const weave = (amplitude, period) => (day) => baseline + height * amplitude * Math.sin(day * Math.PI / period);
     const sample = (offset, y) => {
       const x = Math.round(canvas.clientWidth / 2 + offset * spacing);
       const data = context.getImageData(x - 2, Math.round(y) - 2, 5, 5).data;
       return Math.max(...data.filter((_, index) => index % 4 === 3));
     };
-    async function play(kind, duration, progress, points, rolls) {
+    async function play(kind, elapsed, points, rolls) {
       window.traverse(kind, rolls);
-      window.advanceCheckin(duration * progress);
+      window.advanceCheckin(elapsed);
       await frame();
       const visible = points.map(([offset, y]) => sample(offset, y));
-      window.advanceCheckin(5000 - duration * progress);
+      await window.finishGlow();
       return visible;
     }
     const fall = .62;
@@ -1107,18 +1228,31 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const exit = .45;
     const pulseEdges = [-.5, .5].map((offset) => [offset, baseline]);
     const pulseDots = [-1, 1].map((offset) => [offset, baseline - 9]);
-    const splitExit = 1.08 + (reach - 1.08) * ((.82 - .68) / (1 - .68)) ** 1.55;
+    const fallDay = (position) => launchDay + .6 * Math.sin(Math.PI * position);
+    const fallY = (position) => height * (-.14 + .7 * position ** 1.24);
+    const fallTime = (end) => window.glowTravelTime((position) => [fallDay(position) * spacing, fallY(position)], 0, end);
+    const launchExit = launchDay + (-reach - launchDay) * exit;
+    const exitY = (day) => baseline + height * .18 * Math.sin(Math.PI * Math.min(1, (day - launchDay) / (-reach - launchDay) * 2.6));
+    const pulseTime = (offset) => (reach + offset) * spacing / .81;
+    const splitExit = 6;
+    const hopY = (day) => {
+      const step = Math.floor(day / 3);
+      return baseline + height * (step % 2 ? .27 : -.27) * Math.sin(Math.PI * (day / 3 - step));
+    };
     await frame();
     return {
       pulseBase: [...pulseEdges, ...pulseDots].map(([offset, y]) => sample(offset, y)),
-      below: await play(3, 3850, progressAt(-2.5), [[-2.5, baseline + height * .31]]),
-      above: await play(3, 3850, progressAt(2.5), [[2.5, baseline - height * .31]]),
-      launch: await play(4, 3950, .34 * fall, [[launchDay + .6 * Math.sin(Math.PI * fall), height * (-.14 + .7 * fall ** 1.24)]], [.99, .69]),
-      launchExit: await play(4, 3950, .34 + .66 * exit, [[launchDay + (-reach - launchDay) * exit ** 1.45, baseline]], [.99, .69]),
-      pause: await play(5, 4100, .56, [...pulseEdges, ...pulseDots]),
-      splitExit: await play(5, 4100, .82, [[-splitExit, baseline], [splitExit, baseline]]),
-      hop: await play(6, 3900, progressAt(-1.5), [[-1.5, baseline + height * .27]]),
-      braid: await play(7, 3900, progressAt(-3), [[-3, baseline + height * .21], [-3, baseline - height * .29]]),
+      below: await play(3, time(weave(-.31, 5), -reach, -2.5), [[-2.5, baseline + height * .31]]),
+      above: await play(3, time(weave(-.31, 5), -reach, 2.5), [[2.5, baseline - height * .31]]),
+      launch: await play(4, fallTime(fall), [[fallDay(fall), fallY(fall)]], [.99, .69]),
+      launchExit: await play(4, fallTime(1) + time(exitY, launchDay, launchExit), [[launchExit, baseline]], [.99, .69]),
+      pause: await play(5, pulseTime(1.08) + 420, [...pulseEdges, ...pulseDots]),
+      splitExit: await play(5, pulseTime(splitExit) + 850, [[-splitExit, baseline], [splitExit, baseline]]),
+      hop: await play(6, time(hopY, -reach, -1.5), [[-1.5, baseline + height * .27]]),
+      braid: [
+        ...(await play(7, time(weave(-.21, 6), -reach, -3), [[-3, baseline + height * .21]])),
+        ...(await play(7, time(weave(.29, 6), -reach, -3), [[-3, baseline - height * .29]])),
+      ],
     };
   });
   for (const effect of ['below', 'above', 'launch', 'launchExit', 'splitExit', 'hop', 'braid']) {
@@ -1139,21 +1273,22 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       window.traverse(0, [chance, .95]);
       window.advanceCheckin(duration);
       await frame();
-      const result = [-2, -2.35, 8].map(sample);
-      window.advanceCheckin(-duration);
-      return result;
+      const pixels = [-2, -2.35, 8].map(sample);
+      const spark = document.documentElement.style.getPropertyValue('--spark');
+      await window.finishGlow();
+      return { pixels, spark: [1, 3, 5].map((from) => parseInt(spark.slice(from, from + 2), 16)) };
     }
     const plain = await play(.3);
     const colored = await play(.29);
-    const spark = document.documentElement.style.getPropertyValue('--spark');
-    return { plain, colored, spark: [1, 3, 5].map((from) => parseInt(spark.slice(from, from + 2), 16)) };
+    return { plain, colored };
   });
-  const colorDistance = (rgba) => wake.spark.reduce((total, channel, index) => total + Math.abs(rgba[index] - channel), 0);
+  const colorDistance = ({ pixels, spark }, pixel) =>
+    spark.reduce((total, channel, index) => total + Math.abs(pixels[pixel][index] - channel), 0);
   for (const index of [0, 1]) {
-    assert.ok(colorDistance(wake.colored[index]) < colorDistance(wake.plain[index]), JSON.stringify(wake));
-    assert.ok(wake.colored[index][3] > wake.plain[index][3] + 12, JSON.stringify(wake));
+    assert.ok(colorDistance(wake.colored, index) < colorDistance(wake.plain, index), JSON.stringify(wake));
+    assert.ok(wake.colored.pixels[index][3] > wake.plain.pixels[index][3] + 12, JSON.stringify(wake));
   }
-  assert.deepEqual(wake.colored[2], wake.plain[2]);
+  assert.equal(wake.colored.pixels[2][3], wake.plain.pixels[2][3]);
 
   const visits = await page.evaluate(async () => {
     const drawer = document.querySelector('#day-drawer');
@@ -1174,6 +1309,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     };
 
     async function trace(kind, chance) {
+      await window.finishGlow();
       window.traverse(kind, [.99, chance]);
       let completed = false;
       let appeared = false;
@@ -1217,6 +1353,12 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const drawer = document.querySelector('#day-drawer').getBoundingClientRect();
     const graphContext = graph.getContext('2d');
     const glowContext = glow.getContext('2d');
+    let tipPainted = false;
+    const fill = glowContext.fill.bind(glowContext);
+    glowContext.fill = (...args) => {
+      tipPainted = true;
+      fill(...args);
+    };
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
     const baseline = Math.floor(graph.clientHeight * .56);
     const x = 100;
@@ -1243,12 +1385,13 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     }
 
     async function step(time) {
+      tipPainted = false;
       window.advanceCheckin(time);
       await frame();
     }
 
     async function handoff(kind, rolls) {
-      await step(5000);
+      await window.finishGlow();
       const ribbon = kind === 3;
       const idle = graphTrail(ribbon);
       window.traverse(kind, rolls);
@@ -1259,12 +1402,13 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       }
       if (glow.hidden) throw new Error('Drawer Loop did not begin');
       const during = graphTrail(ribbon);
-      await step(1625);
+      for (let turn = 0; turn < 120 && tipPainted; turn++) await step(25);
+      if (tipPainted || glow.hidden) throw new Error('Drawer Loop did not return to the graph');
       const after = graphTrail(ribbon);
       const returningTail = loopTrail();
       await step(115);
       const fadingTail = loopTrail();
-      await step(180);
+      await step(550);
       return { idle, before, during, after, returningTail, fadingTail, loopCleared: glow.hidden };
     }
     return [await handoff(0, [.29, .8, .399]), await handoff(3, [.99, .399])];
@@ -1272,7 +1416,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
   for (const effect of handoffs) {
     assert.ok(effect.before > effect.idle + 100, JSON.stringify(effect));
     assert.equal(effect.during, effect.idle);
-    assert.equal(effect.after, effect.idle);
+    assert.ok(Math.abs(effect.after - effect.idle) < 10, JSON.stringify(effect));
     assert.ok(effect.returningTail > effect.fadingTail && effect.fadingTail > 0, JSON.stringify(effect));
     assert.equal(effect.loopCleared, true);
   }
@@ -1284,9 +1428,9 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const { clientWidth: width, clientHeight: height } = graph;
     const baseline = height * .56;
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-    const samples = [.65, .72];
+    const samples = [.60, .65];
 
-    async function trace(kind, travelDuration, offsetFor, yFor) {
+    async function trace(kind, offsetFor, yFor) {
       const tipOpacity = (progress) => {
         const offset = offsetFor(progress);
         const x = width * (.5 + offset / 21);
@@ -1294,25 +1438,28 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
         const { data } = context.getImageData(Math.round(x) - 2, Math.round(y) - 2, 5, 5);
         return Math.max(...data.filter((_, index) => index % 4 === 3));
       };
-      window.advanceCheckin(5000);
-      await frame();
+      await window.finishGlow();
       const idle = samples.map(tipOpacity);
       window.traverse(kind, [.99, .399]);
       let previous = 0;
       const moving = [];
       for (const progress of samples) {
-        window.advanceCheckin(travelDuration * (progress - previous));
+        const time = window.glowTravelTime((position) => {
+          const day = offsetFor(position);
+          return [day * width / 21, yFor(day)];
+        }, 0, progress);
+        window.advanceCheckin(time - previous);
         await frame();
         moving.push({ looping: !glow.hidden, opacity: tipOpacity(progress) });
-        previous = progress;
+        previous = time;
       }
       return { idle, moving };
     }
 
     const offset = (progress) => 39 * (progress - .5);
     return {
-      crossing: await trace(2, 3020, (progress) => -offset(progress), () => baseline),
-      ribbons: await trace(7, 3300, offset, (day) => baseline + height * .29 * Math.sin(day * Math.PI / 6)),
+      crossing: await trace(2, (progress) => -offset(progress), () => baseline),
+      ribbons: await trace(7, offset, (day) => baseline + height * .29 * Math.sin(day * Math.PI / 6)),
     };
   });
   for (const [name, { idle, moving }] of Object.entries(companions)) {
@@ -1326,6 +1473,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
     const visited = [];
     for (let kind = 2; kind < 9; kind++) {
+      await window.finishGlow();
       const rolls = kind === 4 || kind === 8 ? [.99, .5, .399] : [.99, .399];
       window.traverse(kind, rolls);
       let seen = false;
@@ -1415,47 +1563,60 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       const data = context.getImageData(Math.round(x) - 2, Math.round(y) - 2, 5, 5).data;
       return Math.max(...data.filter((_, index) => index % 4 === 3));
     };
-    let progress = 0;
+    let elapsed = 0;
     async function go(to) {
-      window.advanceCheckin(4400 * (to - progress));
-      progress = to;
+      window.advanceCheckin(to - elapsed);
+      elapsed = to;
       await frame();
     }
+    await window.finishGlow();
     window.traverse(8, [.99, .65]);
     const entryX = canvas.clientWidth * (.5 + 19.5 / 21);
     const entryY = -.14 * height;
-    const alongFlight = (progress) => {
-      const position = 1 - (1 - progress / .33) ** 1.6;
-      return sample(entryX + (x - entryX) * position, entryY + (hover - entryY) * position);
-    };
+    const alongFlight = (position) => sample(entryX + (x - entryX) * position, entryY + (hover - entryY) * position);
+    const flight = Math.hypot(x - entryX, hover - entryY) / .81;
+    const drop = Math.abs(hover - nodeY) / .81;
+    const expansion = flight + 700;
     const trailContrast = (fraction) => {
       const y = hover + (nodeY - hover) * fraction;
       return sample(x, y) - sample(x + 12, y);
     };
-    await go(.18);
-    const incoming = alongFlight(.18);
-    const trail = alongFlight(.13);
-    await go(.34);
+    await go(flight * .7);
+    const incoming = alongFlight(.7);
+    const trail = alongFlight(.63);
+    await go(flight + 12);
     const small = sample(x + size * .72, hover);
     const hovering = sample(x, hover);
-    await go(.49);
+    await go(expansion);
     const expanded = sample(x + size * .72, hover);
-    const hoverTrail = alongFlight(.26);
-    await go(.595);
+    const hoverTrail = alongFlight(.85);
+    await go(expansion + drop * .5);
     const dropping = sample(x, (hover + nodeY) / 2);
     const descendingHalo = sample(x + size * .72, (hover + nodeY) / 2);
     const descendingTrail = trailContrast(.23);
-    await go(.715);
+    await go(expansion + drop + 22);
     const landingTrail = trailContrast(.74);
-    await go(.82);
-    const exitOffset = -1 + 20.5 * (.12 / .3) ** 1.28;
-    const leaving = sample(canvas.clientWidth * (.5 + exitOffset / 21), height * .56);
-    await go(1.2);
-    progress = 0;
+    const exitOffset = 5;
+    const spacing = canvas.clientWidth / 21;
+    const days = [...document.querySelectorAll('.day')];
+    const today = days.findIndex((day) => day.hasAttribute('aria-current'));
+    const yAt = (day) => {
+      const left = Math.floor(day);
+      const fraction = day - left;
+      const getY = (offset) => parseFloat(days[today + offset].style.translate.split(' ')[1]);
+      return getY(left) + (getY(left + 1) - getY(left)) * fraction ** 2 * (3 - 2 * fraction);
+    };
+    const exitTime = window.glowTravelTime((day) => [day * spacing, yAt(day)], -1, exitOffset);
+    await go(expansion + drop + exitTime);
+    const leaving = sample(canvas.clientWidth * (.5 + exitOffset / 21), yAt(exitOffset));
+    await window.finishGlow();
+    elapsed = 0;
     window.traverse(8, [.99, hover < nodeY ? .44 : .31, .45]);
-    await go(.56);
+    const reverseEntryY = height * (hover < nodeY ? 1.14 : -.14);
+    const reverseFlight = Math.abs(hover - reverseEntryY) / .81;
+    await go(reverseFlight + 700 + drop * .35);
     const reversingTrail = trailContrast(.12);
-    await go(1.2);
+    await window.finishGlow();
     return { incoming, trail, small, hovering, expanded, hoverTrail, dropping, descendingHalo, descendingTrail, landingTrail, leaving, reversingTrail };
   });
   assert.ok(landing.trail > 35, JSON.stringify(landing));
@@ -1509,7 +1670,7 @@ test('Beacon Landing bloom fades before the upper and lower graph edges', async 
     const context = canvas.getContext('2d');
     const colors = { accent: '#9bfae2', secondary: '#aaa1ff', spark: '#efbaf4' };
 
-    function sample(width, height, nodeFraction, side, progress) {
+    function sample(width, height, nodeFraction, side, descent = 0) {
       canvas.width = width;
       canvas.height = height;
       const x = width / 2;
@@ -1517,13 +1678,16 @@ test('Beacon Landing bloom fades before the upper and lower graph edges', async 
       const pointAt = (index) => ({ index, x: x + index * 61, y: nodeY, count: 0, power: 0 });
       const wave = {
         kind: 'beacon-landing', anchor: 0, side, direction: 1, to: 20,
-        entry: { day: -20, y: 0 }, started: 0, duration: 4400,
+        entry: { day: -20, y: 0 }, started: 0,
       };
-      paintGraph(canvas, {
+      const frame = {
         width, height, ratio: 1, points: [-1, 0, 1].map(pointAt), pointAt, colors,
-        today: 100, baseline: height * .56, spacing: 61, wave, now: progress * wave.duration,
+        today: 100, baseline: height * .56, spacing: 61, wave, now: 0,
         drawerGlow: {},
-      });
+      };
+      paintGraph(canvas, frame);
+      frame.now = 700 + (wave.motion.arrival.length + wave.motion.descent.length * descent) / .81;
+      paintGraph(canvas, frame);
 
       const alpha = (column, row) => context.getImageData(column, row, 1, 1).data[3];
       const core = context.getImageData(x, 0, 1, height).data;
@@ -1542,9 +1706,9 @@ test('Beacon Landing bloom fades before the upper and lower graph edges', async 
 
     return [[1440, 648], [390, 330]].map(([width, height]) => ({
       width,
-      above: sample(width, height, .28, -1, .49),
-      below: sample(width, height, .72, 1, .49),
-      descendingFromBelow: sample(width, height, .127, 1, .66),
+      above: sample(width, height, .28, -1),
+      below: sample(width, height, .72, 1),
+      descendingFromBelow: sample(width, height, .127, 1, .81),
     }));
   });
 
