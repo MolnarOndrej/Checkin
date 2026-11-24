@@ -622,71 +622,131 @@ function controlTimelineEffects() {
     };
   };
   window.advanceCheckin = (duration) => { time += duration; };
+  window.stepGlow = async (duration) => {
+    for (let remaining = duration; remaining > 0; remaining -= 40) {
+      window.advanceCheckin(Math.min(40, remaining));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+  };
 }
 
-test('swiping after a traveling glow reveals it accelerating beyond both ends of its original route', async (t) => {
+test('a glow from either side of today can be followed by swiping before it speeds away and reaches today', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects);
 
   for (const direction of [1, -1]) {
     await settle(page);
-    const y = await page.evaluate(() => {
+    const position = await page.evaluate(() => {
       const graph = document.querySelector('#graph');
       const context = graph.getContext('2d');
       const { width, height } = graph;
       const today = Date.parse(document.querySelector('[aria-current="date"]').dataset.date);
+      const spacing = width / 21;
+      const offset = (day) => (Date.parse(day.dataset.date) - today) / 86_400_000;
+      window.centerDay = () => offset(document.querySelector('.day[tabindex="0"]'));
+      window.browseDays = (days) => graph.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaX: days * spacing }));
       window.glowDay = () => {
         const { data } = context.getImageData(0, Math.floor(height * .56), width, 1);
         const day = document.querySelector('.day');
-        const origin = (Date.parse(day.dataset.date) - today) / 86_400_000;
+        const origin = offset(day);
         const x = parseFloat(day.style.translate);
         for (let pixel = 0; pixel < width; pixel++) {
           const i = pixel * 4;
           if (data[i] > 235 && data[i + 1] > 235 && data[i + 2] > 235 && data[i + 3] > 220) {
-            return origin + (pixel - x) / (width / 21);
+            return origin + (pixel - x) / spacing;
           }
         }
         return null;
       };
-      window.stepGlow = async (duration) => {
-        for (let remaining = duration; remaining > 0; remaining -= 40) {
-          window.advanceCheckin(Math.min(40, remaining));
-          await new Promise((resolve) => requestAnimationFrame(resolve));
-        }
-      };
-      return Math.round(graph.getBoundingClientRect().top + height * .42);
+      return { y: Math.round(graph.getBoundingClientRect().top + height * .42), swipeDistance: 15 * spacing };
     });
-    await page.evaluate(direction > 0 ? () => window.traverse(0) : () => window.traverse(1));
-    await page.evaluate(() => { window.advanceCheckin(2500); });
-    await settle(page);
-    const swipe = () => page.swipe(direction > 0 ? 1290 : 125, direction > 0 ? 125 : 1290, y);
-    await swipe();
+    await page.evaluate(direction > 0 ? () => window.browseDays(-150) : () => window.browseDays(150));
+    await page.evaluate(() => window.stepGlow(920));
+    const start = await page.evaluate(() => window.centerDay());
+    assert.equal(start, -150 * direction);
 
-    const days = await page.evaluate(async () => {
-      await window.stepGlow(800);
-      const positions = [window.glowDay()];
-      await window.stepGlow(180);
-      positions.push(window.glowDay());
-      window.traverse(2);
-      await window.stepGlow(180);
-      positions.push(window.glowDay());
-      return positions;
+    // Use effects that normally travel in the opposite direction on today's screen.
+    await page.evaluate(direction > 0 ? () => window.traverse(1) : () => window.traverse(0));
+    const initial = await page.evaluate(async () => {
+      await window.stepGlow(1600);
+      return window.glowDay();
     });
+    assert.ok(initial !== null && Math.abs(initial - start) < 1, JSON.stringify({ direction, initial }));
+
+    const swipe = () => page.swipe(720 + direction * position.swipeDistance / 2,
+      720 - direction * position.swipeDistance / 2, position.y, { coast: false });
+    await swipe();
+    const firstSwipe = await page.evaluate(async () => {
+      await window.stepGlow(900);
+      const first = window.glowDay();
+      await window.stepGlow(540);
+      return [first, window.glowDay()];
+    });
+    await swipe();
+    const secondSwipe = await page.evaluate(async () => {
+      await window.stepGlow(540);
+      return window.glowDay();
+    });
+    const days = [...firstSwipe, secondSwipe];
     assert.ok(days.every((day) => day !== null), JSON.stringify({ direction, days }));
-    const [end, first, second] = days.map((day) => day * direction);
-    assert.ok(Math.abs(end - 19.5) < .1, JSON.stringify({ direction, days }));
-    assert.ok(first > end + 2 && second - first > (first - end) * 1.5, JSON.stringify({ direction, days }));
+    const [first, second, third] = days.map((day) => (day - start) * direction);
+    assert.ok(first > 8 && first < 12 && second - first > 6 && third - second > second - first + 2,
+      JSON.stringify({ direction, first, second, third }));
 
-    const centeredDate = () => document.querySelector('.day[tabindex="0"]').dataset.date;
-    const beforeChase = await page.evaluate(centeredDate);
     await swipe();
-    const afterChase = await page.evaluate(async () => {
-      await window.stepGlow(600);
-      return { glow: window.glowDay(), center: document.querySelector('.day[tabindex="0"]').dataset.date };
+    const lost = await page.evaluate(async () => {
+      await window.stepGlow(1260);
+      const observation = { glow: window.glowDay(), center: window.centerDay() };
+      window.traverse(8);
+      return observation;
     });
-    assert.equal(afterChase.glow, null);
-    assert.ok(direction * (Date.parse(afterChase.center) - Date.parse(beforeChase)) > 10 * 86_400_000);
+    assert.deepEqual(lost, { glow: null, center: -105 * direction });
+
+    for (let remaining = 105; remaining > 0; remaining -= 15) {
+      await swipe();
+      await page.evaluate(() => window.stepGlow(400));
+    }
+    assert.equal(await page.evaluate(() => window.centerDay()), 0);
+    const arrival = await page.evaluate(async () => {
+      for (let waited = 0; waited < 2500; waited += 80) {
+        const glow = window.glowDay();
+        if (glow !== null && Math.abs(glow) < 1) return glow;
+        await window.stepGlow(80);
+      }
+      return null;
+    });
+    assert.notEqual(arrival, null, JSON.stringify({ direction, days }));
     if (direction > 0) await page.reload();
   }
+});
+
+test('Beacon Landing passes a historical drawer and blooms over today', async (t) => {
+  const page = await openCheckin(t, controlTimelineEffects);
+  await settle(page);
+  const result = await page.evaluate(async () => {
+    const graph = document.querySelector('#graph');
+    const context = graph.getContext('2d');
+    const drawerGlow = document.querySelector('#drawer-glow');
+    const { width, height } = graph;
+    const browse = (days) => graph.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaX: days * width / 21 }));
+    const opacity = (fraction) => {
+      const { data } = context.getImageData(width / 2 - 2, Math.round(height * fraction) - 2, 5, 5);
+      return Math.max(...data.filter((_, index) => index % 4 === 3));
+    };
+    browse(-30);
+    await window.stepGlow(920);
+    document.querySelector('.day[tabindex="0"]').click();
+    window.traverse(8, [.99, .65, .399]);
+    await window.stepGlow(2200);
+    const historical = { passing: opacity(.56), bloom: opacity(.29) };
+    await window.stepGlow(1200);
+    const historicLoop = !drawerGlow.hidden;
+    browse(30);
+    await window.stepGlow(2100);
+    return { historical, historicLoop, today: opacity(.29) };
+  });
+  assert.ok(result.historical.passing > 230 && result.historical.bloom === 0, JSON.stringify(result));
+  assert.equal(result.historicLoop, false);
+  assert.ok(result.today > 180, JSON.stringify(result));
 });
 
 test('random effects can follow, leave, pulse, and recolor the graph, or land on the busiest day', async (t) => {

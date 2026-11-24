@@ -302,6 +302,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     if (next !== today) {
       if (Math.round(target) === today) moveTo(next);
       today = next;
+      wave = undefined;
       onSelect(selected);
       scheduleLayout();
     }
@@ -309,12 +310,12 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
 
   function traverse() {
     followToday();
-    if (motion.matches || document.hidden || !width || wave?.escaping) return;
+    if (motion.matches || document.hidden || !width || (wave?.travel && wave.ends === undefined)) return;
     wave = randomWave({
       center: camera, visibleDays: width / spacing, today, now: performance.now(),
       countAt: (day) => score(day, today).count,
     });
-    if (!drawer.hidden && Math.random() < .4) {
+    if ((!wave.travel || selected === today) && !drawer.hidden && Math.random() < .4) {
       wave.panel = dialog.open && dialog.classList.contains('log-dialog') ? dialog : drawer;
     }
     schedule();
