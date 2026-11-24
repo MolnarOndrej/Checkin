@@ -161,16 +161,10 @@ async function refreshJournal() {
 }
 
 async function showLogFeedback(index, updated) {
-  const progressAt = await playSubmitSound();
-  function show(now) {
-    if (!reducedMotion.matches && progressAt?.(now) < 0) {
-      requestAnimationFrame(show);
-      return;
-    }
-    if (journal === updated) timeline.setScores(timelineScores(updated));
-    timeline.pulse(index, progressAt);
-  }
-  show(performance.now());
+  const playback = await playSubmitSound();
+  timeline.showSavedLog(index, playback, () => {
+    if (journal === updated) return timelineScores(updated);
+  });
 }
 
 async function persist(write, error, { pulse, sound = false, after } = {}) {

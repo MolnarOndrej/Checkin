@@ -3,6 +3,7 @@ import { blendPalettes, createRipple, driftPalette, paintGraph, paletteFor, rand
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const emptyScore = { height: 0, power: 0, count: 0 };
+const heightAnimationSeconds = .44;
 
 export function createTimeline({ stage, canvas, days, yearLabels, backToday, drawer, dialog, drawerGlow, onSelect }) {
   const surface = stage.parentElement;
@@ -16,7 +17,8 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   let selected = null;
   let score = () => emptyScore;
   let heights = new Map();
-  let changedAt = 0;
+  let scoreElapsedAt;
+  let pendingLogEffects = [];
   let wave;
   let ripples = [];
   let geometry;
@@ -48,6 +50,43 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   function scheduleLayout() {
     layoutDirty = true;
     schedule();
+  }
+
+  function heightProgress(now) {
+    if (motion.matches || !heights.size) return 1;
+    return 1 - (1 - clamp(scoreElapsedAt(now) / heightAnimationSeconds, 0, 1)) ** 3;
+  }
+
+  function updateScores(nextScore, now, elapsedAt = (frame) => (frame - now) / 1000) {
+    const progress = heightProgress(now);
+    const oldHeights = heights;
+    heights = new Map();
+    if (!motion.matches) {
+      for (const index of nodes.keys()) {
+        const old = score(index, today).height;
+        const start = oldHeights.get(index) ?? old;
+        if (nextScore(index, today).height !== old || oldHeights.has(index)) {
+          heights.set(index, start + (old - start) * progress);
+        }
+      }
+    }
+    scoreElapsedAt = elapsedAt;
+    score = nextScore;
+    geometry = undefined;
+    layoutDirty = true;
+  }
+
+  function startLogEffects(now) {
+    pendingLogEffects = pendingLogEffects.filter(({ index, playback, getScores }) => {
+      if (!motion.matches && playback?.elapsedAt(now) < 0) return true;
+      const nextScore = getScores();
+      if (nextScore) updateScores(nextScore, now, playback?.elapsedAt);
+      if (!motion.matches) {
+        const progressAt = playback && ((frame) => playback.elapsedAt(frame) / playback.duration);
+        ripples.push(createRipple(index, now, spacing, progressAt));
+      }
+      return false;
+    });
   }
 
   function resize() {
@@ -205,7 +244,8 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     } else if (motion.matches || Math.abs(target - camera) < .002) camera = target;
     else camera += (target - camera) * (1 - Math.exp(-elapsed / (gesture?.dragging ? 27 : 82)));
 
-    const progress = motion.matches ? 1 : 1 - (1 - clamp((now - changedAt) / 440, 0, 1)) ** 3;
+    if (pendingLogEffects.length) startLogEffects(now);
+    const progress = heightProgress(now);
     const geometryChanged = geometry?.camera !== camera || heights.size > 0;
     if (geometryChanged) geometry = createGeometry(progress);
     const { points, pointAt, baseline, curve } = geometry;
@@ -237,7 +277,8 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
       layoutDirty = false;
     }
     const ambientRunning = ambientPausedAt === null;
-    if (todaySwipe || camera !== target || (ambientRunning && wave) || ripples.length || (heights.size && progress < 1)) schedule();
+    if (todaySwipe || camera !== target || (ambientRunning && wave) || pendingLogEffects.length
+      || ripples.length || (heights.size && progress < 1)) schedule();
     else if (!motion.matches && ambientRunning) colorTimer = setTimeout(schedule, 40);
     if (progress === 1) heights.clear();
   }
@@ -413,30 +454,18 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
 
   return {
     closeSelected,
-    pulse(index, audioProgressAt) {
+    pulse(index) {
       if (motion.matches) return;
-      ripples.push(createRipple(index, performance.now(), spacing, audioProgressAt));
+      ripples.push(createRipple(index, performance.now(), spacing));
+      schedule();
+    },
+    showSavedLog(index, playback, getScores) {
+      pendingLogEffects.push({ index, playback, getScores });
       schedule();
     },
     setScores(nextScore) {
-      const now = performance.now();
-      const previous = score;
-      const progress = motion.matches ? 1 : 1 - (1 - clamp((now - changedAt) / 440, 0, 1)) ** 3;
-      const oldHeights = heights;
-      heights = new Map();
-      if (!motion.matches) {
-        for (const index of nodes.keys()) {
-          const old = previous(index, today).height;
-          const start = oldHeights.get(index) ?? old;
-          if (nextScore(index, today).height !== old || oldHeights.has(index)) {
-            heights.set(index, start + (old - start) * progress);
-          }
-        }
-      }
-      changedAt = now;
-      score = nextScore;
-      geometry = undefined;
-      scheduleLayout();
+      updateScores(nextScore, performance.now());
+      schedule();
     },
   };
 }

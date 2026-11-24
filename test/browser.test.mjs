@@ -912,7 +912,7 @@ test('ambient effects pause out of focus and resume from the same frame', async 
   assert.notEqual(frames.resumed.accent, frames.moving.accent);
 });
 
-test('new log sounds and save ripples fade with the playback clock', async (t) => {
+test('new log sounds, ripples and node movement start on the same playback clock', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects, () => {
     const activities = ['Reading', 'Walking', 'Writing'].map((text) => ({
       id: text, text, type: 'minutes', unit: 'min', goals: [],
@@ -981,6 +981,7 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
       }
     };
   });
+  await page.setReducedMotion('no-preference');
   await settle(page);
 
   const result = await page.evaluate(async () => {
@@ -998,9 +999,9 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
       return Math.max(...pixels.filter((_, index) => index % 4 === 3));
     }
 
-    function ringAlpha() {
+    function ringAlpha(radius = 35, height = 17) {
       const box = day.getBoundingClientRect();
-      return alphaAt(box.left + box.width / 2, box.top - canvas.getBoundingClientRect().top + 21 - 35, 17);
+      return alphaAt(box.left + box.width / 2, box.top - canvas.getBoundingClientRect().top + 21 - radius, height);
     }
 
     function waveAlpha(progress) {
@@ -1020,8 +1021,8 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
       find('.inline-editor input').value = amount;
       window.audioTime = started;
       await frame();
-      const before = day.style.translate;
       const box = day.getBoundingClientRect();
+      const nodeRise = () => box.top - day.getBoundingClientRect().top;
       const x = Math.round(box.left + box.width / 2);
       const y = Math.round(box.top - canvas.getBoundingClientRect().top + 21);
       const beforeRipple = () => alphaAt(x, y - 25, 7);
@@ -1037,23 +1038,30 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
       await frame();
       const waiting = {
         saved: find(`[data-activity="${activity}"]`)?.innerText.trim(),
-        graphMoved: before !== day.style.translate,
+        nodeRise: nodeRise(),
         rippleAlpha: beforeRipple() - beforeAlpha,
       };
-      window.audioTime = started + window.audioOutputLag + .002;
-      await frame();
-      window.advanceCheckin(4500);
       const sound = window.playedSounds.at(-1);
+      const elapsed = .18;
+      window.audioTime = started + window.audioOutputLag + elapsed;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const radius = 6 + 35 * (1 - (1 - elapsed / sound.duration) ** 4);
+      const onset = { rise: nodeRise(), ring: ringAlpha(radius, 3) };
+      window.advanceCheckin(4500);
+      await frame();
+      const heldRise = nodeRise();
       window.audioTime = started + window.audioOutputLag + sound.duration / 4;
       await frame();
       const early = { ring: ringAlpha(), wave: waveAlpha(.25) };
-      const graphMoved = before !== day.style.translate;
+      const settledRise = nodeRise();
       window.audioTime = started + window.audioOutputLag + sound.duration * .65;
       await frame();
       const late = { ring: ringAlpha(), wave: waveAlpha(.65) };
       window.audioTime = started + window.audioOutputLag + sound.duration + .002;
       await frame();
-      return { waiting, graphMoved, early, late, after: { ring: ringAlpha(), earlyWave: waveAlpha(.25), lateWave: waveAlpha(.65) } };
+      return { waiting, onset, heldRise, settledRise, early, late, after: {
+        ring: ringAlpha(), earlyWave: waveAlpha(.25), lateWave: waveAlpha(.65),
+      } };
     }
 
     const first = await save('Reading', 5, 'submitsounds/2.mp3', 1);
@@ -1062,8 +1070,7 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
     const short = await save('Writing', 12, 'submitsounds/10.mp3', 11);
     return { first, short, played: window.playedSounds, requests: window.soundRequests };
   });
-  assert.deepEqual(result.first.waiting, { saved: 'Reading\n5 min', graphMoved: false, rippleAlpha: 0 });
-  assert.equal(result.first.graphMoved, true);
+  assert.deepEqual(result.first.waiting, { saved: 'Reading\n5 min', nodeRise: 0, rippleAlpha: 0 });
   assert.deepEqual(result.requests, ['/submitsounds/2.mp3', '/submitsounds/9.mp3', '/submitsounds/10.mp3']);
   for (const [index, sound] of result.played.slice(0, 2).entries()) {
     const started = 1 + index * 5;
@@ -1077,7 +1084,10 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
     started: 11, offset: .01, duration: 1.99, original: 2,
     gain: [['level', .25, 11], ['level', .25, 12.24], ['fade', 0, 12.99]],
   });
-  for (const { early, late, after } of [result.first, result.short]) {
+  for (const { onset, heldRise, settledRise, early, late, after } of [result.first, result.short]) {
+    assert.ok(onset.rise > 0 && onset.rise < settledRise, JSON.stringify({ onset, settledRise }));
+    assert.ok(onset.ring > 160, JSON.stringify(onset));
+    assert.equal(heldRise, onset.rise);
     const earlyWave = early.wave - after.earlyWave;
     const lateWave = late.wave - after.lateWave;
     assert.ok(early.ring > late.ring + 50 && late.ring > after.ring + 5, JSON.stringify({ early, late, after }));

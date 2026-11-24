@@ -74,7 +74,7 @@ export async function playSubmitSound() {
     }
     volume.gain.linearRampToValueAtTime(0, ends);
     source.start(started, offset, duration);
-    return (now) => (outputTime(now) - started) / duration;
+    return { duration, elapsedAt: (now) => outputTime(now) - started };
   } catch {
     // Use the standalone ripple if the clip cannot play.
     return undefined;
