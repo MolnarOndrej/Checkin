@@ -925,7 +925,8 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
     const decoder = new OfflineAudioContext(1, 1, 44100);
     window.soundRequests = [];
     window.playedSounds = [];
-    window.audioTime = 0;
+    window.audioTime = 1;
+    window.audioOutputLag = .8;
     window.fetch = (path) => {
       if (path.startsWith('/submitsounds/')) window.soundRequests.push(path);
       return fetchAsset(path);
@@ -937,6 +938,13 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
       get currentTime() { return window.audioTime; }
 
       async resume() { this.state = 'running'; }
+
+      getOutputTimestamp() {
+        return {
+          contextTime: window.audioTime - window.audioOutputLag - .05,
+          performanceTime: performance.now() - 50,
+        };
+      }
 
       async decodeAudioData(bytes) {
         const buffer = await decoder.decodeAudioData(bytes);
@@ -1003,13 +1011,21 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
       return alphaAt(x, neighbour.top - canvas.getBoundingClientRect().top + 21);
     }
 
-    async function save(activity, amount, file) {
+    async function save(activity, amount, file, started) {
       Math.random = () => (files.indexOf(file) + .5) / files.length;
       if (!find('.inline-editor')) find('#day-content .add-button').click();
       const picker = find('.inline-editor select');
       picker.value = activity;
       picker.dispatchEvent(new Event('change'));
       find('.inline-editor input').value = amount;
+      window.audioTime = started;
+      await frame();
+      const before = day.style.translate;
+      const box = day.getBoundingClientRect();
+      const x = Math.round(box.left + box.width / 2);
+      const y = Math.round(box.top - canvas.getBoundingClientRect().top + 21);
+      const beforeRipple = () => alphaAt(x, y - 25, 7);
+      const beforeAlpha = beforeRipple();
       const count = window.playedSounds.length + 1;
       find('.inline-editor [type="submit"]').click();
       for (let tries = 0; window.playedSounds.length < count; tries++) {
@@ -1017,38 +1033,49 @@ test('new log sounds and save ripples fade with the playback clock', async (t) =
         await frame();
       }
       Math.random = random;
-      window.advanceCheckin(4500);
+      window.audioTime = started + .75;
       await frame();
+      const waiting = {
+        saved: find(`[data-activity="${activity}"]`)?.innerText.trim(),
+        graphMoved: before !== day.style.translate,
+        rippleAlpha: beforeRipple() - beforeAlpha,
+      };
+      window.audioTime = started + window.audioOutputLag + .002;
+      await frame();
+      window.advanceCheckin(4500);
       const sound = window.playedSounds.at(-1);
-      window.audioTime = sound.started + sound.duration / 4;
+      window.audioTime = started + window.audioOutputLag + sound.duration / 4;
       await frame();
       const early = { ring: ringAlpha(), wave: waveAlpha(.25) };
-      window.audioTime = sound.started + sound.duration * .65;
+      const graphMoved = before !== day.style.translate;
+      window.audioTime = started + window.audioOutputLag + sound.duration * .65;
       await frame();
       const late = { ring: ringAlpha(), wave: waveAlpha(.65) };
-      window.audioTime = sound.started + sound.duration;
+      window.audioTime = started + window.audioOutputLag + sound.duration + .002;
       await frame();
-      return { early, late, after: { ring: ringAlpha(), earlyWave: waveAlpha(.25), lateWave: waveAlpha(.65) } };
+      return { waiting, graphMoved, early, late, after: { ring: ringAlpha(), earlyWave: waveAlpha(.25), lateWave: waveAlpha(.65) } };
     }
 
-    const first = await save('Reading', 5, 'submitsounds/2.mp3');
-    await save('Walking', 8, 'submitsounds/2.mp3');
+    const first = await save('Reading', 5, 'submitsounds/2.mp3', 1);
+    await save('Walking', 8, 'submitsounds/9.mp3', 6);
     window.shortClip = true;
-    const short = await save('Writing', 12, 'submitsounds/10.mp3');
+    const short = await save('Writing', 12, 'submitsounds/10.mp3', 11);
     return { first, short, played: window.playedSounds, requests: window.soundRequests };
   });
-  assert.deepEqual(result.requests, ['/submitsounds/2.mp3', '/submitsounds/2.mp3', '/submitsounds/10.mp3']);
+  assert.deepEqual(result.first.waiting, { saved: 'Reading\n5 min', graphMoved: false, rippleAlpha: 0 });
+  assert.equal(result.first.graphMoved, true);
+  assert.deepEqual(result.requests, ['/submitsounds/2.mp3', '/submitsounds/9.mp3', '/submitsounds/10.mp3']);
   for (const [index, sound] of result.played.slice(0, 2).entries()) {
-    const started = index * 4;
+    const started = 1 + index * 5;
     assert.ok(sound.original > 4);
     assert.equal(sound.started, started);
-    assert.equal(sound.offset, 0);
+    assert.equal(sound.offset, [.10, .61][index]);
     assert.equal(sound.duration, 4);
     assert.deepEqual(sound.gain, [['level', .25, started], ['level', .25, started + 3.25], ['fade', 0, started + 4]]);
   }
   assert.deepEqual(result.played[2], {
-    started: 8, offset: 0, duration: 2, original: 2,
-    gain: [['level', .25, 8], ['level', .25, 9.25], ['fade', 0, 10]],
+    started: 11, offset: .01, duration: 1.99, original: 2,
+    gain: [['level', .25, 11], ['level', .25, 12.24], ['fade', 0, 12.99]],
   });
   for (const { early, late, after } of [result.first, result.short]) {
     const earlyWave = early.wave - after.earlyWave;

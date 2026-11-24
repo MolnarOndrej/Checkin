@@ -14,6 +14,7 @@ const dialogContent = byId('dialog-content');
 const manage = byId('manage');
 const journalError = byId('journal-error');
 const announcement = byId('announcement');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 let journal;
 let selected = null;
@@ -141,11 +142,11 @@ dialog.addEventListener('close', () => {
   }
 });
 
-function setJournal(updated) {
+function setJournal(updated, updateTimeline = true) {
   journal = updated;
   manage.disabled = !journal;
   journalError.hidden = Boolean(journal);
-  timeline.setScores(timelineScores(journal));
+  if (updateTimeline) timeline.setScores(timelineScores(journal));
 }
 
 async function refreshJournal() {
@@ -159,15 +160,31 @@ async function refreshJournal() {
   renderDay();
 }
 
+async function showLogFeedback(index, updated) {
+  const progressAt = await playSubmitSound();
+  function show(now) {
+    if (!reducedMotion.matches && progressAt?.(now) < 0) {
+      requestAnimationFrame(show);
+      return;
+    }
+    if (journal === updated) timeline.setScores(timelineScores(updated));
+    timeline.pulse(index, progressAt);
+  }
+  show(performance.now());
+}
+
 async function persist(write, error, { pulse, sound = false, after } = {}) {
   if (!journal || saving) return;
   saving = true;
   const originatingDialog = dialogVersion;
+  const syncFeedback = sound && !reducedMotion.matches;
   error.hidden = true;
   if (sound) unlockSubmitAudio();
   try {
-    setJournal(await write());
-    if (sound) void playSubmitSound().then((progressAt) => timeline.pulse(pulse, progressAt));
+    const updated = await write();
+    setJournal(updated, !syncFeedback);
+    if (syncFeedback) void showLogFeedback(pulse, updated);
+    else if (sound) void playSubmitSound();
     else if (pulse !== undefined) timeline.pulse(pulse);
     after?.(originatingDialog === dialogVersion);
   } catch (failure) {
