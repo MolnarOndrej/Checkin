@@ -944,12 +944,14 @@ test('new logs play a random sound and the save ripple follows its playback cloc
   });
   assert.deepEqual(result.requests, ['/submitsounds/2.mp3', '/submitsounds/2.mp3', '/submitsounds/10.mp3']);
   for (const [index, sound] of result.played.slice(0, 2).entries()) {
-    assert.ok(sound.original > 5);
+    const started = index * 4;
+    assert.ok(sound.original > 4);
+    assert.equal(sound.started, started);
     assert.equal(sound.offset, 0);
-    assert.equal(sound.duration, 5);
-    assert.deepEqual(sound.gain, [['level', 1, index * 5 + 4.25], ['fade', 0, index * 5 + 5]]);
+    assert.equal(sound.duration, 4);
+    assert.deepEqual(sound.gain, [['level', .6, started], ['level', .6, started + 3.25], ['fade', 0, started + 4]]);
   }
-  assert.deepEqual(result.played[2], { started: 10, offset: 0, duration: 2, original: 2, gain: [] });
+  assert.deepEqual(result.played[2], { started: 8, offset: 0, duration: 2, original: 2, gain: [['level', .6, 8]] });
   for (const ripple of [result.first, result.short]) {
     assert.ok(ripple.ring > ripple.ringAfter + 40, JSON.stringify(ripple));
     assert.ok(ripple.wave > ripple.waveAfter + 12, JSON.stringify(ripple));
