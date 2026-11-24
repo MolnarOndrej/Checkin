@@ -16,7 +16,8 @@ const announcement = byId('announcement');
 
 let journal = readJournal();
 let selected = null;
-let logDraft = null;
+// Undefined uses the day's default. Null keeps the form collapsed.
+let logDraft;
 let saving = false;
 let opener;
 let dialogVersion = 0;
@@ -174,7 +175,7 @@ function showManager({ focusId, focusRemove = false, draft } = {}) {
   setDialog('Activities', list, focus);
 }
 
-function showActivityForm({ existing, draft, returnToLog = false }) {
+function showActivityForm({ existing, draft, returnToLog = false, closeOnCancel = returnToLog }) {
   const name = element('input');
   name.required = true;
   name.maxLength = 60;
@@ -223,7 +224,7 @@ function showActivityForm({ existing, draft, returnToLog = false }) {
   kind.addEventListener('change', updateUnit);
   updateUnit();
   const actions = element('div', 'actions');
-  const cancel = returnToLog ? closeDialog : () => showManager({ focusId: existing?.id, draft });
+  const cancel = closeOnCancel ? closeDialog : () => showManager({ focusId: existing?.id, draft });
   actions.append(button('Cancel', 'text-button', cancel), submitButton('Save'));
   form.append(labelled('Name', name), labelled('Measure in', kind), custom, error, actions);
   setDialog(existing ? 'Edit activity' : 'Add activity', form, name);
@@ -277,7 +278,7 @@ function finishLog(index, activity, amount, message) {
     pulse: amount === undefined ? undefined : index,
     after: (sameDialog) => {
       if (sameDialog && dialog.open) closeDialog();
-      logDraft = null;
+      if (selected === index) logDraft = undefined;
       renderDay();
       if (selected === index && !dialog.open) {
         const row = [...dayContent.querySelectorAll('[data-activity]')].find((item) => item.dataset.activity === activity.id);
@@ -348,17 +349,18 @@ function renderDay() {
   } else if (!journal.activities.length) {
     content.append(activityPrompt(() => showActivityForm({ returnToLog: true })));
   } else {
+    const draft = logDraft === undefined && Object.keys(values).length === 0 ? {} : logDraft;
     const addRow = element('div', 'add-row');
     const add = plusButton('Log activity', () => {
-      logDraft = logDraft ? null : { preselectedActivityId: null };
+      logDraft = draft ? null : {};
       renderDay();
       const focus = logDraft ? dayContent.querySelector('select, .activity-shortcut') : null;
       (focus ?? dayContent.querySelector('.add-button'))?.focus({ preventScroll: true });
     });
-    add.setAttribute('aria-expanded', String(Boolean(logDraft)));
+    add.setAttribute('aria-expanded', String(Boolean(draft)));
     addRow.append(add);
     content.append(addRow);
-    if (logDraft) content.append(addLogForm(index, values, logDraft));
+    if (draft) content.append(addLogForm(index, values, draft));
   }
   for (const activity of journal.activities) {
     const value = values[activity.id];
@@ -376,7 +378,7 @@ const timeline = createTimeline({
   drawer, dialog, drawerGlow: byId('drawer-glow'),
   onSelect(index) {
     if (index !== selected) {
-      logDraft = null;
+      logDraft = undefined;
       if (dialog.open && dialog.classList.contains('log-dialog')) closeDialog();
     }
     selected = index;
@@ -385,7 +387,10 @@ const timeline = createTimeline({
 });
 
 timeline.setScores(timelineScores(journal));
-manage.addEventListener('click', () => showManager());
+manage.addEventListener('click', () => {
+  if (journal.activities.length) showManager();
+  else showActivityForm({ closeOnCancel: true });
+});
 byId('close-day').addEventListener('click', timeline.closeSelected);
 watchJournal((updated) => {
   journal = updated;

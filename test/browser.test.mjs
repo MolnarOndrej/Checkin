@@ -100,7 +100,7 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
       throw new Error('Checkin update did not finish');
     };
     window.createCheckinActivity = async (name, unit) => {
-      find('[aria-label="New activity"]').click();
+      find('[aria-label="New activity"]')?.click();
       find('dialog input').value = name;
       if (unit) {
         find('dialog select').value = 'custom';
@@ -110,14 +110,34 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
       find('dialog [type="submit"]').click();
       await window.waitForCheckin(() => find('[aria-label="Remove ' + name + '"]'));
     };
-    find('#manage').click();
+    const manage = find('#manage');
+    manage.focus();
+    manage.click();
+    const firstActivity = {
+      modal: find('dialog').matches(':modal'),
+      title: find('#dialog-title').innerText,
+      nameFocused: document.activeElement === find('dialog input'),
+    };
+    find('dialog .actions [type="button"]').click();
+    const managerCancel = { closed: !find('dialog').open, focusRestored: document.activeElement === manage };
+    manage.click();
     await window.createCheckinActivity('Read', 'pages');
     await window.createCheckinActivity('Stretch');
     const activityRows = [...document.querySelectorAll('dialog .activity-row')].map((row) => row.innerText.trim());
     find('#close-dialog').click();
     find('[aria-current="date"]').click();
+    const logToggle = () => find('[aria-label="Log activity"]');
+    const logForm = () => find('#day-content form');
+    const emptyToday = {
+      visible: logForm()?.checkVisibility(),
+      expanded: logToggle().getAttribute('aria-expanded'),
+      activity: logForm()?.querySelector('select').selectedOptions[0].text,
+    };
+    logForm().querySelector('.actions [type="button"]').click();
+    const logCancel = { closed: !logForm(), focused: document.activeElement === logToggle() };
+    logToggle().click();
     window.logCheckinValue = async (name, amount) => {
-      find('[aria-label="Log activity"]').click();
+      if (!logForm()) logToggle().click();
       const picker = find('#day-content select');
       picker.value = [...picker.options].find((option) => option.text === name).value;
       picker.dispatchEvent(new Event('change'));
@@ -137,6 +157,7 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
     const beforeEdit = find('[aria-current="date"]').getBoundingClientRect().top;
     const today = find('[aria-current="date"]');
     today.previousElementSibling.click();
+    const emptyPast = logForm()?.checkVisibility();
     await window.logCheckinValue('Read', 12);
     await window.logCheckinValue('Stretch', 25);
     today.click();
@@ -146,12 +167,18 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
     await window.waitForCheckin(() => !find('dialog').open);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     return {
+      firstActivity, managerCancel, emptyToday, logCancel, emptyPast,
       activityRows, value, controls, afterCancel, originalY, beforeEdit,
       afterEdit: find('[aria-current="date"]').getBoundingClientRect().top,
       graphColor: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
       viewport: { width: innerWidth, scrollWidth: document.documentElement.scrollWidth },
     };
   });
+  assert.deepEqual(created.firstActivity, { modal: true, title: 'Add activity', nameFocused: true });
+  assert.deepEqual(created.managerCancel, { closed: true, focusRestored: true });
+  assert.deepEqual(created.emptyToday, { visible: true, expanded: 'true', activity: 'Choose an activity' });
+  assert.deepEqual(created.logCancel, { closed: true, focused: true });
+  assert.equal(created.emptyPast, true);
   assert.deepEqual(created.activityRows, ['Read\npages', 'Stretch\nmin']);
   assert.equal(created.value, '4.5 pages');
   assert.deepEqual(created.controls, ['Delete', 'Cancel', 'Save']);
@@ -166,16 +193,19 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
   const persisted = await page.evaluate(() => {
     const find = (selector) => document.querySelector(selector);
     find('[aria-current="date"]').click();
+    const formInitiallyClosed = !find('#day-content form');
     find('[aria-label="Log activity"]').click();
     const note = find('#day-content .inline-note');
     const add = find('#day-content .activity-shortcut');
     return {
+      formInitiallyClosed,
       values: [...document.querySelectorAll('.log-value')].map((value) => value.textContent),
       message: note.innerText,
       addText: add.innerText,
       addFocused: document.activeElement === add,
     };
   });
+  assert.equal(persisted.formInitiallyClosed, true);
   assert.deepEqual(persisted.values, ['100 pages', '20 min']);
   assert.equal(persisted.message, 'All activities are logged for this day.');
   assert.equal(persisted.addText, 'Add activity');
@@ -227,7 +257,8 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
       await nextFrame();
     }
     await nextFrame();
-    return { before, afterRemoveActivity, surviving, pastLogs, afterRemoveLog: positions(), remaining: remaining(), confirmation };
+    const formAfterDelete = find('#day-content form')?.checkVisibility();
+    return { before, afterRemoveActivity, surviving, pastLogs, afterRemoveLog: positions(), remaining: remaining(), confirmation, formAfterDelete };
   });
   assert.equal(removed.confirmation, 'Remove Read?');
   assert.deepEqual(removed.afterRemoveActivity, removed.before);
@@ -237,6 +268,7 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
   assert.equal(removed.afterRemoveLog[0], removed.afterRemoveActivity[0]);
   assert.equal(removed.afterRemoveLog[2], removed.afterRemoveActivity[2]);
   assert.deepEqual(removed.remaining, []);
+  assert.equal(removed.formAfterDelete, true);
 
   await page.reload();
   await settle(page);
@@ -558,7 +590,6 @@ test('an activity edit keeps old logs and the open log editor leaves room to swi
     today.click();
     const log = find('.log-row').innerText.trim();
     today.previousElementSibling.click();
-    find('[aria-label="Log activity"]').click();
     const picker = find('#day-content select');
     picker.selectedIndex = 1;
     picker.dispatchEvent(new Event('change'));
