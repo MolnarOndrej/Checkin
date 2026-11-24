@@ -4,7 +4,8 @@ import { blendPalettes, driftPalette, paintGraph, paletteFor, randomWave } from 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const emptyScore = { height: 0, power: 0, count: 0 };
 
-export function createTimeline({ stage, canvas, days, yearLabels, backToday, onSelect }) {
+export function createTimeline({ stage, canvas, days, yearLabels, backToday, drawer, dialog, drawerGlow, onSelect }) {
+  const surface = stage.parentElement;
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const nodes = new Map();
   const years = new Map();
@@ -179,8 +180,10 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
     updateColors(paletteFor(score(selectedIsVisible ? selected : Math.round(camera), today)), now);
     if (wave && now >= wave.ends) wave = undefined;
     if (ripple && now - ripple.started >= 1050) ripple = undefined;
+    const panel = wave?.panel?.getBoundingClientRect();
+    const visit = panel?.height ? { panel, stage: stage.getBoundingClientRect() } : null;
     paintGraph(canvas, {
-      width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripple, now,
+      width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripple, now, visit, drawerGlow,
     });
     if (layoutDirty || camera !== lastCamera || heights.size) {
       updateDays(points);
@@ -227,24 +230,33 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
     moveTo(event.key === 'Home' ? today : index + (event.key === 'ArrowLeft' ? -1 : 1), true);
   });
 
-  stage.addEventListener('pointerdown', (event) => {
+  function onPanel(event) {
+    const panel = event.target.closest('#day-drawer, dialog');
+    if (!panel) return false;
+    if (panel.matches(':modal')) return true;
+    const { left, top, right, bottom } = panel.getBoundingClientRect();
+    return event.clientX >= left && event.clientX <= right && event.clientY >= top && event.clientY <= bottom;
+  }
+
+  surface.addEventListener('pointerdown', (event) => {
     if (!event.isPrimary || event.button !== 0) return;
     blockClick = false;
+    if (onPanel(event)) return;
     gesture = {
       id: event.pointerId, x: event.clientX, y: event.clientY,
       lastX: event.clientX, lastTime: event.timeStamp, start: camera, velocity: 0,
     };
   });
 
-  stage.addEventListener('pointermove', (event) => {
+  surface.addEventListener('pointermove', (event) => {
     if (gesture?.id !== event.pointerId) return;
     const dx = event.clientX - gesture.x;
     if (!gesture.dragging) {
       if (Math.abs(dx) < 7 || Math.abs(dx) <= Math.abs(event.clientY - gesture.y)) return;
-      stage.setPointerCapture(event.pointerId);
+      surface.setPointerCapture(event.pointerId);
       gesture.dragging = true;
       blockClick = true;
-      stage.classList.add('dragging');
+      surface.classList.add('dragging');
     }
     const elapsed = Math.max(10, event.timeStamp - gesture.lastTime);
     gesture.velocity = .35 * gesture.velocity + .65 * (event.clientX - gesture.lastX) / elapsed;
@@ -261,20 +273,21 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
       moveTo(Math.round(target + coast));
     }
     gesture = undefined;
-    stage.classList.remove('dragging');
+    surface.classList.remove('dragging');
   }
 
-  stage.addEventListener('pointerup', finishGesture);
-  stage.addEventListener('pointercancel', finishGesture);
-  stage.addEventListener('lostpointercapture', (event) => {
-    if (event.target === stage) finishGesture(event);
+  surface.addEventListener('pointerup', finishGesture);
+  surface.addEventListener('pointercancel', finishGesture);
+  surface.addEventListener('lostpointercapture', (event) => {
+    if (event.target === surface) finishGesture(event);
   });
-  stage.addEventListener('pointerleave', () => { if (!gesture?.dragging) gesture = undefined; });
-  stage.addEventListener('click', (event) => {
-    if (blockClick && event.detail > 0) event.stopImmediatePropagation();
+  surface.addEventListener('pointerleave', () => { if (!gesture?.dragging) gesture = undefined; });
+  surface.addEventListener('click', (event) => {
+    if (blockClick && event.detail > 0 && !onPanel(event)) event.stopImmediatePropagation();
   }, true);
 
-  stage.addEventListener('wheel', (event) => {
+  surface.addEventListener('wheel', (event) => {
+    if (onPanel(event)) return;
     const delta = event.shiftKey ? event.deltaY || event.deltaX : event.deltaX;
     if (!delta || (!event.shiftKey && Math.abs(delta) < Math.abs(event.deltaY))) return;
     event.preventDefault();
@@ -301,6 +314,9 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
       center: camera, visibleDays: width / spacing, today, now: performance.now(),
       countAt: (day) => score(day, today).count,
     });
+    if (!drawer.hidden && Math.random() < .4) {
+      wave.panel = dialog.open && dialog.classList.contains('log-dialog') ? dialog : drawer;
+    }
     schedule();
   }
 

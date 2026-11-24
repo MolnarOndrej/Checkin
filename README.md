@@ -6,6 +6,22 @@ Use the top-right icon to create an activity measured in minutes or a custom uni
 
 A day's dot rises with the number and values of its activities. Days that stand out against the previous seven days glow more strongly. Removing an activity from the manager deletes its logs and keeps their anonymous contribution to the graph. Motion follows your system's reduced-motion setting.
 
+## Timeline effects
+
+| Effect | Motion |
+| --- | --- |
+| Daybreak Sweep | A wide glow travels left to right. |
+| Backlight Sweep | A compact glow travels right to left. |
+| Crossing Lights | Two glows approach each other and pass through. |
+| Over Under | A ribbon weaves above and below the curve. |
+| Sky Ribbon | A ribbon enters from above or below, touches a random dot, and heads toward the farther edge. |
+| Split Pulse | A glow splits at a dot and ripples through its neighbors. Both ends continue outward. |
+| Skipping Sparks | A dotted arc hops between dates. |
+| Twin Ribbons | Two strands braid around the curve. |
+| Beacon Landing | A glow streaks in, blooms above or below the busiest visible dot, and lands before following the curve. |
+
+**Drawer Loop** is the detour around an open day drawer or log editor. **Color Trail** is the fading tint left by a passing glow. **Save Ripple** is the short pulse from a saved log.
+
 ## Run locally
 
 With Node.js 24 installed, run `npm start` and open [Checkin](http://127.0.0.1:4173). Keep using the same address and browser profile. Checkin stores its activity list and logs in the browser.

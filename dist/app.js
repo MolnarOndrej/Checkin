@@ -351,6 +351,7 @@ function renderDay() {
 
 const timeline = createTimeline({
   stage, canvas: byId('graph'), days: byId('days'), yearLabels: byId('year-labels'), backToday: byId('back-today'),
+  drawer, dialog, drawerGlow: byId('drawer-glow'),
   onSelect(index) {
     if (index !== selected) {
       addingLog = false;

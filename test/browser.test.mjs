@@ -56,7 +56,10 @@ test('today starts centered with 21 dated dots, and year labels and touch swipes
   await settle(page);
   const before = await page.evaluate(() => {
     const stage = document.querySelector('#timeline').getBoundingClientRect();
-    return { dots: document.querySelectorAll('.day').length, y: Math.round(stage.top + stage.height / 2) };
+    return {
+      dots: document.querySelectorAll('.day').length, y: Math.round(stage.top + stage.height / 2),
+      above: Math.round(stage.top - 18), below: Math.round(stage.bottom + 26),
+    };
   });
   assert.ok(before.dots >= 5 && before.dots <= 9);
   await page.swipe(320, 65, before.y);
@@ -72,6 +75,12 @@ test('today starts centered with 21 dated dots, and year labels and touch swipes
   await page.evaluate(() => document.querySelector('.day[tabindex="0"]').click());
   assert.equal(await page.evaluate(() => document.querySelector('#day-content').innerText.trim()), 'Upcoming');
   await page.evaluate(() => document.querySelector('#back-today').click());
+  await settle(page);
+  assert.equal(await page.evaluate(() => document.querySelector('.day[tabindex="0"]').dataset.date), '2026-12-31');
+  await page.swipe(250, 46, before.above);
+  await settle(page);
+  assert.equal(await page.evaluate(() => document.querySelector('.day[tabindex="0"]').dataset.date), '2027-01-04');
+  await page.swipe(46, 250, before.below);
   await settle(page);
   assert.equal(await page.evaluate(() => document.querySelector('.day[tabindex="0"]').dataset.date), '2026-12-31');
 });
@@ -401,6 +410,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const exit = .45;
     const pulseEdges = [-.5, .5].map((offset) => [offset, baseline]);
     const pulseDots = [-1, 1].map((offset) => [offset, baseline - 9]);
+    const splitExit = 1.08 + (reach - 1.08) * ((.82 - .68) / (1 - .68)) ** 1.55;
     await frame();
     return {
       pulseBase: [...pulseEdges, ...pulseDots].map(([offset, y]) => sample(offset, y)),
@@ -409,11 +419,12 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       launch: await play(4, 3950, .34 * fall, [[launchDay + .6 * Math.sin(Math.PI * fall), height * (-.14 + .7 * fall ** 1.24)]], [.99, .69]),
       launchExit: await play(4, 3950, .34 + .66 * exit, [[launchDay + (-reach - launchDay) * exit ** 1.45, baseline]], [.99, .69]),
       pause: await play(5, 4100, .56, [...pulseEdges, ...pulseDots]),
+      splitExit: await play(5, 4100, .82, [[-splitExit, baseline], [splitExit, baseline]]),
       hop: await play(6, 3900, progressAt(-1.5), [[-1.5, baseline + height * .27]]),
       braid: await play(7, 3900, progressAt(-3), [[-3, baseline + height * .21], [-3, baseline - height * .29]]),
     };
   });
-  for (const effect of ['below', 'above', 'launch', 'launchExit', 'hop', 'braid']) {
+  for (const effect of ['below', 'above', 'launch', 'launchExit', 'splitExit', 'hop', 'braid']) {
     assert.ok(playful[effect].every((opacity) => opacity > 140), JSON.stringify({ effect, playful }));
   }
   assert.ok(playful.pause.every((opacity, index) => opacity > playful.pulseBase[index] + 15), JSON.stringify(playful));
@@ -447,6 +458,85 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
   }
   assert.deepEqual(wake.colored[2], wake.plain[2]);
 
+  const visits = await page.evaluate(async () => {
+    const drawer = document.querySelector('#day-drawer');
+    const glow = document.querySelector('#drawer-glow');
+    const overlay = glow.getContext('2d');
+    const graph = document.querySelector('#graph');
+    const graphContext = graph.getContext('2d');
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    document.querySelector('[aria-current="date"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    const box = drawer.getBoundingClientRect();
+    const center = (box.left + box.right) / 2;
+    const sides = [box.left - 5, box.right + 5];
+    const middle = (box.top + box.bottom) / 2;
+    const alpha = (context, x, y) => {
+      const rgba = context.getImageData(Math.round(x) - 2, Math.round(y) - 2, 5, 5).data;
+      return Math.max(...rgba.filter((_, index) => index % 4 === 3));
+    };
+
+    async function trace(kind, chance) {
+      window.traverse(kind, [.99, chance]);
+      let completed = false;
+      let appeared = false;
+      let continued = false;
+      let enteredFrom = null;
+      for (let time = 60; time <= 4900; time += 60) {
+        window.advanceCheckin(60);
+        await frame();
+        if (glow.hidden) {
+          if (appeared) {
+            const direction = kind === 0 ? 1 : -1;
+            const y = graph.clientHeight * .56;
+            for (let offset = 3; offset <= 9; offset += .25) {
+              const x = graph.clientWidth * (.5 + direction * offset / 21);
+              continued ||= alpha(graphContext, x, y) > 231;
+            }
+          }
+          continue;
+        }
+        appeared = true;
+        const arrival = sides.map((x) => alpha(overlay, x, box.top + 14));
+        if (enteredFrom === null && Math.max(...arrival) > 48) enteredFrom = arrival[0] > arrival[1] ? 'left' : 'right';
+        const edges = [[sides[0], middle], [sides[1], middle], [center, box.top - 5], [center, box.bottom + 5]];
+        completed ||= edges.every(([x, y]) => alpha(overlay, x, y) > 74);
+      }
+      return { appeared, completed, continued, enteredFrom };
+    }
+    return {
+      rejected: await trace(0, .4),
+      forward: await trace(0, .399),
+      reverse: await trace(1, .399),
+    };
+  });
+  assert.equal(visits.rejected.appeared, false);
+  assert.deepEqual(visits.forward, { appeared: true, completed: true, continued: true, enteredFrom: 'left' });
+  assert.deepEqual(visits.reverse, { appeared: true, completed: true, continued: true, enteredFrom: 'right' });
+
+  const eligible = await page.evaluate(async () => {
+    const glow = document.querySelector('#drawer-glow');
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const visited = [];
+    for (let kind = 2; kind < 9; kind++) {
+      const rolls = kind === 4 || kind === 8 ? [.99, .5, .399] : [.99, .399];
+      window.traverse(kind, rolls);
+      let seen = false;
+      for (let time = 0; time < 4800 && !seen; time += 200) {
+        window.advanceCheckin(200);
+        await frame();
+        seen = !glow.hidden;
+      }
+      visited.push(seen);
+    }
+    document.querySelector('#close-day').click();
+    window.advanceCheckin(100);
+    await frame();
+    return { visited, hiddenAfterClose: glow.hidden };
+  });
+  assert.ok(eligible.visited.every(Boolean), JSON.stringify(eligible));
+  assert.equal(eligible.hiddenAfterClose, true);
+
   await page.evaluate(() => {
     const today = document.querySelector('[aria-current="date"]').dataset.date;
     const toDateKey = (offset) => new Date(Date.parse(today) + offset * 86_400_000).toISOString().slice(0, 10);
@@ -476,6 +566,32 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
   });
   assert.ok(still[1] > still[0] + 15);
 
+  const editorVisited = await page.evaluate(async () => {
+    const find = (selector) => document.querySelector(selector);
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    find('[aria-current="date"]').click();
+    find('.log-row').click();
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    const box = find('dialog[open]').getBoundingClientRect();
+    const glow = find('#drawer-glow');
+    const context = glow.getContext('2d');
+    const x = Math.round((box.left + box.right) / 2);
+    const y = Math.round(box.bottom + 5);
+    window.traverse(1, [.99, .399]);
+    let bottomLit = false;
+    for (let time = 0; time < 4500 && !bottomLit; time += 100) {
+      window.advanceCheckin(100);
+      await frame();
+      if (glow.hidden) continue;
+      const pixels = context.getImageData(x - 2, y - 2, 5, 5).data;
+      bottomLit = pixels.some((alpha, index) => index % 4 === 3 && alpha > 65);
+    }
+    find('#close-dialog').click();
+    find('#close-day').click();
+    return bottomLit;
+  });
+  assert.equal(editorVisited, true);
+
   const landing = await page.evaluate(async () => {
     const canvas = document.querySelector('#graph');
     const context = canvas.getContext('2d');
@@ -504,6 +620,8 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const entryY = -.14 * height;
     await go(.18);
     const incoming = sample(entryX + (x - entryX) * arrival, entryY + (hover - entryY) * arrival);
+    const tailPosition = 1 - (1 - .13 / .33) ** 1.6;
+    const trail = sample(entryX + (x - entryX) * tailPosition, entryY + (hover - entryY) * tailPosition);
     await go(.34);
     const small = sample(x + size * .72, hover);
     const hovering = sample(x, hover);
@@ -511,13 +629,16 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const expanded = sample(x + size * .72, hover);
     await go(.595);
     const dropping = sample(x, (hover + nodeY) / 2);
+    const descendingHalo = sample(x + size * .72, (hover + nodeY) / 2);
     await go(.82);
     const exitOffset = -1 + 20.5 * (.12 / .3) ** 1.28;
     const leaving = sample(canvas.clientWidth * (.5 + exitOffset / 21), height * .56);
     await go(1.2);
-    return { incoming, small, hovering, expanded, dropping, leaving };
+    return { incoming, trail, small, hovering, expanded, dropping, descendingHalo, leaving };
   });
+  assert.ok(landing.trail > 35, JSON.stringify(landing));
   assert.ok(landing.expanded > landing.small + 35, JSON.stringify(landing));
+  assert.ok(landing.descendingHalo > landing.small + 20, JSON.stringify(landing));
   for (const phase of ['incoming', 'hovering', 'dropping', 'leaving']) {
     assert.ok(landing[phase] > 165, JSON.stringify(landing));
   }

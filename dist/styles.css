@@ -150,7 +150,10 @@ main {
   --drawer-overlap: calc(var(--timeline-height) * .25);
   position: relative;
   min-inline-size: 0;
+  min-block-size: 100svh;
   padding-block: var(--stage-inset) 22px;
+  cursor: grab;
+  touch-action: pan-y pinch-zoom;
 }
 
 .timeline {
@@ -162,7 +165,7 @@ main {
   user-select: none;
 }
 
-.timeline.dragging, .timeline.dragging .day {
+main.dragging, main.dragging .day {
   cursor: grabbing;
 }
 
@@ -276,6 +279,7 @@ main {
 
 .day-drawer {
   position: relative;
+  cursor: auto;
   z-index: 1;
   inline-size: min(calc(100% - 32px), 480px);
   margin: calc(-1 * var(--drawer-overlap)) auto 0;
@@ -393,6 +397,7 @@ main {
 }
 
 dialog {
+  cursor: auto;
   position: fixed;
   inset: 0;
   inline-size: min(calc(100% - 28px), 420px);
@@ -421,6 +426,15 @@ dialog.log-dialog {
   margin-block: 0;
   box-shadow: 0 14px 55px #05050aa8;
   touch-action: pan-y;
+}
+
+#drawer-glow {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  inline-size: 100%;
+  block-size: 100%;
+  pointer-events: none;
 }
 
 dialog::backdrop {
