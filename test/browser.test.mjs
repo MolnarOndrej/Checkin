@@ -311,7 +311,7 @@ test('an activity edit keeps old logs and the open log editor leaves room to swi
   assert.equal(reopened.newUnit, 'km');
 });
 
-test('random traversals light edges, leave the curve, and pause over nodes', async (t) => {
+test('random effects can follow, leave, pulse, and recolor the graph, or land on the busiest day', async (t) => {
   const page = await openCheckin(t, () => {
     let time = 1000;
     const frame = requestAnimationFrame;
@@ -320,9 +320,10 @@ test('random traversals light edges, leave the curve, and pause over nodes', asy
     const interval = window.setInterval;
     window.setInterval = (callback, delay) => {
       if (delay !== 5000) return interval(callback, delay);
-      window.traverse = (kind) => {
+      window.traverse = (kind, rolls = []) => {
         const random = Math.random;
-        Math.random = () => (kind + .2) / 8;
+        let index = -1;
+        Math.random = () => (++index === 0 ? (kind + .2) / 9 : rolls[index - 1] ?? (index === 1 ? .99 : .5));
         try {
           callback();
         } finally {
@@ -387,8 +388,8 @@ test('random traversals light edges, leave the curve, and pause over nodes', asy
       const data = context.getImageData(x - 2, Math.round(y) - 2, 5, 5).data;
       return Math.max(...data.filter((_, index) => index % 4 === 3));
     };
-    async function play(kind, duration, progress, points) {
-      window.traverse(kind);
+    async function play(kind, duration, progress, points, rolls) {
+      window.traverse(kind, rolls);
       window.advanceCheckin(duration * progress);
       await frame();
       const visible = points.map(([offset, y]) => sample(offset, y));
@@ -396,19 +397,55 @@ test('random traversals light edges, leave the curve, and pause over nodes', asy
       return visible;
     }
     const fall = .62;
+    const launchDay = 4;
+    const exit = .45;
+    const pulseEdges = [-.5, .5].map((offset) => [offset, baseline]);
+    const pulseDots = [-1, 1].map((offset) => [offset, baseline - 9]);
+    await frame();
     return {
+      pulseBase: [...pulseEdges, ...pulseDots].map(([offset, y]) => sample(offset, y)),
       below: await play(3, 3850, progressAt(-2.5), [[-2.5, baseline + height * .31]]),
       above: await play(3, 3850, progressAt(2.5), [[2.5, baseline - height * .31]]),
-      launch: await play(4, 3450, .34 * fall, [[-.6 * Math.sin(Math.PI * fall), height * (-.14 + .7 * fall ** 1.24)]]),
-      pause: await play(5, 4100, .512, [-1, 0, 1].map((offset) => [offset, baseline - 18])),
+      launch: await play(4, 3950, .34 * fall, [[launchDay + .6 * Math.sin(Math.PI * fall), height * (-.14 + .7 * fall ** 1.24)]], [.99, .69]),
+      launchExit: await play(4, 3950, .34 + .66 * exit, [[launchDay + (-reach - launchDay) * exit ** 1.45, baseline]], [.99, .69]),
+      pause: await play(5, 4100, .56, [...pulseEdges, ...pulseDots]),
       hop: await play(6, 3900, progressAt(-1.5), [[-1.5, baseline + height * .27]]),
       braid: await play(7, 3900, progressAt(-3), [[-3, baseline + height * .21], [-3, baseline - height * .29]]),
     };
   });
-  for (const effect of ['below', 'above', 'launch', 'hop', 'braid']) {
+  for (const effect of ['below', 'above', 'launch', 'launchExit', 'hop', 'braid']) {
     assert.ok(playful[effect].every((opacity) => opacity > 140), JSON.stringify({ effect, playful }));
   }
-  assert.ok(playful.pause.every((opacity) => opacity > 18), JSON.stringify(playful));
+  assert.ok(playful.pause.every((opacity, index) => opacity > playful.pulseBase[index] + 15), JSON.stringify(playful));
+
+  const wake = await page.evaluate(async () => {
+    const canvas = document.querySelector('#graph');
+    const context = canvas.getContext('2d');
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const sample = (offset) => {
+      const x = Math.round(canvas.clientWidth * (.5 + offset / 21));
+      return Array.from(context.getImageData(x, Math.floor(canvas.clientHeight * .56), 1, 1).data);
+    };
+    const duration = 3300 * .6;
+    async function play(chance) {
+      window.traverse(0, [chance, .95]);
+      window.advanceCheckin(duration);
+      await frame();
+      const result = [-2, -2.35, 8].map(sample);
+      window.advanceCheckin(-duration);
+      return result;
+    }
+    const plain = await play(.3);
+    const colored = await play(.29);
+    const spark = document.documentElement.style.getPropertyValue('--spark');
+    return { plain, colored, spark: [1, 3, 5].map((from) => parseInt(spark.slice(from, from + 2), 16)) };
+  });
+  const colorDistance = (rgba) => wake.spark.reduce((total, channel, index) => total + Math.abs(rgba[index] - channel), 0);
+  for (const index of [0, 1]) {
+    assert.ok(colorDistance(wake.colored[index]) < colorDistance(wake.plain[index]), JSON.stringify(wake));
+    assert.ok(wake.colored[index][3] > wake.plain[index][3] + 12, JSON.stringify(wake));
+  }
+  assert.deepEqual(wake.colored[2], wake.plain[2]);
 
   await page.evaluate(() => {
     const today = document.querySelector('[aria-current="date"]').dataset.date;
@@ -438,6 +475,52 @@ test('random traversals light edges, leave the curve, and pause over nodes', asy
     return [sampleAbove(activeDays.at(-3)), sampleAbove(activeDays.at(-2))];
   });
   assert.ok(still[1] > still[0] + 15);
+
+  const landing = await page.evaluate(async () => {
+    const canvas = document.querySelector('#graph');
+    const context = canvas.getContext('2d');
+    const stage = canvas.getBoundingClientRect();
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const best = document.querySelector('[aria-current="date"]').previousElementSibling.getBoundingClientRect();
+    const x = best.left + best.width / 2;
+    const nodeY = best.top - stage.top + 21;
+    const height = canvas.clientHeight;
+    const size = Math.min(32, height * .048);
+    const roomAbove = Math.min(height * .27, nodeY - height * .07);
+    const hover = nodeY + (roomAbove < height * .19 ? height * .27 : -roomAbove);
+    const sample = (x, y) => {
+      const data = context.getImageData(Math.round(x) - 2, Math.round(y) - 2, 5, 5).data;
+      return Math.max(...data.filter((_, index) => index % 4 === 3));
+    };
+    let progress = 0;
+    async function go(to) {
+      window.advanceCheckin(4400 * (to - progress));
+      progress = to;
+      await frame();
+    }
+    window.traverse(8, [.99, .65]);
+    const arrival = 1 - (1 - .18 / .33) ** 1.6;
+    const entryX = canvas.clientWidth * (.5 + 19.5 / 21);
+    const entryY = -.14 * height;
+    await go(.18);
+    const incoming = sample(entryX + (x - entryX) * arrival, entryY + (hover - entryY) * arrival);
+    await go(.34);
+    const small = sample(x + size * .72, hover);
+    const hovering = sample(x, hover);
+    await go(.49);
+    const expanded = sample(x + size * .72, hover);
+    await go(.595);
+    const dropping = sample(x, (hover + nodeY) / 2);
+    await go(.82);
+    const exitOffset = -1 + 20.5 * (.12 / .3) ** 1.28;
+    const leaving = sample(canvas.clientWidth * (.5 + exitOffset / 21), height * .56);
+    await go(1.2);
+    return { incoming, small, hovering, expanded, dropping, leaving };
+  });
+  assert.ok(landing.expanded > landing.small + 35, JSON.stringify(landing));
+  for (const phase of ['incoming', 'hovering', 'dropping', 'leaving']) {
+    assert.ok(landing[phase] > 165, JSON.stringify(landing));
+  }
 
   const ripple = await page.evaluate(async () => {
     const find = (selector) => document.querySelector(selector);

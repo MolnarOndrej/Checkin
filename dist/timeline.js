@@ -177,7 +177,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
     for (let index = first; index <= last; index++) points.push(pointAt(index));
     const selectedIsVisible = selected !== null && Math.abs(selected - camera) * spacing < width / 2;
     updateColors(paletteFor(score(selectedIsVisible ? selected : Math.round(camera), today)), now);
-    if (wave && now - wave.started >= wave.duration) wave = undefined;
+    if (wave && now >= wave.ends) wave = undefined;
     if (ripple && now - ripple.started >= 1050) ripple = undefined;
     paintGraph(canvas, {
       width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripple, now,
@@ -296,8 +296,11 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
 
   function traverse() {
     followToday();
-    if (motion.matches || document.hidden) return;
-    wave = randomWave(camera, width / spacing, today, performance.now());
+    if (motion.matches || document.hidden || !width) return;
+    wave = randomWave({
+      center: camera, visibleDays: width / spacing, today, now: performance.now(),
+      countAt: (day) => score(day, today).count,
+    });
     schedule();
   }
 

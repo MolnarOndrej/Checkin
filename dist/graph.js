@@ -43,19 +43,41 @@ export function driftPalette(base, now) {
   return blendPalettes(base, light, .56);
 }
 
-const durations = [3300, 3300, 3300, 3850, 3450, 4100, 3900, 3900];
+const durations = [3300, 3300, 3300, 3850, 3950, 4100, 3900, 3900, 4400];
+const paletteColors = ['accent', 'secondary', 'spark'];
+const borders = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+const inkFade = 1050;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-export function randomWave(center, visibleDays, today, now) {
+export function randomWave({ center, visibleDays, today, now, countAt }) {
   const choice = Math.random() * durations.length;
   const kind = Math.floor(choice);
   const variation = choice - kind;
-  const direction = kind < 3 || variation < .5 ? 1 : -1;
+  let direction = kind < 3 || variation < .5 ? 1 : -1;
   const side = (variation * 4) % 2 < 1 ? -1 : 1;
-  const anchor = Math.abs(today - center) <= visibleDays * .43 ? today : Math.round(center);
+  const ink = Math.random() < .3 ? paletteColors[Math.floor(Math.random() * paletteColors.length)] : null;
+  const radius = Math.max(.5, visibleDays / 2 - .35);
+  const first = Math.ceil(center - radius);
+  const last = Math.floor(center + radius);
   const reach = visibleDays / 2 + 9;
+  let anchor = Math.abs(today - center) <= visibleDays * .43 ? today : Math.round(center);
+  let entry;
+  if (kind === 4) {
+    anchor = first + Math.floor(Math.random() * (last - first + 1));
+  } else if (kind === 8) {
+    anchor = Math.round(center);
+    for (let day = first; day <= last; day++) {
+      const difference = countAt(day) - countAt(anchor);
+      if (difference > 0 || (difference === 0 && Math.abs(day - center) < Math.abs(anchor - center))) anchor = day;
+    }
+    const [x, y] = borders[Math.floor(Math.random() * borders.length)];
+    entry = { day: x ? center + reach * x : mix(first, last, Math.random()), y };
+  }
+  if ((kind === 4 || kind === 8) && anchor !== center) direction = Math.sign(center - anchor);
+  const duration = durations[kind];
   return {
-    kind, direction, side, anchor, started: now, duration: durations[kind],
+    kind, direction, side, anchor, entry, ink, started: now, duration,
+    ends: now + duration + (ink ? inkFade : 0),
     from: center - direction * reach, to: center + direction * reach,
   };
 }
@@ -122,28 +144,66 @@ function pause(wave, progress, colors) {
     return { heads: [head(mix(anchor, to, ((progress - leaves) / (1 - leaves)) ** 1.3), direction, colors.spark)] };
   }
   const time = (progress - arrives) / (leaves - arrives);
+  const reach = 1.08 * smooth(Math.min(1, time / .68));
+  const fade = 1 - smooth(clamp((time - .7) / .3, 0, 1));
+  const intensity = (.64 + .28 * Math.sin(Math.PI * time)) * fade;
   return {
-    pulses: [-1, 0, 1].map((offset, order) => ({
-      day: anchor + direction * offset,
-      strength: Math.sin(Math.PI * clamp((time - order * .18) / .63, 0, 1)) ** 2,
-      color: [colors.secondary, colors.spark, colors.accent][order],
+    heads: [-1, 1].map((side) => ({
+      ...head(anchor + side * reach, side, colors.spark, intensity, 1.2),
+      lead: .32, trailOpacity: .66,
     })),
   };
 }
 
-function ribbon(route, progress, options) {
+function landBall(wave, progress, color, yAt, height) {
+  const { anchor, side, to, direction, entry } = wave;
+  const approach = .33;
+  const expanded = .49;
+  const landed = .7;
+  const radius = 4.5;
+  const large = clamp(height * .048, 17, 32);
+  const nodeY = yAt(anchor);
+  let lift = roomFor(nodeY, height, side, .27);
+  if (Math.abs(lift) < height * .19) lift = roomFor(nodeY, height, -side, .27);
+  const hover = nodeY + lift;
+
+  const ball = { day: anchor, y: hover, radius, color, strength: 1 };
+  if (progress < approach) {
+    const arrival = 1 - (1 - progress / approach) ** 1.6;
+    const startY = entry.y ? height * (entry.y < 0 ? -.14 : 1.14) : hover + lift * .26;
+    ball.day = mix(entry.day, anchor, arrival);
+    ball.y = mix(startY, hover, arrival);
+  } else if (progress < expanded) {
+    ball.radius = mix(radius, large, smooth((progress - approach) / (expanded - approach)));
+  } else if (progress < landed) {
+    const descent = smooth((progress - expanded) / (landed - expanded));
+    ball.y = mix(hover, nodeY, descent);
+    ball.radius = mix(large, radius, descent);
+  } else {
+    const exit = (progress - landed) / (1 - landed);
+    ball.day = mix(anchor, to, exit ** 1.28);
+    ball.y = yAt(ball.day);
+    return { ball, heads: [{ ...head(ball.day, direction, color, .88, .55 + 3.3 * exit), hideTip: true }] };
+  }
+  return { ball };
+}
+
+function ribbon(route, progress, options, complete) {
   const tail = options.tail ?? .19;
   const start = Math.max(0, progress - tail);
   const segments = 40;
-  const points = Array.from({ length: segments + 1 }, (_, index) => route(mix(start, progress, index / segments)));
+  const points = complete
+    ? Array.from({ length: segments + 1 }, (_, index) => route(mix(start, progress, index / segments)))
+    : [route(progress)];
   return { points, ...options };
 }
 
-function traversalAt(wave, now, colors, yAt, height) {
+function traversalAt(wave, now, colors, yAt, height, complete = true) {
   if (!wave) return {};
   const progress = (now - wave.started) / wave.duration;
   if (progress < 0 || progress >= 1) return {};
   const { from, to, direction } = wave;
+  const drawRibbon = (route, options) => ribbon(route, progress, options, complete);
 
   switch (wave.kind) {
     case 0:
@@ -158,30 +218,32 @@ function traversalAt(wave, now, colors, yAt, height) {
         ],
       };
     case 3:
-      return { ribbons: [ribbon(weave(wave, yAt, height, .31, 5, wave.side), progress, {
+      return { ribbons: [drawRibbon(weave(wave, yAt, height, .31, 5, wave.side), {
         color: colors.accent, tip: colors.spark, width: 3.1, tail: .25,
       })] };
     case 4:
-      return { ribbons: [ribbon(launch(wave, yAt, height), progress, {
+      return { ribbons: [drawRibbon(launch(wave, yAt, height), {
         color: colors.spark, tip: colors.accent, width: 3.6, tail: .22,
       })] };
     case 5:
       return pause(wave, progress, colors);
     case 6:
-      return { ribbons: [ribbon(hops(wave, yAt, height), progress, {
+      return { ribbons: [drawRibbon(hops(wave, yAt, height), {
         color: colors.secondary, tip: colors.spark, width: 2, tail: .16, beads: true,
       })] };
     case 7:
       return {
         ribbons: [
-          ribbon(weave(wave, yAt, height, .21, 6, wave.side), progress, {
+          drawRibbon(weave(wave, yAt, height, .21, 6, wave.side), {
             color: colors.accent, tip: colors.accent, width: 2.6, tail: .25,
           }),
-          ribbon(weave(wave, yAt, height, .29, 6, -wave.side), progress, {
+          drawRibbon(weave(wave, yAt, height, .29, 6, -wave.side), {
             color: colors.spark, tip: colors.secondary, width: 2.15, tail: .19,
           }),
         ],
       };
+    case 8:
+      return landBall(wave, progress, colors.spark, yAt, height);
     default:
       return {};
   }
@@ -236,12 +298,13 @@ function halo(context, x, y, radius, color, brightness) {
 function lineWave(context, path, head, worldToX, spacing) {
   const x = worldToX(head.day);
   const back = x - head.direction * head.tail * spacing;
-  const front = x + head.direction * .75 * spacing;
+  const lead = head.lead ?? .75;
+  const front = x + head.direction * lead * spacing;
   const gradient = (opacity) => {
     const color = context.createLinearGradient(back, 0, front, 0);
     color.addColorStop(0, tint(head.color, 0));
-    color.addColorStop(.5, tint(head.color, opacity * .24));
-    color.addColorStop(head.tail / (head.tail + .75), tint(head.color, opacity));
+    color.addColorStop(.5, tint(head.color, opacity * (head.trailOpacity ?? .24)));
+    color.addColorStop(head.tail / (head.tail + lead), tint(head.color, opacity));
     color.addColorStop(1, tint(head.color, 0));
     return color;
   };
@@ -249,6 +312,73 @@ function lineWave(context, path, head, worldToX, spacing) {
   stroke(context, path, gradient(.055 * head.strength), 24);
   stroke(context, path, gradient(.14 * head.strength), 9);
   stroke(context, path, gradient(.91 * head.strength), 2.7);
+}
+
+function ribbonTips(ribbons = []) {
+  return ribbons.map(({ points, tip }) => ({ ...points.at(-1), color: tip, strength: .92 }));
+}
+
+function inkOnGraph(wave, now, colors, yAt, height) {
+  if (!wave?.ink) return null;
+  const marks = [];
+  const firstAge = Math.max(0, now - wave.started - wave.duration + 1);
+  for (let age = firstAge; age < inkFade && now - age >= wave.started; age += 20) {
+    const { heads = [], ribbons, ball } = traversalAt(wave, now - age, colors, yAt, height, false);
+    const contacts = [...heads, ...ribbonTips(ribbons)];
+    if (ball && !heads.length) contacts.push(ball);
+    for (const { day, y, strength } of contacts) {
+      const distance = y === undefined ? 0 : (y - yAt(day)) / 18;
+      const brightness = Math.exp(-(distance ** 2)) * strength * (1 - age / inkFade) ** 1.35;
+      if (brightness > .025) marks.push({ day, brightness });
+    }
+  }
+  if (!marks.length) return null;
+  return {
+    color: colors.accent,
+    at(day) {
+      let strength = 0;
+      for (const mark of marks) {
+        const distance = Math.abs(mark.day - day);
+        if (distance < .51) strength = Math.max(strength, mark.brightness * smooth(1 - distance / .51));
+      }
+      return strength;
+    },
+  };
+}
+
+function paintInk(context, path, ink, firstDay, width, spacing) {
+  if (!ink) return;
+  const gradient = context.createLinearGradient(0, 0, width, 0);
+  const steps = Math.ceil(width / spacing * 9);
+  for (let step = 0; step <= steps; step++) {
+    const position = step / steps;
+    const strength = ink.at(firstDay + position * width / spacing);
+    gradient.addColorStop(position, tint(ink.color, Math.min(1, strength * 1.15)));
+  }
+  context.save();
+  context.globalAlpha = .2;
+  stroke(context, path, gradient, 14);
+  context.globalAlpha = 1;
+  stroke(context, path, gradient, 2.65);
+  context.restore();
+}
+
+function paintBall(context, ball, worldToX, width, height) {
+  const { y, radius, color } = ball;
+  const x = worldToX(ball.day);
+  const glow = radius * 2.8 + 11;
+  if (x < -glow || x > width + glow || y < -glow || y > height + glow) return;
+  halo(context, x, y, glow, color, .64);
+  const core = context.createRadialGradient(x, y, 0, x, y, radius);
+  core.addColorStop(0, tint('#ffffff', .97));
+  core.addColorStop(.36, tint(color, .94));
+  core.addColorStop(1, tint(color, .13));
+  circle(context, x, y, radius);
+  context.fillStyle = core;
+  context.fill();
+  context.strokeStyle = tint(color, .39);
+  context.lineWidth = 1;
+  context.stroke();
 }
 
 function paintRibbon(context, ribbon, worldToX, width, height) {
@@ -295,19 +425,22 @@ function paintRibbon(context, ribbon, worldToX, width, height) {
   }
 }
 
-function drawPoints(context, points, heads, colors, today, selected, width) {
+function drawPoints(context, points, heads, colors, today, selected, width, ink) {
   for (const point of points) {
     if (point.x < -48 || point.x > width + 48) continue;
     const { x, y, index, power, count } = point;
     const current = index === today;
     const chosen = index === selected;
     const future = index > today;
-    const size = 3 + (current || chosen ? 1.65 : 0) + (count ? .85 : 0) + power * 3.1;
-    const color = power > .58 ? colors.spark : count || current || chosen ? colors.accent : colors.secondary;
+    const dyed = ink?.at(index) ?? 0;
+    const size = 3 + (current || chosen ? 1.65 : 0) + (count ? .85 : 0) + power * 3.1 + dyed * .7;
+    const base = power > .58 ? colors.spark : count || current || chosen ? colors.accent : colors.secondary;
+    const color = dyed ? mixColor(base, ink.color, Math.min(1, dyed * 1.45)) : base;
 
     if (current || count || chosen) {
       halo(context, x, y, 13 + power * 16, color, .17 + .19 * power);
     }
+    if (dyed > .025) halo(context, x, y, 19 + power * 12, ink.color, dyed * .48);
     for (const head of heads) {
       const distance = index - head.day;
       const rise = head.y === undefined ? 0 : (y - head.y) / 36;
@@ -328,7 +461,8 @@ function drawPoints(context, points, heads, colors, today, selected, width) {
     }
 
     circle(context, x, y, size);
-    context.fillStyle = tint(color, future ? .37 : count || current || chosen ? .99 : .66);
+    const opacity = future ? .37 : count || current || chosen ? .99 : .66;
+    context.fillStyle = tint(color, opacity + dyed * .4);
     context.fill();
     if (current || power > .58) {
       circle(context, x - .42, y - .42, Math.max(1.2, size * .43));
@@ -361,10 +495,14 @@ export function paintGraph(canvas, frame) {
     const left = Math.floor(day);
     return mix(pointAt(left).y, pointAt(left + 1).y, smooth(day - left));
   };
-  const effects = traversalAt(wave, now, colors, yAt, height);
+  const dye = wave?.ink && colors[wave.ink];
+  const waveColors = dye ? { accent: dye, secondary: dye, spark: dye } : colors;
+  const effects = traversalAt(wave, now, waveColors, yAt, height);
+  const ink = inkOnGraph(wave, now, waveColors, yAt, height);
   const heads = [...(effects.heads ?? []), ...rippleHeads(ripple, now, colors)];
   const ribbons = effects.ribbons ?? [];
-  const contacts = ribbons.map(({ points: trail, tip }) => ({ ...trail.at(-1), color: tip, strength: .92 }));
+  const contacts = ribbonTips(ribbons);
+  if (effects.ball && !effects.heads) contacts.push(effects.ball);
   const path = trace(points);
 
   const axis = new Path2D();
@@ -398,20 +536,14 @@ export function paintGraph(canvas, frame) {
   stroke(context, path, tint(colors.accent, .13), 6);
   stroke(context, path, filament, 1.8);
 
+  paintInk(context, path, ink, first.index - first.x / spacing, width, spacing);
   for (const head of heads) lineWave(context, path, head, worldToX, spacing);
   for (const ribbon of ribbons) paintRibbon(context, ribbon, worldToX, width, height);
-  for (const pulse of effects.pulses ?? []) {
-    if (pulse.strength < .035) continue;
-    const x = worldToX(pulse.day);
-    const y = yAt(pulse.day);
-    halo(context, x, y, 38 + pulse.strength * 12, pulse.color, pulse.strength * .64);
-    circle(context, x, y, 12 + pulse.strength * 14);
-    context.strokeStyle = tint(pulse.color, pulse.strength * .65);
-    context.lineWidth = 1.45;
-    context.stroke();
+  drawPoints(context, points, [...heads, ...contacts], colors, today, selected, width, ink);
+  for (const head of heads) {
+    if (!head.hideTip && head.strength > .025) waveTip(context, yAt, head, worldToX, width);
   }
-  drawPoints(context, points, [...heads, ...contacts, ...(effects.pulses ?? [])], colors, today, selected, width);
-  for (const head of heads) waveTip(context, yAt, head, worldToX, width);
+  if (effects.ball) paintBall(context, effects.ball, worldToX, width, height);
 
   const origin = ripple && points[ripple.index - first.index];
   const age = ripple ? (now - ripple.started) / 520 : 1;
