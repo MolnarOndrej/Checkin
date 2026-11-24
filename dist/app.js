@@ -16,7 +16,7 @@ const announcement = byId('announcement');
 
 let journal = readJournal();
 let selected = null;
-let addingLog = false;
+let logDraft = null;
 let saving = false;
 let opener;
 let dialogVersion = 0;
@@ -145,17 +145,17 @@ async function persist(change, error, { pulse, after = () => {} } = {}) {
   }
 }
 
-function showManager(focusId, focusRemove = false) {
+function showManager({ focusId, focusRemove = false, draft } = {}) {
   const list = element('div', 'activity-list');
-  const add = plusButton('New activity', () => showActivityForm());
+  const add = plusButton('New activity', () => showActivityForm(undefined, draft));
   const firstRow = element('div', 'add-row');
   firstRow.append(add);
   list.append(firstRow);
   let focus = add;
   for (const activity of journal.activities) {
     const row = element('div', 'activity-row');
-    const edit = iconButton('pencil', 'Edit ' + activity.text, () => showActivityForm(activity));
-    const remove = iconButton('bin', 'Remove ' + activity.text, () => confirmRemoval(activity));
+    const edit = iconButton('pencil', 'Edit ' + activity.text, () => showActivityForm(activity, draft));
+    const remove = iconButton('bin', 'Remove ' + activity.text, () => confirmRemoval(activity, draft));
     row.append(element('span', 'activity-name', activity.text), element('span', 'unit', activity.unit), edit, remove);
     list.append(row);
     if (focusId === activity.id) focus = focusRemove ? remove : edit;
@@ -163,7 +163,7 @@ function showManager(focusId, focusRemove = false) {
   setDialog('Activities', list, focus);
 }
 
-function showActivityForm(existing) {
+function showActivityForm(existing, draft) {
   const name = element('input');
   name.required = true;
   name.maxLength = 60;
@@ -188,7 +188,8 @@ function showActivityForm(existing) {
     const saveActivity = existing ? editActivity : createActivity;
     persist((state) => saveActivity(state, activity), message, {
       after: (sameDialog) => {
-        if (dialog.open && sameDialog) showManager(existing?.id);
+        if (!existing && draft) draft.preselectedActivityId = activity.id;
+        if (dialog.open && sameDialog) showManager({ focusId: existing?.id, draft });
         renderDay();
         announcement.textContent = activity.text + (existing ? ' updated.' : ' added.');
       },
@@ -204,22 +205,22 @@ function showActivityForm(existing) {
   kind.addEventListener('change', updateUnit);
   updateUnit();
   const actions = element('div', 'actions');
-  actions.append(button('Cancel', 'text-button', () => showManager(existing?.id)), submitButton('Save'));
+  actions.append(button('Cancel', 'text-button', () => showManager({ focusId: existing?.id, draft })), submitButton('Save'));
   form.append(labelled('Name', name), labelled('Measure in', kind), custom, error, actions);
   setDialog(existing ? 'Edit activity' : 'New activity', form, name);
 }
 
-function confirmRemoval(activity) {
+function confirmRemoval(activity, draft) {
   const { form, error } = makeForm((message) => {
     persist((state) => removeActivity(state, activity.id), message, {
       after: (sameDialog) => {
-        if (dialog.open && sameDialog) showManager();
+        if (dialog.open && sameDialog) showManager({ draft });
         renderDay();
         announcement.textContent = activity.text + ' removed.';
       },
     });
   });
-  const cancel = button('Cancel', 'text-button', () => showManager(activity.id, true));
+  const cancel = button('Cancel', 'text-button', () => showManager({ focusId: activity.id, focusRemove: true, draft }));
   const actions = element('div', 'actions');
   const remove = submitButton('Remove');
   remove.classList.add('danger');
@@ -257,7 +258,7 @@ function finishLog(index, activity, amount, message) {
     pulse: amount === undefined ? undefined : index,
     after: (sameDialog) => {
       if (sameDialog && dialog.open) closeDialog();
-      addingLog = false;
+      logDraft = null;
       renderDay();
       if (selected === index && !dialog.open) {
         const row = [...dayContent.querySelectorAll('[data-activity]')].find((item) => item.dataset.activity === activity.id);
@@ -268,7 +269,7 @@ function finishLog(index, activity, amount, message) {
   });
 }
 
-function addLogForm(index, values) {
+function addLogForm(index, values, draft) {
   const available = journal.activities.filter(({ id }) => !values[id]);
   if (!available.length) {
     if (!journal.activities.length) return button('Create an activity', 'text-button create-shortcut', () => showActivityForm());
@@ -278,13 +279,14 @@ function addLogForm(index, values) {
     link.setAttribute('aria-haspopup', 'dialog');
     link.addEventListener('click', (event) => {
       event.preventDefault();
-      showManager();
+      showManager({ draft });
     });
     note.append(link);
     return note;
   }
 
   const picker = makeSelect(available.map(({ id, text }) => [id, text]), 'Choose an activity');
+  if (available.some(({ id }) => id === draft.preselectedActivityId)) picker.value = draft.preselectedActivityId;
   const amount = amountField();
   const { label, suffix } = valueLabel(amount);
   const { form, error } = makeForm((message) => {
@@ -294,7 +296,7 @@ function addLogForm(index, values) {
   const actions = element('div', 'actions');
   const save = submitButton('Save');
   actions.append(button('Cancel', 'text-button', () => {
-    addingLog = false;
+    logDraft = null;
     renderDay();
     dayContent.querySelector('.add-button')?.focus({ preventScroll: true });
   }), save);
@@ -335,15 +337,15 @@ function renderDay() {
   if (index <= todayIndex()) {
     const addRow = element('div', 'add-row');
     const add = plusButton('Log activity', () => {
-      addingLog = !addingLog;
+      logDraft = logDraft ? null : { preselectedActivityId: null };
       renderDay();
-      const focus = addingLog ? dayContent.querySelector('select, .create-shortcut, .manage-shortcut') : null;
+      const focus = logDraft ? dayContent.querySelector('select, .create-shortcut, .manage-shortcut') : null;
       (focus ?? dayContent.querySelector('.add-button'))?.focus({ preventScroll: true });
     });
-    add.setAttribute('aria-expanded', String(addingLog));
+    add.setAttribute('aria-expanded', String(Boolean(logDraft)));
     addRow.append(add);
     content.append(addRow);
-    if (addingLog) content.append(addLogForm(index, values));
+    if (logDraft) content.append(addLogForm(index, values, logDraft));
   } else {
     content.append(element('p', 'inline-note', 'Upcoming'));
   }
@@ -363,7 +365,7 @@ const timeline = createTimeline({
   drawer, dialog, drawerGlow: byId('drawer-glow'),
   onSelect(index) {
     if (index !== selected) {
-      addingLog = false;
+      logDraft = null;
       if (dialog.open && dialog.classList.contains('log-dialog')) closeDialog();
     }
     selected = index;

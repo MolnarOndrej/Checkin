@@ -242,6 +242,72 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
   assert.deepEqual(finalState.activities, ['Stretch']);
 });
 
+test('the logging shortcut preselects the last activity created through it', async (t) => {
+  const page = await openCheckin(t);
+  await page.setViewport(390, 844);
+  await page.setReducedMotion('reduce');
+  await settle(page);
+  await page.evaluate(() => {
+    const date = document.querySelector('[aria-current="date"]').dataset.date;
+    localStorage.setItem('checkin.timeline.v1', JSON.stringify({
+      activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min', goals: [] }],
+      days: { [date]: { values: { walk: { amount: 30, effort: .29 } } } },
+    }));
+  });
+  await page.reload();
+  await settle(page);
+
+  const preselection = await page.evaluate(async () => {
+    const find = (selector) => document.querySelector(selector);
+    const selectedActivity = () => find('#day-content select').selectedOptions[0].text;
+    async function addActivity(name, unit) {
+      find('[aria-label="New activity"]').click();
+      find('dialog input').value = name;
+      if (unit) {
+        const measure = find('dialog select');
+        measure.value = 'custom';
+        measure.dispatchEvent(new Event('change'));
+        find('dialog input[placeholder]').value = unit;
+      }
+      find('dialog [type="submit"]').click();
+      for (let attempt = 0; !find('[aria-label="Edit ' + name + '"]'); attempt++) {
+        if (attempt === 90) throw new Error('Activity did not save');
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+    }
+    find('[aria-current="date"]').click();
+    find('[aria-label="Log activity"]').click();
+    find('#day-content .manage-shortcut').click();
+    await addActivity('Stretch');
+    const first = selectedActivity();
+    await addActivity('Read', 'pages');
+    find('#close-dialog').click();
+    const last = selectedActivity();
+    const amount = find('#day-content input');
+    const unit = find('#day-content .amount-group .unit').innerText;
+    const amountVisible = amount.getClientRects().length > 0 && !amount.disabled;
+    amount.value = '12';
+    find('#day-content [type="submit"]').click();
+    for (let attempt = 0; find('#day-content form'); attempt++) {
+      if (attempt === 90) throw new Error('Log did not save');
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    find('[aria-label="Log activity"]').click();
+    return { first, last, unit, amountVisible, next: selectedActivity() };
+  });
+  assert.deepEqual(preselection, {
+    first: 'Stretch', last: 'Read', unit: 'pages', amountVisible: true, next: 'Choose an activity',
+  });
+
+  await page.reload();
+  await settle(page);
+  const logs = await page.evaluate(() => {
+    document.querySelector('[aria-current="date"]').click();
+    return [...document.querySelectorAll('.log-row')].map((row) => row.innerText.trim());
+  });
+  assert.deepEqual(logs, ['Walk\n30 min', 'Read\n12 pages']);
+});
+
 test('an activity edit keeps old logs and the open log editor leaves room to swipe on mobile', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(390, 844);
