@@ -28,7 +28,6 @@
   background: var(--background);
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--secondary) 27%, var(--background)) var(--background);
-  transition: --accent 550ms ease, --secondary 550ms ease, --spark 550ms ease;
 }
 
 *, *::before, *::after {
@@ -146,13 +145,17 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 
 main {
+  --stage-inset: clamp(60px, 9svh, 100px);
+  --timeline-height: clamp(330px, 72svh, 760px);
+  --drawer-overlap: calc(var(--timeline-height) * .25);
+  position: relative;
   min-inline-size: 0;
-  padding-block: clamp(72px, 13svh, 130px) 22px;
+  padding-block: var(--stage-inset) 22px;
 }
 
 .timeline {
   position: relative;
-  block-size: clamp(280px, 59svh, 640px);
+  block-size: var(--timeline-height);
   overflow: clip;
   cursor: grab;
   touch-action: pan-y pinch-zoom;
@@ -175,7 +178,7 @@ main {
   pointer-events: none;
   background: radial-gradient(circle, color-mix(in srgb, var(--secondary) 26%, transparent) .65px, transparent 1px)
     center center / 24px 24px;
-  mask-image: radial-gradient(ellipse 55% 43% at 50% 52%, black 12%, transparent 96%);
+  mask-image: radial-gradient(ellipse 64% 52% at 50% 50%, black 12%, transparent 96%);
   opacity: .57;
 }
 
@@ -183,7 +186,9 @@ main {
   inline-size: 100%;
   block-size: 100%;
   pointer-events: none;
-  mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent),
+    linear-gradient(to bottom, transparent, #000 5%, #000 96%, transparent);
+  mask-composite: intersect;
 }
 
 .days {
@@ -206,7 +211,7 @@ main {
   border: 0;
   border-radius: 12px;
   pointer-events: auto;
-  font-size: clamp(.64rem, 1.1vw, .77rem);
+  font-size: clamp(.68rem, 1.1vw, .82rem);
   font-weight: 500;
   letter-spacing: -.018em;
   line-height: 1.3;
@@ -271,8 +276,9 @@ main {
 
 .day-drawer {
   position: relative;
+  z-index: 1;
   inline-size: min(calc(100% - 32px), 480px);
-  margin: clamp(-16px, -1.2svh, -5px) auto 0;
+  margin: calc(-1 * var(--drawer-overlap)) auto 0;
   padding-block-end: max(12px, env(safe-area-inset-bottom));
   animation: appear 240ms ease both;
 }
@@ -378,11 +384,17 @@ main {
   padding-inline-end: 3px;
 }
 
-.activity-row .icon-button:hover {
+.activity-row .icon-button {
+  margin-inline-start: -5px;
+}
+
+.activity-row button:has(use[href="#icon-bin"]):hover {
   color: var(--danger);
 }
 
 dialog {
+  position: fixed;
+  inset: 0;
   inline-size: min(calc(100% - 28px), 420px);
   max-block-size: calc(100dvh - 28px);
   margin: auto;
@@ -400,6 +412,15 @@ dialog {
 
 dialog[open] {
   animation: appear 200ms ease both;
+}
+
+dialog.log-dialog {
+  position: absolute;
+  inset: calc(var(--stage-inset) + var(--timeline-height) - var(--drawer-overlap) + 44px) 0 auto;
+  z-index: 2;
+  margin-block: 0;
+  box-shadow: 0 14px 55px #05050aa8;
+  touch-action: pan-y;
 }
 
 dialog::backdrop {
@@ -441,13 +462,9 @@ dialog::backdrop {
   min-inline-size: 0;
 }
 
-.field-label, .edit-date {
+.field-label {
   color: var(--muted);
   font-size: .82rem;
-}
-
-.edit-date {
-  margin: -9px 0 0;
 }
 
 input, select {
@@ -544,7 +561,10 @@ input, select {
 }
 
 @media (max-width: 600px) {
-  .timeline { block-size: clamp(260px, 56svh, 460px); }
+  main {
+    --stage-inset: clamp(56px, 8svh, 78px);
+    --timeline-height: clamp(310px, 67svh, 565px);
+  }
   .manage-button { inline-size: 44px; block-size: 44px; }
   .day-drawer { inline-size: calc(100% - 26px); }
 }

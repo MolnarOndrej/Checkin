@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { goalProgress, isGoal } from '../dist/measurements.js';
 import {
-  createActivity, dateForIndex, indexForKey, keyForIndex, removeActivity, removeValue, saveValue, shortLabel, timelineScores,
+  createActivity, dateForIndex, editActivity, indexForKey, keyForIndex, removeActivity, removeValue, saveValue, shortLabel, timelineScores,
 } from '../dist/timeline-data.js';
 
 const today = indexForKey('2026-12-31');
@@ -82,4 +82,27 @@ test('dormant goals can count values belonging to a stable activity ID and date 
   item.goals.push(goal);
   assert.equal(isGoal(goal), true);
   assert.equal(goalProgress(journal, item, goal, new Date(2026, 11, 31, 12)), 40);
+});
+
+test('changing an activity preserves saved units, positions and goals across a legacy value and a new log', () => {
+  const journal = { activities: [], days: {} };
+  const item = activity(journal, 1, 'minutes');
+  const key = keyForIndex(today - 1);
+  item.goals.push({ id: 'goal-id', metric: 'minutes', amount: 50, repeat: 'range', start: key, end: keyForIndex(today) });
+  saveValue(journal, key, item.id, 25);
+  const saved = journal.days[key].values[item.id];
+  delete saved.unit;
+  delete saved.type;
+  const before = timelineScores(journal)(today - 1, today);
+  const other = activity(journal, 2);
+  assert.throws(() => editActivity(journal, { ...item, text: other.text }), /already exists/);
+  editActivity(journal, { id: item.id, text: 'New name', type: 'custom', unit: 'km' });
+  assert.deepEqual(timelineScores(journal)(today - 1, today), before);
+  assert.equal(journal.activities[0].text, 'New name');
+  assert.equal(saved.unit, 'min');
+  saveValue(journal, key, item.id, 30);
+  saveValue(journal, keyForIndex(today), item.id, 3);
+  assert.equal(journal.days[key].values[item.id].unit, 'min');
+  assert.equal(journal.days[keyForIndex(today)].values[item.id].unit, 'km');
+  assert.equal(goalProgress(journal, item, item.goals[0], new Date(2026, 11, 31, 12)), 30);
 });

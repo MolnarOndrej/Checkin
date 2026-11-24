@@ -35,12 +35,32 @@ function effortFor(amount, type) {
   return effort / (effort + 1.7);
 }
 
-export function createActivity(journal, activity) {
+function validateActivity(journal, activity) {
   if (!activity.text.trim() || !isUnit(activity.unit)) throw new Error('Enter a name and a valid unit.');
-  if (journal.activities.some((existing) => goalKey(existing) === goalKey(activity))) {
+  if (journal.activities.some((existing) => existing.id !== activity.id && goalKey(existing) === goalKey(activity))) {
     throw new Error('An activity with this name already exists.');
   }
+}
+
+export function createActivity(journal, activity) {
+  validateActivity(journal, activity);
   journal.activities.push(activity);
+}
+
+export function editActivity(journal, details) {
+  const activity = journal.activities.find(({ id }) => id === details.id);
+  if (!activity) throw new Error('This activity was removed.');
+  validateActivity(journal, details);
+
+  if (activity.unit !== details.unit || activity.type !== details.type) {
+    for (const day of Object.values(journal.days)) {
+      const value = day.values[activity.id];
+      if (!value) continue;
+      value.type ??= activity.type;
+      value.unit ??= activity.unit;
+    }
+  }
+  Object.assign(activity, { text: details.text, type: details.type, unit: details.unit });
 }
 
 export function saveValue(journal, key, activityId, amount) {
@@ -48,7 +68,8 @@ export function saveValue(journal, key, activityId, amount) {
   if (!activity) throw new Error('This activity was removed. Close the editor to refresh the list.');
   if (!isFactor(amount)) throw new Error('Enter a value greater than zero.');
   const day = journal.days[key] ??= { values: {} };
-  day.values[activityId] = { amount, effort: effortFor(amount, activity.type) };
+  const { type = activity.type, unit = activity.unit } = day.values[activityId] ?? {};
+  day.values[activityId] = { amount, type, unit, effort: effortFor(amount, type) };
 }
 
 export function removeValue(journal, key, activityId) {

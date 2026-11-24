@@ -1,5 +1,5 @@
 import { dateForIndex, fullLabel, indexForKey, keyForIndex, shortLabel, todayIndex } from './timeline-data.js';
-import { paintGraph, paletteFor, waveFor } from './graph.js';
+import { blendPalettes, driftPalette, paintGraph, paletteFor, randomWave } from './graph.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const emptyScore = { height: 0, power: 0, count: 0 };
@@ -17,9 +17,10 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
   let changedAt = 0;
   let wave;
   let ripple;
-  let pattern = 0;
   let animation = 0;
   let previousFrame = 0;
+  let colorTimer;
+  let layoutDirty = true;
   let width = 0;
   let height = 0;
   let ratio = 1;
@@ -27,10 +28,19 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
   let gesture;
   let blockClick = false;
   let wheelTimer;
-  let theme;
+  let baseTheme;
+  let fromTheme;
+  let themeBegan = 0;
+  let colors = {};
 
   function schedule() {
+    clearTimeout(colorTimer);
     if (!animation) animation = requestAnimationFrame(render);
+  }
+
+  function scheduleLayout() {
+    layoutDirty = true;
+    schedule();
   }
 
   function resize() {
@@ -40,7 +50,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
     spacing = Math.max(width < 680 ? 51 : 61, width / 21);
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(height * ratio);
-    schedule();
+    scheduleLayout();
   }
 
   function pointFor(index, baseline, progress) {
@@ -50,7 +60,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
     return {
       ...value, index, lift,
       x: width / 2 + (index - camera) * spacing,
-      y: baseline - lift * height * .46,
+      y: baseline - lift * height * .49,
     };
   }
 
@@ -125,10 +135,31 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
     }
   }
 
+  function updateColors(theme, now) {
+    const interpolated = () => {
+      const progress = clamp((now - themeBegan) / 720, 0, 1);
+      return blendPalettes(fromTheme, baseTheme, progress * progress * (3 - 2 * progress));
+    };
+    if (!baseTheme || motion.matches) {
+      baseTheme = fromTheme = theme;
+      themeBegan = now;
+    } else if (baseTheme !== theme) {
+      fromTheme = interpolated();
+      baseTheme = theme;
+      themeBegan = now;
+    }
+    const next = motion.matches ? theme : driftPalette(interpolated(), now);
+    for (const [name, value] of Object.entries(next)) {
+      if (colors[name] !== value) document.documentElement.style.setProperty('--' + name, value);
+    }
+    colors = next;
+  }
+
   function render(now) {
     animation = 0;
     if (!width || !height) return;
     const elapsed = Math.min(45, now - previousFrame);
+    const lastCamera = camera;
     previousFrame = now;
     if (motion.matches || Math.abs(target - camera) < .002) camera = target;
     else camera += (target - camera) * (1 - Math.exp(-elapsed / (gesture?.dragging ? 27 : 82)));
@@ -137,32 +168,35 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
     const first = Math.floor(camera - width / (2 * spacing)) - 2;
     const last = Math.ceil(camera + width / (2 * spacing)) + 2;
     const baseline = height * .56;
+    const pointCache = new Map();
+    const pointAt = (index) => {
+      if (!pointCache.has(index)) pointCache.set(index, pointFor(index, baseline, progress));
+      return pointCache.get(index);
+    };
     const points = [];
-    for (let index = first; index <= last; index++) points.push(pointFor(index, baseline, progress));
+    for (let index = first; index <= last; index++) points.push(pointAt(index));
     const selectedIsVisible = selected !== null && Math.abs(selected - camera) * spacing < width / 2;
-    const nextTheme = paletteFor(score(selectedIsVisible ? selected : Math.round(camera), today));
-    if (theme !== nextTheme) {
-      theme = nextTheme;
-      document.documentElement.style.setProperty('--accent', theme.accent);
-      document.documentElement.style.setProperty('--secondary', theme.secondary);
-      document.documentElement.style.setProperty('--spark', theme.spark);
-    }
-    if (wave && now - wave.started >= 3300) wave = undefined;
+    updateColors(paletteFor(score(selectedIsVisible ? selected : Math.round(camera), today)), now);
+    if (wave && now - wave.started >= wave.duration) wave = undefined;
     if (ripple && now - ripple.started >= 1050) ripple = undefined;
     paintGraph(canvas, {
-      width, height, ratio, points, colors: theme, today, selected, baseline, spacing, wave, ripple, now,
+      width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripple, now,
     });
-    updateDays(points);
-    updateYears(points);
-    backToday.hidden = Math.abs(target - today) < .55;
+    if (layoutDirty || camera !== lastCamera || heights.size) {
+      updateDays(points);
+      updateYears(points);
+      backToday.hidden = Math.abs(target - today) < .55;
+      layoutDirty = false;
+    }
     if (camera !== target || wave || ripple || (heights.size && progress < 1)) schedule();
+    else if (!motion.matches && !document.hidden) colorTimer = setTimeout(schedule, 40);
     if (progress === 1) heights.clear();
   }
 
   function select(index) {
     selected = selected === index ? null : index;
     onSelect(selected);
-    schedule();
+    scheduleLayout();
   }
 
   function closeSelected() {
@@ -170,11 +204,12 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
     selected = null;
     onSelect(selected);
     nodes.get(index)?.button.focus({ preventScroll: true });
-    schedule();
+    scheduleLayout();
   }
 
   function moveTo(index, focus = false) {
     target = index;
+    layoutDirty = true;
     if (focus && !nodes.has(index)) {
       camera = target;
       cancelAnimationFrame(animation);
@@ -255,15 +290,14 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
       if (Math.round(target) === today) moveTo(next);
       today = next;
       onSelect(selected);
-      schedule();
+      scheduleLayout();
     }
   }
 
   function traverse() {
     followToday();
     if (motion.matches || document.hidden) return;
-    wave = waveFor(pattern, camera, width / spacing, performance.now());
-    pattern = (pattern + 1) % 3;
+    wave = randomWave(camera, width / spacing, today, performance.now());
     schedule();
   }
 
@@ -272,7 +306,10 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
     if (motion.matches) wave = ripple = undefined;
     schedule();
   });
-  document.addEventListener('visibilitychange', followToday);
+  document.addEventListener('visibilitychange', () => {
+    followToday();
+    if (!document.hidden) schedule();
+  });
   new ResizeObserver(resize).observe(stage);
   resize();
   setInterval(traverse, 5000);
@@ -297,7 +334,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, onS
       }
       changedAt = now;
       score = nextScore;
-      schedule();
+      scheduleLayout();
     },
   };
 }

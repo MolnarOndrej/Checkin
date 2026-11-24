@@ -1,7 +1,7 @@
 import { formatQuantity, maxAmount } from './measurements.js';
 import { readJournal, updateJournal, watchJournal } from './journal-storage.js';
 import {
-  createActivity, dateForIndex, fullLabel, keyForIndex, removeActivity, removeValue, saveValue, timelineScores, todayIndex,
+  createActivity, dateForIndex, editActivity, fullLabel, keyForIndex, removeActivity, removeValue, saveValue, timelineScores, todayIndex,
 } from './timeline-data.js';
 import { createTimeline } from './timeline.js';
 
@@ -95,13 +95,17 @@ function plusButton(label, action) {
   return plus;
 }
 
-function setDialog(title, body, focus) {
+function setDialog(title, body, focus, logging = false) {
   dialogVersion++;
+  const modal = !logging;
+  if (dialog.open && dialog.matches(':modal') !== modal) dialog.close();
+  dialog.classList.toggle('log-dialog', logging);
   byId('dialog-title').textContent = title;
   dialogContent.replaceChildren(body);
   if (!dialog.open) {
     opener = document.activeElement;
-    dialog.showModal();
+    if (modal) dialog.showModal();
+    else dialog.show();
   }
   (focus ?? dialogContent.querySelector('button, input'))?.focus({ preventScroll: true });
 }
@@ -113,7 +117,10 @@ function closeDialog() {
 
 byId('close-dialog').addEventListener('click', closeDialog);
 dialog.addEventListener('click', (event) => {
-  if (event.target === dialog) closeDialog();
+  if (event.target === dialog && dialog.matches(':modal')) closeDialog();
+});
+dialog.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && dialog.classList.contains('log-dialog')) closeDialog();
 });
 dialog.addEventListener('close', () => {
   if (!dialog.open && opener?.isConnected && dialog.contains(document.activeElement)) {
@@ -138,24 +145,25 @@ async function persist(change, error, { pulse, after = () => {} } = {}) {
   }
 }
 
-function showManager(focusId) {
+function showManager(focusId, focusRemove = false) {
   const list = element('div', 'activity-list');
-  const add = plusButton('New activity', showActivityForm);
+  const add = plusButton('New activity', () => showActivityForm());
   const firstRow = element('div', 'add-row');
   firstRow.append(add);
   list.append(firstRow);
   let focus = add;
   for (const activity of journal.activities) {
     const row = element('div', 'activity-row');
+    const edit = iconButton('pencil', 'Edit ' + activity.text, () => showActivityForm(activity));
     const remove = iconButton('bin', 'Remove ' + activity.text, () => confirmRemoval(activity));
-    row.append(element('span', 'activity-name', activity.text), element('span', 'unit', activity.unit), remove);
+    row.append(element('span', 'activity-name', activity.text), element('span', 'unit', activity.unit), edit, remove);
     list.append(row);
-    if (focusId === activity.id) focus = remove;
+    if (focusId === activity.id) focus = focusRemove ? remove : edit;
   }
   setDialog('Activities', list, focus);
 }
 
-function showActivityForm() {
+function showActivityForm(existing) {
   const name = element('input');
   name.required = true;
   name.maxLength = 60;
@@ -165,18 +173,24 @@ function showActivityForm() {
   unit.placeholder = 'e.g. pages';
   unit.maxLength = 24;
   unit.autocomplete = 'off';
+  if (existing) {
+    name.value = existing.text;
+    kind.value = existing.type;
+    if (existing.type === 'custom') unit.value = existing.unit;
+  }
   const custom = labelled('Unit', unit);
 
   const { form, error } = makeForm((message) => {
     const activity = {
-      id: crypto.randomUUID(), text: name.value.trim(), type: kind.value,
+      id: existing?.id ?? crypto.randomUUID(), text: name.value.trim(), type: kind.value,
       unit: kind.value === 'minutes' ? 'min' : unit.value.trim(), goals: [],
     };
-    persist((state) => createActivity(state, activity), message, {
+    const saveActivity = existing ? editActivity : createActivity;
+    persist((state) => saveActivity(state, activity), message, {
       after: (sameDialog) => {
-        if (dialog.open && sameDialog) showManager();
+        if (dialog.open && sameDialog) showManager(existing?.id);
         renderDay();
-        announcement.textContent = activity.text + ' added.';
+        announcement.textContent = activity.text + (existing ? ' updated.' : ' added.');
       },
     });
   });
@@ -190,9 +204,9 @@ function showActivityForm() {
   kind.addEventListener('change', updateUnit);
   updateUnit();
   const actions = element('div', 'actions');
-  actions.append(button('Cancel', 'text-button', () => showManager()), submitButton('Save'));
+  actions.append(button('Cancel', 'text-button', () => showManager(existing?.id)), submitButton('Save'));
   form.append(labelled('Name', name), labelled('Measure in', kind), custom, error, actions);
-  setDialog('New activity', form, name);
+  setDialog(existing ? 'Edit activity' : 'New activity', form, name);
 }
 
 function confirmRemoval(activity) {
@@ -205,7 +219,7 @@ function confirmRemoval(activity) {
       },
     });
   });
-  const cancel = button('Cancel', 'text-button', () => showManager(activity.id));
+  const cancel = button('Cancel', 'text-button', () => showManager(activity.id, true));
   const actions = element('div', 'actions');
   const remove = submitButton('Remove');
   remove.classList.add('danger');
@@ -257,7 +271,7 @@ function finishLog(index, activity, amount, message) {
 function addLogForm(index, values) {
   const available = journal.activities.filter(({ id }) => !values[id]);
   if (!available.length) {
-    if (!journal.activities.length) return button('Create an activity', 'text-button create-shortcut', showActivityForm);
+    if (!journal.activities.length) return button('Create an activity', 'text-button create-shortcut', () => showActivityForm());
     return element('p', 'inline-note', 'All activities are logged for this day.');
   }
 
@@ -296,8 +310,8 @@ function editLog(index, activity, value) {
   const remove = button('Delete', 'text-button danger log-delete', () => finishLog(index, activity, undefined, error));
   const actions = element('div', 'actions');
   actions.append(remove, button('Cancel', 'text-button', closeDialog), submitButton('Save'));
-  form.append(element('p', 'edit-date', fullLabel(dateForIndex(index))), valueLabel(amount, activity.unit).label, error, actions);
-  setDialog(activity.text, form, amount);
+  form.append(valueLabel(amount, value.unit ?? activity.unit).label, error, actions);
+  setDialog(activity.text, form, amount, true);
 }
 
 function renderDay() {
@@ -329,7 +343,7 @@ function renderDay() {
     if (!value) continue;
     const row = button(undefined, 'log-row', () => editLog(index, activity, value));
     row.dataset.activity = activity.id;
-    row.append(element('span', 'activity-name', activity.text), element('span', 'log-value', formatQuantity(value.amount, activity.unit)), icon('arrow'));
+    row.append(element('span', 'activity-name', activity.text), element('span', 'log-value', formatQuantity(value.amount, value.unit ?? activity.unit)), icon('arrow'));
     content.append(row);
   }
   dayContent.replaceChildren(content);
@@ -338,7 +352,10 @@ function renderDay() {
 const timeline = createTimeline({
   stage, canvas: byId('graph'), days: byId('days'), yearLabels: byId('year-labels'), backToday: byId('back-today'),
   onSelect(index) {
-    if (index !== selected) addingLog = false;
+    if (index !== selected) {
+      addingLog = false;
+      if (dialog.open && dialog.classList.contains('log-dialog')) closeDialog();
+    }
     selected = index;
     renderDay();
   },

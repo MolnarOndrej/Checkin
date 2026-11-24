@@ -62,10 +62,11 @@ export function goalWindow(goal, date) {
 }
 
 function amountFor(activity, goal, value) {
+  const { type = activity.type, unit = activity.unit } = value;
   if (goal.metric === 'days') return 1;
-  if (goal.metric === 'minutes') return activity.type === 'minutes' ? value.amount : 0;
-  if (activity.type !== 'custom') return 0;
-  const source = unitKey(activity.unit);
+  if (goal.metric === 'minutes') return type === 'minutes' ? value.amount : 0;
+  if (type !== 'custom') return 0;
+  const source = unitKey(unit);
   const target = unitKey(goal.unit);
   if (source === target) return value.amount;
   const sourceFactor = distanceUnits.get(source);

@@ -212,7 +212,106 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
   assert.deepEqual(finalState.activities, ['Stretch']);
 });
 
-test('five-second traversals light edges between dots in both directions and then together', async (t) => {
+test('an activity edit keeps old logs and the open log editor leaves room to swipe on mobile', async (t) => {
+  const page = await openCheckin(t);
+  await page.setViewport(390, 844);
+  await page.setReducedMotion('reduce');
+  await settle(page);
+  const today = await page.evaluate(() => {
+    const date = document.querySelector('[aria-current="date"]').dataset.date;
+    localStorage.setItem('checkin.timeline.v1', JSON.stringify({
+      activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min', goals: [] }],
+      days: { [date]: { values: { walk: { amount: 30, effort: .29 } } } },
+    }));
+    return date;
+  });
+  await page.reload();
+  await settle(page);
+  const positions = await page.evaluate(async () => {
+    const find = (selector) => document.querySelector(selector);
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    find('#manage').click();
+    const edit = find('[aria-label="Edit Walk"]');
+    const order = edit.nextElementSibling.getAttribute('aria-label');
+    edit.click();
+    const title = find('#dialog-title').textContent;
+    const fields = [find('dialog input').value, find('dialog select').value];
+    find('dialog input').value = 'Morning walk';
+    find('dialog select').value = 'custom';
+    find('dialog select').dispatchEvent(new Event('change'));
+    find('dialog input[placeholder]').value = 'km';
+    find('dialog [type="submit"]').click();
+    for (let attempt = 0; !find('[aria-label="Edit Morning walk"]'); attempt++) {
+      if (attempt === 90) throw new Error('Activity edit did not save');
+      await frame();
+    }
+    find('#close-dialog').click();
+    find('[aria-current="date"]').click();
+    find('.log-row').click();
+    find('dialog input').value = '42';
+    const stage = find('#timeline').getBoundingClientRect();
+    const drawer = find('#day-drawer').getBoundingClientRect();
+    const editor = find('dialog').getBoundingClientRect();
+    return {
+      order, title, fields, stageHeight: stage.height, overlap: stage.bottom - drawer.top,
+      stageSwipeY: Math.round(stage.top + stage.height * .44), editorSwipeY: Math.round(editor.top + 18),
+      modeless: !find('dialog').matches(':modal'), unit: find('dialog .unit').textContent,
+    };
+  });
+  assert.equal(positions.order, 'Remove Walk');
+  assert.equal(positions.title, 'Edit activity');
+  assert.deepEqual(positions.fields, ['Walk', 'minutes']);
+  assert.ok(positions.stageHeight > 520 && positions.overlap >= 110);
+  assert.equal(positions.modeless, true);
+  assert.equal(positions.unit, 'min');
+
+  await page.swipe(320, 65, positions.stageSwipeY);
+  await settle(page);
+  const centerAfterSwipe = await page.evaluate(() => document.querySelector('.day[tabindex="0"]').dataset.date);
+  assert.notEqual(centerAfterSwipe, today);
+  await page.swipe(280, 105, positions.editorSwipeY);
+  await settle(page);
+  const afterEditorSwipe = await page.evaluate(() => ({
+    centered: document.querySelector('.day[tabindex="0"]').dataset.date,
+    draft: document.querySelector('dialog[open] input').value,
+  }));
+  assert.deepEqual(afterEditorSwipe, { centered: centerAfterSwipe, draft: '42' });
+
+  await page.swipe(6, 320, positions.editorSwipeY);
+  await settle(page);
+  const nextSwipe = await page.evaluate(() => ({
+    centered: document.querySelector('.day[tabindex="0"]').dataset.date,
+    draft: document.querySelector('dialog[open] input').value,
+  }));
+  assert.notEqual(nextSwipe.centered, centerAfterSwipe);
+  assert.equal(nextSwipe.draft, '42');
+
+  await page.evaluate(async () => {
+    document.querySelector('dialog [type="submit"]').click();
+    for (let attempt = 0; document.querySelector('dialog').open; attempt++) {
+      if (attempt === 90) throw new Error('Log edit did not save');
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+  });
+  await page.reload();
+  await settle(page);
+  const reopened = await page.evaluate(() => {
+    const find = (selector) => document.querySelector(selector);
+    const today = find('[aria-current="date"]');
+    today.click();
+    const log = find('.log-row').innerText.trim();
+    today.previousElementSibling.click();
+    find('[aria-label="Log activity"]').click();
+    const picker = find('#day-content select');
+    picker.selectedIndex = 1;
+    picker.dispatchEvent(new Event('change'));
+    return { log, newUnit: find('#day-content .unit').textContent };
+  });
+  assert.equal(reopened.log, 'Morning walk\n42 min');
+  assert.equal(reopened.newUnit, 'km');
+});
+
+test('random traversals light edges, leave the curve, and pause over nodes', async (t) => {
   const page = await openCheckin(t, () => {
     let time = 1000;
     const frame = requestAnimationFrame;
@@ -221,11 +320,32 @@ test('five-second traversals light edges between dots in both directions and the
     const interval = window.setInterval;
     window.setInterval = (callback, delay) => {
       if (delay !== 5000) return interval(callback, delay);
-      window.traverse = callback;
+      window.traverse = (kind) => {
+        const random = Math.random;
+        Math.random = () => (kind + .2) / 8;
+        try {
+          callback();
+        } finally {
+          Math.random = random;
+        }
+      };
     };
     window.advanceCheckin = (duration) => { time += duration; };
   });
   await settle(page);
+  const colorSteps = await page.evaluate(async () => {
+    const accent = () => document.documentElement.style.getPropertyValue('--accent');
+    const result = [accent()];
+    for (const step of [120, 3000, 3000]) {
+      window.advanceCheckin(step);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      result.push(accent());
+    }
+    return result.map((color) => parseInt(color.slice(3, 5), 16));
+  });
+  assert.ok(Math.abs(colorSteps[1] - colorSteps[0]) <= 3);
+  assert.ok(colorSteps[1] > colorSteps[2] && colorSteps[2] > colorSteps[3]);
+
   const alpha = await page.evaluate(async () => {
     const canvas = document.querySelector('#graph');
     const context = canvas.getContext('2d');
@@ -238,7 +358,7 @@ test('five-second traversals light edges between dots in both directions and the
     const sample = () => positions.map((x) => context.getImageData(Math.round(x), Math.floor(canvas.clientHeight * .56), 1, 1).data[3]);
     const results = [sample()];
     for (let index = 0; index < 3; index++) {
-      window.traverse();
+      window.traverse(index);
       window.advanceCheckin(3300 * progress);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       results.push(sample());
@@ -252,6 +372,43 @@ test('five-second traversals light edges between dots in both directions and the
   assert.ok(alpha[2][1] > alpha[0][1] + 40);
   assert.ok(alpha[3][0] > alpha[0][0] + 40);
   assert.ok(alpha[3][1] > alpha[0][1] + 40);
+
+  const playful = await page.evaluate(async () => {
+    const canvas = document.querySelector('#graph');
+    const context = canvas.getContext('2d');
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const height = canvas.clientHeight;
+    const spacing = canvas.clientWidth / 21;
+    const baseline = height * .56;
+    const reach = 19.5;
+    const progressAt = (offset) => (offset / reach + 1) / 2;
+    const sample = (offset, y) => {
+      const x = Math.round(canvas.clientWidth / 2 + offset * spacing);
+      const data = context.getImageData(x - 2, Math.round(y) - 2, 5, 5).data;
+      return Math.max(...data.filter((_, index) => index % 4 === 3));
+    };
+    async function play(kind, duration, progress, points) {
+      window.traverse(kind);
+      window.advanceCheckin(duration * progress);
+      await frame();
+      const visible = points.map(([offset, y]) => sample(offset, y));
+      window.advanceCheckin(5000 - duration * progress);
+      return visible;
+    }
+    const fall = .62;
+    return {
+      below: await play(3, 3850, progressAt(-2.5), [[-2.5, baseline + height * .31]]),
+      above: await play(3, 3850, progressAt(2.5), [[2.5, baseline - height * .31]]),
+      launch: await play(4, 3450, .34 * fall, [[-.6 * Math.sin(Math.PI * fall), height * (-.14 + .7 * fall ** 1.24)]]),
+      pause: await play(5, 4100, .512, [-1, 0, 1].map((offset) => [offset, baseline - 18])),
+      hop: await play(6, 3900, progressAt(-1.5), [[-1.5, baseline + height * .27]]),
+      braid: await play(7, 3900, progressAt(-3), [[-3, baseline + height * .21], [-3, baseline - height * .29]]),
+    };
+  });
+  for (const effect of ['below', 'above', 'launch', 'hop', 'braid']) {
+    assert.ok(playful[effect].every((opacity) => opacity > 140), JSON.stringify({ effect, playful }));
+  }
+  assert.ok(playful.pause.every((opacity) => opacity > 18), JSON.stringify(playful));
 
   await page.evaluate(() => {
     const today = document.querySelector('[aria-current="date"]').dataset.date;
