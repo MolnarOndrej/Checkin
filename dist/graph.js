@@ -165,8 +165,8 @@ function pause(wave, progress, colors) {
   };
 }
 
-function landBall(wave, progress, color, yAt, height, complete) {
-  const { anchor, side, to, direction, entry } = wave;
+function landBall(wave, progress, color, yAt, height, complete, trailStart) {
+  const { anchor, side, to, entry } = wave;
   const approach = .33;
   const expanded = .49;
   const landed = .7;
@@ -178,32 +178,50 @@ function landBall(wave, progress, color, yAt, height, complete) {
   const hover = nodeY + lift;
 
   const startY = entry.y ? height * (entry.y < 0 ? -.14 : 1.14) : hover + lift * .26;
-  const flight = (time) => {
-    const arrival = 1 - (1 - clamp(time / approach, 0, 1)) ** 1.6;
-    return { day: mix(entry.day, anchor, arrival), y: mix(startY, hover, arrival) };
+  const hoverTime = expanded - approach;
+  // Hold the trail in place while the beacon hovers.
+  const travelTime = (time) => time - clamp(time - approach, 0, hoverTime);
+  const route = (time) => {
+    if (time <= approach) {
+      const arrival = 1 - (1 - time / approach) ** 1.6;
+      return { day: mix(entry.day, anchor, arrival), y: mix(startY, hover, arrival) };
+    }
+    const phase = time + hoverTime;
+    if (phase < landed) {
+      const descent = (phase - expanded) / (landed - expanded);
+      return { day: anchor, y: mix(hover, nodeY, smooth(descent)) };
+    }
+    const exit = (phase - landed) / (1 - landed);
+    const day = mix(anchor, to, exit ** 1.28);
+    return { day, y: yAt(day) };
   };
-  const ball = { day: anchor, y: hover, radius, color, strength: 1, bloomRadius: large, bloom: 0 };
-  if (progress < approach) {
-    Object.assign(ball, flight(progress));
-  } else if (progress < expanded) {
+  const position = travelTime(progress);
+  const ball = { ...route(position), radius, color, strength: 1, bloomRadius: large, bloom: 0 };
+  if (progress >= approach && progress < expanded) {
     const gathering = smooth((progress - approach) / (expanded - approach));
     ball.bloomRadius = mix(24, large, gathering);
     ball.bloom = gathering;
-  } else if (progress < landed) {
+  } else if (progress >= expanded && progress < landed) {
     const descent = (progress - expanded) / (landed - expanded);
-    ball.y = mix(hover, nodeY, smooth(descent));
     ball.bloom = 1 - smooth(clamp((descent - .26) / .74, 0, 1));
-  } else {
-    const exit = (progress - landed) / (1 - landed);
-    ball.day = mix(anchor, to, exit ** 1.28);
-    ball.y = yAt(ball.day);
-    return { ball, heads: [{ ...head(ball.day, direction, color, .88, .55 + 3.3 * exit), hideTip: true }] };
   }
-  const trailing = 1 - smooth(clamp((progress - approach) / .09, 0, 1));
-  const ribbons = complete && trailing > 0 ? [ribbon(flight, Math.min(progress, approach), {
-    color, tip: color, width: 2.6, tail: .12, quietTip: true, opacity: trailing,
-  }, true)] : [];
+  const exit = clamp((progress - landed) / (1 - landed), 0, 1);
+  const start = Math.max(travelTime(trailStart), position - mix(.12, .05, smooth(exit)));
+  const ribbons = complete ? beaconTrail(route, start, position, [approach, travelTime(landed)], color) : [];
   return { ball, ribbons };
+}
+
+function beaconTrail(route, start, end, turns, color) {
+  if (end <= start) return [];
+  // Give each leg its own gradient so the tail stays visible when the beacon doubles back.
+  const stops = [start, ...turns.filter((turn) => start < turn && turn < end), end];
+  const fadeAt = (time) => (time - start) / (end - start);
+  return stops.slice(1).map((stop, index) => {
+    const from = stops[index];
+    return ribbon(route, stop, {
+      color, tip: color, width: 2.6, tail: stop - from, quietTip: true, fade: [fadeAt(from), fadeAt(stop)],
+    }, true, from);
+  });
 }
 
 function ribbon(route, progress, options, complete, trailStart = 0) {
@@ -262,7 +280,7 @@ function traversalAt(wave, now, colors, yAt, height, { complete = true, after } 
         ],
       };
     case 'beacon-landing':
-      return landBall(wave, progress, colors.spark, yAt, height, complete);
+      return landBall(wave, progress, colors.spark, yAt, height, complete, trailStart);
     default:
       return {};
   }
@@ -415,7 +433,7 @@ function paintTrailTip(context, { x, y }, { tip, width, quietTip, opacity = 1 },
 }
 
 function paintTrail(context, pixels, style, width, height) {
-  const { color, tip, width: thickness, beads, opacity = 1 } = style;
+  const { color, tip, width: thickness, beads, fade, opacity = 1 } = style;
   if (pixels.every(({ x }) => x < -64) || pixels.every(({ x }) => x > width + 64)) return;
   const first = pixels[0];
   const last = pixels.at(-1);
@@ -433,10 +451,11 @@ function paintTrail(context, pixels, style, width, height) {
   path.lineTo(last.x, last.y);
   const gradient = (lightness) => {
     const light = context.createLinearGradient(first.x, first.y, last.x, last.y);
-    light.addColorStop(0, tint(color, 0));
-    light.addColorStop(.48, tint(color, opacity * lightness * .39));
-    light.addColorStop(.88, tint(color, opacity * lightness * .85));
-    light.addColorStop(1, tint(tip, opacity * lightness));
+    const intensity = (position, fallback) => opacity * lightness * (fade ? mix(...fade, position) ** 1.35 : fallback);
+    light.addColorStop(0, tint(color, intensity(0, 0)));
+    light.addColorStop(.48, tint(color, intensity(.48, .39)));
+    light.addColorStop(.88, tint(color, intensity(.88, .85)));
+    light.addColorStop(1, tint(tip, intensity(1, 1)));
     return light;
   };
   stroke(context, path, gradient(.035), 42);
@@ -760,7 +779,7 @@ export function paintGraph(canvas, frame) {
   for (const ribbon of ribbons) paintRibbon(context, ribbon, worldToX, width, height);
   drawPoints(context, points, [...heads, ...contacts], colors, today, selected, width, ink);
   for (const head of heads) {
-    if (!head.hideTip && head.strength > .025) waveTip(context, yAt, head, worldToX, width);
+    if (head.strength > .025) waveTip(context, yAt, head, worldToX, width);
   }
   if (onGraph.ball) paintBall(context, onGraph.ball, worldToX, width, height);
 

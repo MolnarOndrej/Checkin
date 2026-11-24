@@ -681,28 +681,46 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       await frame();
     }
     window.traverse(8, [.99, .65]);
-    const arrival = 1 - (1 - .18 / .33) ** 1.6;
     const entryX = canvas.clientWidth * (.5 + 19.5 / 21);
     const entryY = -.14 * height;
+    const alongFlight = (progress) => {
+      const position = 1 - (1 - progress / .33) ** 1.6;
+      return sample(entryX + (x - entryX) * position, entryY + (hover - entryY) * position);
+    };
+    const trailContrast = (fraction) => {
+      const y = hover + (nodeY - hover) * fraction;
+      return sample(x, y) - sample(x + 12, y);
+    };
     await go(.18);
-    const incoming = sample(entryX + (x - entryX) * arrival, entryY + (hover - entryY) * arrival);
-    const tailPosition = 1 - (1 - .13 / .33) ** 1.6;
-    const trail = sample(entryX + (x - entryX) * tailPosition, entryY + (hover - entryY) * tailPosition);
+    const incoming = alongFlight(.18);
+    const trail = alongFlight(.13);
     await go(.34);
     const small = sample(x + size * .72, hover);
     const hovering = sample(x, hover);
     await go(.49);
     const expanded = sample(x + size * .72, hover);
+    const hoverTrail = alongFlight(.26);
     await go(.595);
     const dropping = sample(x, (hover + nodeY) / 2);
     const descendingHalo = sample(x + size * .72, (hover + nodeY) / 2);
+    const descendingTrail = trailContrast(.23);
+    await go(.715);
+    const landingTrail = trailContrast(.74);
     await go(.82);
     const exitOffset = -1 + 20.5 * (.12 / .3) ** 1.28;
     const leaving = sample(canvas.clientWidth * (.5 + exitOffset / 21), height * .56);
     await go(1.2);
-    return { incoming, trail, small, hovering, expanded, dropping, descendingHalo, leaving };
+    progress = 0;
+    window.traverse(8, [.99, hover < nodeY ? .44 : .31, .45]);
+    await go(.56);
+    const reversingTrail = trailContrast(.12);
+    await go(1.2);
+    return { incoming, trail, small, hovering, expanded, hoverTrail, dropping, descendingHalo, descendingTrail, landingTrail, leaving, reversingTrail };
   });
   assert.ok(landing.trail > 35, JSON.stringify(landing));
+  for (const phase of ['hoverTrail', 'descendingTrail', 'landingTrail', 'reversingTrail']) {
+    assert.ok(landing[phase] > 30, JSON.stringify(landing));
+  }
   assert.ok(landing.expanded > landing.small + 35, JSON.stringify(landing));
   assert.ok(landing.descendingHalo > landing.small + 20, JSON.stringify(landing));
   for (const phase of ['incoming', 'hovering', 'dropping', 'leaving']) {
