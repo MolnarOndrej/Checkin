@@ -1,5 +1,6 @@
 import { formatQuantity, maxAmount } from './measurements.js';
 import { readJournal, updateJournal, watchJournal } from './journal-storage.js';
+import { playSubmitSound, unlockSubmitAudio } from './submit-sound.js';
 import {
   createActivity, dateForIndex, editActivity, fullLabel, keyForIndex, removeActivity, removeValue, saveValue, timelineScores, todayIndex,
 } from './timeline-data.js';
@@ -140,14 +141,17 @@ dialog.addEventListener('close', () => {
   }
 });
 
-async function persist(change, error, { pulse, after = () => {} } = {}) {
+async function persist(change, error, { pulse, sound = false, after = () => {} } = {}) {
   if (saving) return;
   saving = true;
   const originatingDialog = dialogVersion;
   error.hidden = true;
+  if (sound) unlockSubmitAudio();
   try {
     journal = await updateJournal(change);
-    timeline.setScores(timelineScores(journal), pulse);
+    timeline.setScores(timelineScores(journal));
+    if (sound) void playSubmitSound().then((progressAt) => timeline.pulse(pulse, progressAt));
+    else if (pulse !== undefined) timeline.pulse(pulse);
     after(originatingDialog === dialogVersion);
   } catch (failure) {
     error.textContent = failure.message || 'Could not save. Try again.';
@@ -269,13 +273,14 @@ function valueLabel(amount, unit) {
   return { label, suffix };
 }
 
-function finishLog(index, activity, amount, message) {
+function finishLog(index, activity, amount, message, { added = false } = {}) {
   const date = keyForIndex(index);
   const change = amount === undefined
     ? (state) => removeValue(state, date, activity.id)
     : (state) => saveValue(state, date, activity.id, amount);
   persist(change, message, {
     pulse: amount === undefined ? undefined : index,
+    sound: added,
     after: (sameDialog) => {
       if (sameDialog && dialog.open) closeDialog();
       if (selected === index) logDraft = undefined;
@@ -301,7 +306,7 @@ function addLogForm(index, values, draft) {
   const { label, suffix } = valueLabel(amount);
   const { form, error } = makeForm((message) => {
     const activity = available.find(({ id }) => id === picker.value);
-    finishLog(index, activity, amount.valueAsNumber, message);
+    finishLog(index, activity, amount.valueAsNumber, message, { added: true });
   });
   const actions = element('div', 'actions');
   const save = submitButton('Save');

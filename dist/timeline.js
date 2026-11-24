@@ -3,6 +3,7 @@ import { blendPalettes, driftPalette, paintGraph, paletteFor, randomWave } from 
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const emptyScore = { height: 0, power: 0, count: 0 };
+const silentRippleDuration = 1050;
 
 export function createTimeline({ stage, canvas, days, yearLabels, backToday, drawer, dialog, drawerGlow, onSelect }) {
   const surface = stage.parentElement;
@@ -17,7 +18,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   let heights = new Map();
   let changedAt = 0;
   let wave;
-  let ripple;
+  let ripples = [];
   let animation = 0;
   let previousFrame = 0;
   let colorTimer;
@@ -179,11 +180,14 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     const selectedIsVisible = selected !== null && Math.abs(selected - camera) * spacing < width / 2;
     updateColors(paletteFor(score(selectedIsVisible ? selected : Math.round(camera), today)), now);
     if (wave && now >= wave.ends) wave = undefined;
-    if (ripple && now - ripple.started >= 1050) ripple = undefined;
+    ripples = ripples.filter((ripple) => {
+      ripple.progress = Math.max(0, ripple.progressAt(now));
+      return ripple.progress < 1;
+    });
     const panel = wave?.panel?.getBoundingClientRect();
     const visit = panel?.height ? { panel, stage: stage.getBoundingClientRect() } : null;
     paintGraph(canvas, {
-      width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripple, now, visit, drawerGlow,
+      width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripples, now, visit, drawerGlow,
     });
     if (layoutDirty || camera !== lastCamera || heights.size) {
       updateDays(points);
@@ -191,7 +195,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
       backToday.hidden = Math.abs(target - today) < .55;
       layoutDirty = false;
     }
-    if (camera !== target || wave || ripple || (heights.size && progress < 1)) schedule();
+    if (camera !== target || wave || ripples.length || (heights.size && progress < 1)) schedule();
     else if (!motion.matches && !document.hidden) colorTimer = setTimeout(schedule, 40);
     if (progress === 1) heights.clear();
   }
@@ -322,7 +326,10 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
 
   backToday.addEventListener('click', () => moveTo(today, true));
   motion.addEventListener('change', () => {
-    if (motion.matches) wave = ripple = undefined;
+    if (motion.matches) {
+      wave = undefined;
+      ripples = [];
+    }
     schedule();
   });
   document.addEventListener('visibilitychange', () => {
@@ -335,7 +342,13 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
 
   return {
     closeSelected,
-    setScores(nextScore, pulseIndex) {
+    pulse(index, progressAt) {
+      if (motion.matches) return;
+      const started = performance.now();
+      ripples.push({ index, progressAt: progressAt ?? ((now) => (now - started) / silentRippleDuration) });
+      schedule();
+    },
+    setScores(nextScore) {
       const now = performance.now();
       const previous = score;
       const progress = motion.matches ? 1 : 1 - (1 - clamp((now - changedAt) / 440, 0, 1)) ** 3;
@@ -349,7 +362,6 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
             heights.set(index, start + (old - start) * progress);
           }
         }
-        if (pulseIndex !== undefined) ripple = { index: pulseIndex, started: now };
       }
       changedAt = now;
       score = nextScore;

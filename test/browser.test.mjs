@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { openBrowser, startProcess } from './browser.mjs';
 
-async function openCheckin(t, beforeLoad) {
+async function openCheckin(t, ...beforeLoad) {
   const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
     env: { ...process.env, PORT: '0' },
   }, /Checkin is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
@@ -11,7 +11,7 @@ async function openCheckin(t, beforeLoad) {
   const url = await server.ready;
   assert.notEqual(new URL(url).port, '4173');
   const page = await openBrowser(t);
-  if (beforeLoad) await page.beforeLoad(beforeLoad);
+  for (const action of beforeLoad) await page.beforeLoad(action);
   await page.setViewport(1440, 900);
   await page.navigate(url);
   return page;
@@ -623,6 +623,153 @@ function controlTimelineEffects() {
   };
   window.advanceCheckin = (duration) => { time += duration; };
 }
+
+test('new logs play a random sound and the save ripple follows its playback clock', async (t) => {
+  const page = await openCheckin(t, controlTimelineEffects, () => {
+    const activities = ['Reading', 'Walking', 'Writing'].map((text) => ({
+      id: text, text, type: 'minutes', unit: 'min', goals: [],
+    }));
+    if (!localStorage.getItem('checkin.timeline.v1')) {
+      localStorage.setItem('checkin.timeline.v1', JSON.stringify({ activities, days: {} }));
+    }
+
+    const fetchAsset = window.fetch;
+    const decoder = new OfflineAudioContext(1, 1, 44100);
+    window.soundRequests = [];
+    window.playedSounds = [];
+    window.audioTime = 0;
+    window.fetch = (path) => {
+      if (path.startsWith('/submitsounds/')) window.soundRequests.push(path);
+      return fetchAsset(path);
+    };
+    window.AudioContext = class {
+      state = 'suspended';
+      destination = {};
+
+      get currentTime() { return window.audioTime; }
+
+      async resume() { this.state = 'running'; }
+
+      async decodeAudioData(bytes) {
+        const buffer = await decoder.decodeAudioData(bytes);
+        // Exercise the short-clip path with a two-second excerpt of the decoded asset.
+        if (!window.shortClip) return buffer;
+        const excerpt = decoder.createBuffer(1, decoder.sampleRate * 2, decoder.sampleRate);
+        excerpt.copyToChannel(buffer.getChannelData(0).subarray(0, excerpt.length), 0);
+        return excerpt;
+      }
+
+      createBufferSource() {
+        let volume;
+        return {
+          connect(node) {
+            volume = node;
+            return node;
+          },
+          start(started, offset, duration) {
+            window.playedSounds.push({ started, offset, duration, original: this.buffer.duration, gain: volume.events });
+          },
+        };
+      }
+
+      createGain() {
+        const events = [];
+        return {
+          events,
+          connect() {},
+          gain: {
+            setValueAtTime: (value, time) => events.push(['level', value, time]),
+            linearRampToValueAtTime: (value, time) => events.push(['fade', value, time]),
+          },
+        };
+      }
+    };
+  });
+  await settle(page);
+
+  const result = await page.evaluate(async () => {
+    const find = (selector) => document.querySelector(selector);
+    const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const canvas = find('#graph');
+    const context = canvas.getContext('2d');
+    const day = find('[aria-current="date"]').previousElementSibling;
+    const files = await fetch('/submitsounds.json').then((response) => response.json());
+    const random = Math.random;
+    day.click();
+
+    function alphaAt(x, y) {
+      const pixels = context.getImageData(Math.round(x) - 1, Math.round(y) - 1, 3, 3).data;
+      return Math.max(...pixels.filter((_, index) => index % 4 === 3));
+    }
+
+    function ringAlpha() {
+      const box = day.getBoundingClientRect();
+      return alphaAt(box.left + box.width / 2, box.top - canvas.getBoundingClientRect().top + 21 - 32);
+    }
+
+    function waveAlpha() {
+      const box = day.getBoundingClientRect();
+      const neighbour = day.previousElementSibling.getBoundingClientRect();
+      const spread = 4.2 * (1 - (1 - .65) ** 2);
+      const x = box.left + box.width / 2 - (box.left - neighbour.left) * spread;
+      return alphaAt(x, neighbour.top - canvas.getBoundingClientRect().top + 21);
+    }
+
+    async function save(activity, amount, file) {
+      Math.random = () => (files.indexOf(file) + .5) / files.length;
+      if (!find('.inline-editor')) find('#day-content .add-button').click();
+      const picker = find('.inline-editor select');
+      picker.value = activity;
+      picker.dispatchEvent(new Event('change'));
+      find('.inline-editor input').value = amount;
+      const count = window.playedSounds.length + 1;
+      find('.inline-editor [type="submit"]').click();
+      for (let tries = 0; window.playedSounds.length < count; tries++) {
+        if (tries === 90) throw new Error('Submit sound did not play');
+        await frame();
+      }
+      Math.random = random;
+      window.advanceCheckin(4500);
+      await frame();
+      const sound = window.playedSounds.at(-1);
+      window.audioTime = sound.started + sound.duration / 4;
+      await frame();
+      const ring = ringAlpha();
+      window.audioTime = sound.started + sound.duration * .65;
+      await frame();
+      const wave = waveAlpha();
+      window.audioTime = sound.started + sound.duration;
+      await frame();
+      return { ring, wave, ringAfter: ringAlpha(), waveAfter: waveAlpha() };
+    }
+
+    const first = await save('Reading', 5, 'submitsounds/2.mp3');
+    await save('Walking', 8, 'submitsounds/2.mp3');
+    window.shortClip = true;
+    const short = await save('Writing', 12, 'submitsounds/10.mp3');
+    return { first, short, played: window.playedSounds, requests: window.soundRequests };
+  });
+  assert.deepEqual(result.requests, ['/submitsounds/2.mp3', '/submitsounds/2.mp3', '/submitsounds/10.mp3']);
+  for (const [index, sound] of result.played.slice(0, 2).entries()) {
+    assert.ok(sound.original > 5);
+    assert.equal(sound.offset, 0);
+    assert.equal(sound.duration, 5);
+    assert.deepEqual(sound.gain, [['level', 1, index * 5 + 4.25], ['fade', 0, index * 5 + 5]]);
+  }
+  assert.deepEqual(result.played[2], { started: 10, offset: 0, duration: 2, original: 2, gain: [] });
+  for (const ripple of [result.first, result.short]) {
+    assert.ok(ripple.ring > ripple.ringAfter + 40, JSON.stringify(ripple));
+    assert.ok(ripple.wave > ripple.waveAfter + 12, JSON.stringify(ripple));
+  }
+
+  await page.reload();
+  await settle(page);
+  const logs = await page.evaluate(() => {
+    document.querySelector('[aria-current="date"]').previousElementSibling.click();
+    return [...document.querySelectorAll('.log-row')].map((row) => row.innerText.trim());
+  });
+  assert.deepEqual(logs, ['Reading\n5 min', 'Walking\n8 min', 'Writing\n12 min']);
+});
 
 test('swiping after a traveling glow reveals it accelerating beyond both ends of its original route', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects);

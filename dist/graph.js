@@ -293,13 +293,10 @@ function traversalAt(wave, now, colors, yAt, height, { complete = true, after } 
   }
 }
 
-function rippleHeads(ripple, now, colors) {
-  if (!ripple) return [];
-  const progress = (now - ripple.started) / 1050;
-  if (progress < 0 || progress >= 1) return [];
+function rippleHeads({ index, progress }, colors) {
   const spread = 4.2 * (1 - (1 - progress) ** 2);
   return [-1, 1].map((direction) => ({
-    day: ripple.index + direction * spread,
+    day: index + direction * spread,
     direction,
     color: direction === 1 ? colors.accent : colors.spark,
     strength: (1 - progress) ** 1.4,
@@ -737,7 +734,7 @@ function paintVisit(canvas, visit, lead, progress, worldToX, yAt, ratio) {
 }
 
 export function paintGraph(canvas, frame) {
-  const { width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripple, now, visit, drawerGlow } = frame;
+  const { width, height, ratio, points, pointAt, colors, today, selected, baseline, spacing, wave, ripples = [], now, visit, drawerGlow } = frame;
   const context = canvas.getContext('2d');
   if (!context) return;
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -775,7 +772,7 @@ export function paintGraph(canvas, frame) {
     }
   }
   const ink = inkOnGraph(wave, now, waveColors, yAt, height);
-  const heads = [...(onGraph.heads ?? []), ...rippleHeads(ripple, now, colors)];
+  const heads = [...(onGraph.heads ?? []), ...ripples.flatMap((ripple) => rippleHeads(ripple, colors))];
   const ribbons = onGraph.ribbons ?? [];
   const contacts = ribbonTips(ribbons);
   if (onGraph.ball && !onGraph.heads) contacts.push(onGraph.ball);
@@ -821,9 +818,10 @@ export function paintGraph(canvas, frame) {
   }
   if (onGraph.ball) paintBall(context, onGraph.ball, worldToX, width, height);
 
-  const origin = ripple && points[ripple.index - first.index];
-  const age = ripple ? (now - ripple.started) / 520 : 1;
-  if (origin && age >= 0 && age < 1) {
+  for (const { index, progress } of ripples) {
+    const origin = points[index - first.index];
+    const age = progress * 2;
+    if (!origin || age >= 1) continue;
     circle(context, origin.x, origin.y, 6 + 35 * (1 - (1 - age) ** 2));
     context.strokeStyle = tint(colors.spark, .67 * (1 - age));
     context.lineWidth = 1.5;
