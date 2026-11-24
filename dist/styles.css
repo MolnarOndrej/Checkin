@@ -278,12 +278,15 @@ main.dragging, main.dragging .day {
   .year { opacity: 0 !important; }
 }
 
+.day-drawer, dialog {
+  inline-size: calc(100% - 28px);
+  max-inline-size: 340px;
+}
+
 .day-drawer {
   position: relative;
   cursor: auto;
   z-index: 1;
-  inline-size: calc(100% - 32px);
-  max-inline-size: 384px;
   margin: calc(-1 * var(--drawer-overlap)) auto 0;
   padding-block-end: max(12px, env(safe-area-inset-bottom));
   animation: appear 240ms ease both;
@@ -392,8 +395,6 @@ dialog {
   cursor: auto;
   position: fixed;
   inset: 0;
-  inline-size: calc(100% - 28px);
-  max-inline-size: 340px;
   max-block-size: calc(100dvh - 28px);
   margin: auto;
   padding: 0;
@@ -620,7 +621,6 @@ dialog::backdrop {
     --timeline-height: clamp(310px, 67svh, 565px);
   }
   .manage-button { inline-size: 44px; block-size: 44px; }
-  .day-drawer { inline-size: calc(100% - 26px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -421,7 +421,7 @@ test('the logging shortcut preselects the last activity created through it', asy
   assert.deepEqual(logs, ['Walk\n30 min', 'Read\n12 pages']);
 });
 
-test('the day drawer and dialogs stay compact from phones to 4K', async (t) => {
+test('the day drawer and all dialogs share a width from phones to 4K', async (t) => {
   const page = await openCheckin(t);
   await page.setReducedMotion('reduce');
   await settle(page);
@@ -436,12 +436,12 @@ test('the day drawer and dialogs stay compact from phones to 4K', async (t) => {
 
   const titles = ['Activities', 'Add activity', 'Edit activity', 'Remove Walk?', 'Walk'];
   const viewports = [
-    { width: 3840, height: 2160, dialogWidth: 340, drawerWidth: 384 },
-    { width: 1440, height: 900, dialogWidth: 340, drawerWidth: 384 },
-    { width: 500, height: 844, dialogWidth: 340, drawerWidth: 384 },
-    { width: 320, height: 640, dialogWidth: 292, drawerWidth: 294 },
+    { width: 3840, height: 2160, panelWidth: 340 },
+    { width: 1440, height: 900, panelWidth: 340 },
+    { width: 500, height: 844, panelWidth: 340 },
+    { width: 320, height: 640, panelWidth: 292 },
   ];
-  for (const { width, height, dialogWidth, drawerWidth } of viewports) {
+  for (const { width, height, panelWidth } of viewports) {
     await page.setViewport(width, height);
     await settle(page);
     const layout = await page.evaluate(() => {
@@ -465,7 +465,10 @@ test('the day drawer and dialogs stay compact from phones to 4K', async (t) => {
       find('#close-day').click();
       return { dialogs: results, drawerWidth };
     });
-    assert.deepEqual(layout, { dialogs: titles.map((title) => [title, dialogWidth]), drawerWidth });
+    assert.deepEqual(layout, {
+      dialogs: titles.map((title) => [title, panelWidth]),
+      drawerWidth: panelWidth,
+    });
   }
 });
 
