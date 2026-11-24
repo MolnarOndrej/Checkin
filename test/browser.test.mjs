@@ -421,6 +421,47 @@ test('the logging shortcut preselects the last activity created through it', asy
   assert.deepEqual(logs, ['Walk\n30 min', 'Read\n12 pages']);
 });
 
+test('all dialogs share a compact width on desktop and narrow phones', async (t) => {
+  const page = await openCheckin(t);
+  await page.setReducedMotion('reduce');
+  await settle(page);
+  await page.evaluate(() => {
+    const date = document.querySelector('[aria-current="date"]').dataset.date;
+    localStorage.setItem('checkin.timeline.v1', JSON.stringify({
+      activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min', goals: [] }],
+      days: { [date]: { values: { walk: { amount: 30, effort: .29 } } } },
+    }));
+  });
+  await page.reload();
+
+  const titles = ['Activities', 'Add activity', 'Edit activity', 'Remove Walk?', 'Walk'];
+  for (const [width, height, dialogWidth] of [[1440, 900, 340], [320, 640, 292]]) {
+    await page.setViewport(width, height);
+    await settle(page);
+    const dialogs = await page.evaluate(() => {
+      const find = (selector) => document.querySelector(selector);
+      const measure = () => [find('#dialog-title').innerText, find('dialog[open]').getBoundingClientRect().width];
+      const cancel = () => find('dialog .actions [type="button"]').click();
+
+      find('#manage').click();
+      const results = [measure()];
+      for (const label of ['New activity', 'Edit Walk', 'Remove Walk']) {
+        find(`[aria-label="${label}"]`).click();
+        results.push(measure());
+        cancel();
+      }
+      find('#close-dialog').click();
+      find('[aria-current="date"]').click();
+      find('.log-row').click();
+      results.push(measure());
+      find('#close-dialog').click();
+      find('#close-day').click();
+      return results;
+    });
+    assert.deepEqual(dialogs, titles.map((title) => [title, dialogWidth]));
+  }
+});
+
 test('an activity edit keeps old logs and the open log editor leaves room to swipe on mobile', async (t) => {
   const page = await openCheckin(t);
   await page.setViewport(390, 844);
