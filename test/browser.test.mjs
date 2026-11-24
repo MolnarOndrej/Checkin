@@ -912,7 +912,7 @@ test('ambient effects pause out of focus and resume from the same frame', async 
   assert.notEqual(frames.resumed.accent, frames.moving.accent);
 });
 
-test('new log sounds, ripples and node movement start on the same playback clock', async (t) => {
+test('new log sounds, ripples and node movement share a playback clock through the end', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects, () => {
     const activities = ['Reading', 'Walking', 'Writing'].map((text) => ({
       id: text, text, type: 'minutes', unit: 'min', goals: [],
@@ -1042,24 +1042,33 @@ test('new log sounds, ripples and node movement start on the same playback clock
         rippleAlpha: beforeRipple() - beforeAlpha,
       };
       const sound = window.playedSounds.at(-1);
+      const seek = (fraction) => {
+        window.audioTime = started + window.audioOutputLag + sound.duration * fraction;
+      };
       const elapsed = .18;
-      window.audioTime = started + window.audioOutputLag + elapsed;
+      seek(elapsed / sound.duration);
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const radius = 6 + 35 * (1 - (1 - elapsed / sound.duration) ** 4);
       const onset = { rise: nodeRise(), ring: ringAlpha(radius, 3) };
       window.advanceCheckin(4500);
       await frame();
       const heldRise = nodeRise();
-      window.audioTime = started + window.audioOutputLag + sound.duration / 4;
+      seek(.25);
       await frame();
-      const early = { ring: ringAlpha(), wave: waveAlpha(.25) };
-      const settledRise = nodeRise();
-      window.audioTime = started + window.audioOutputLag + sound.duration * .65;
+      const early = { rise: nodeRise(), ring: ringAlpha(), wave: waveAlpha(.25) };
+      seek(.5);
       await frame();
-      const late = { ring: ringAlpha(), wave: waveAlpha(.65) };
-      window.audioTime = started + window.audioOutputLag + sound.duration + .002;
+      const halfwayRise = nodeRise();
+      seek(.65);
       await frame();
-      return { waiting, onset, heldRise, settledRise, early, late, after: {
+      const late = { rise: nodeRise(), ring: ringAlpha(), wave: waveAlpha(.65) };
+      seek(.9);
+      await frame();
+      const fadingRise = nodeRise();
+      seek(1 + .002 / sound.duration);
+      await frame();
+      return { waiting, onset, heldRise, early, halfwayRise, late, fadingRise, after: {
+        rise: nodeRise(), top: day.getBoundingClientRect().top,
         ring: ringAlpha(), earlyWave: waveAlpha(.25), lateWave: waveAlpha(.65),
       } };
     }
@@ -1084,8 +1093,10 @@ test('new log sounds, ripples and node movement start on the same playback clock
     started: 11, offset: .01, duration: 1.99, original: 2,
     gain: [['level', .25, 11], ['level', .25, 12.24], ['fade', 0, 12.99]],
   });
-  for (const { onset, heldRise, settledRise, early, late, after } of [result.first, result.short]) {
-    assert.ok(onset.rise > 0 && onset.rise < settledRise, JSON.stringify({ onset, settledRise }));
+  for (const { onset, heldRise, early, halfwayRise, late, fadingRise, after } of [result.first, result.short]) {
+    const rises = [0, onset.rise, early.rise, halfwayRise, late.rise, fadingRise, after.rise];
+    assert.ok(rises.slice(1).every((rise, index) => rise > rises[index]), JSON.stringify(rises));
+    assert.ok(Math.abs(halfwayRise / after.rise - .5) < .02, JSON.stringify(rises));
     assert.ok(onset.ring > 160, JSON.stringify(onset));
     assert.equal(heldRise, onset.rise);
     const earlyWave = early.wave - after.earlyWave;
@@ -1096,11 +1107,16 @@ test('new log sounds, ripples and node movement start on the same playback clock
 
   await page.reload();
   await settle(page);
-  const logs = await page.evaluate(() => {
-    document.querySelector('[aria-current="date"]').previousElementSibling.click();
-    return [...document.querySelectorAll('.log-row')].map((row) => row.innerText.trim());
+  const reloaded = await page.evaluate(() => {
+    const day = document.querySelector('[aria-current="date"]').previousElementSibling;
+    day.click();
+    return {
+      top: day.getBoundingClientRect().top,
+      logs: [...document.querySelectorAll('.log-row')].map((row) => row.innerText.trim()),
+    };
   });
-  assert.deepEqual(logs, ['Reading\n5 min', 'Walking\n8 min', 'Writing\n12 min']);
+  assert.equal(reloaded.top, result.short.after.top);
+  assert.deepEqual(reloaded.logs, ['Reading\n5 min', 'Walking\n8 min', 'Writing\n12 min']);
 });
 
 test('swiping reveals the glow continuing at the same speed beyond either end of its route', async (t) => {

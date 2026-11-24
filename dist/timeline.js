@@ -3,7 +3,7 @@ import { blendPalettes, createRipple, driftPalette, paintGraph, paletteFor, rand
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const emptyScore = { height: 0, power: 0, count: 0 };
-const heightAnimationSeconds = .44;
+const heightAnimationMs = 440;
 
 export function createTimeline({ stage, canvas, days, yearLabels, backToday, drawer, dialog, drawerGlow, onSelect }) {
   const surface = stage.parentElement;
@@ -17,7 +17,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   let selected = null;
   let score = () => emptyScore;
   let heights = new Map();
-  let scoreElapsedAt;
+  let scoreProgressAt;
   let pendingLogEffects = [];
   let wave;
   let ripples = [];
@@ -53,11 +53,10 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
   }
 
   function heightProgress(now) {
-    if (motion.matches || !heights.size) return 1;
-    return 1 - (1 - clamp(scoreElapsedAt(now) / heightAnimationSeconds, 0, 1)) ** 3;
+    return motion.matches || !heights.size ? 1 : scoreProgressAt(now);
   }
 
-  function updateScores(nextScore, now, elapsedAt = (frame) => (frame - now) / 1000) {
+  function updateScores(nextScore, now, playbackProgressAt) {
     const progress = heightProgress(now);
     const oldHeights = heights;
     heights = new Map();
@@ -70,20 +69,22 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
         }
       }
     }
-    scoreElapsedAt = elapsedAt;
+    scoreProgressAt = playbackProgressAt ? (frame) => {
+      const fraction = clamp(playbackProgressAt(frame), 0, 1);
+      return fraction ** 2 * (3 - 2 * fraction);
+    } : (frame) => 1 - (1 - clamp((frame - now) / heightAnimationMs, 0, 1)) ** 3;
     score = nextScore;
     geometry = undefined;
     layoutDirty = true;
   }
 
   function startLogEffects(now) {
-    pendingLogEffects = pendingLogEffects.filter(({ index, playback, getScores }) => {
-      if (!motion.matches && playback?.elapsedAt(now) < 0) return true;
+    pendingLogEffects = pendingLogEffects.filter(({ index, playbackProgressAt, getScores }) => {
+      if (!motion.matches && playbackProgressAt?.(now) < 0) return true;
       const nextScore = getScores();
-      if (nextScore) updateScores(nextScore, now, playback?.elapsedAt);
+      if (nextScore) updateScores(nextScore, now, playbackProgressAt);
       if (!motion.matches) {
-        const progressAt = playback && ((frame) => playback.elapsedAt(frame) / playback.duration);
-        ripples.push(createRipple(index, now, spacing, progressAt));
+        ripples.push(createRipple(index, now, spacing, playbackProgressAt));
       }
       return false;
     });
@@ -460,7 +461,8 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
       schedule();
     },
     showSavedLog(index, playback, getScores) {
-      pendingLogEffects.push({ index, playback, getScores });
+      const playbackProgressAt = playback && ((now) => playback.elapsedAt(now) / playback.duration);
+      pendingLogEffects.push({ index, playbackProgressAt, getScores });
       schedule();
     },
     setScores(nextScore) {
