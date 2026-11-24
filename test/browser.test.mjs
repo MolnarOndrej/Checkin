@@ -135,6 +135,11 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
     [...document.querySelectorAll('dialog .actions button')].find((control) => control.textContent === 'Cancel').click();
     const afterCancel = find('.log-value').textContent;
     const beforeEdit = find('[aria-current="date"]').getBoundingClientRect().top;
+    const today = find('[aria-current="date"]');
+    today.previousElementSibling.click();
+    await window.logCheckinValue('Read', 12);
+    await window.logCheckinValue('Stretch', 25);
+    today.click();
     find('.log-row').click();
     find('dialog input').value = '100';
     find('dialog [type="submit"]').click();
@@ -188,8 +193,11 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
 
   const removed = await page.evaluate(async () => {
     const find = (selector) => document.querySelector(selector);
-    const centerY = () => find('[aria-current="date"]').getBoundingClientRect().top;
-    const before = centerY();
+    const today = find('[aria-current="date"]');
+    const yesterday = today.previousElementSibling;
+    const olderDay = yesterday.previousElementSibling;
+    const positions = () => [olderDay, yesterday, today].map((day) => day.getBoundingClientRect().top);
+    const before = positions();
     const remaining = () => [...document.querySelectorAll('.log-value')].map((value) => value.textContent);
     const choose = (text) => [...document.querySelectorAll('dialog .actions button')].find((button) => button.textContent === text);
     const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -208,8 +216,10 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
     }
     find('#close-dialog').click();
     await nextFrame();
-    const afterRemoveActivity = centerY();
+    const afterRemoveActivity = positions();
     const surviving = remaining();
+    yesterday.click();
+    const pastLogs = remaining();
     find('.log-row').click();
     choose('Delete').click();
     for (let tries = 0; find('dialog').open; tries++) {
@@ -217,28 +227,36 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
       await nextFrame();
     }
     await nextFrame();
-    return { before, afterRemoveActivity, surviving, afterRemoveLog: centerY(), remaining: remaining(), confirmation };
+    return { before, afterRemoveActivity, surviving, pastLogs, afterRemoveLog: positions(), remaining: remaining(), confirmation };
   });
   assert.equal(removed.confirmation, 'Remove Read?');
-  assert.equal(removed.afterRemoveActivity, removed.before);
+  assert.deepEqual(removed.afterRemoveActivity, removed.before);
   assert.deepEqual(removed.surviving, ['20 min']);
-  assert.ok(removed.afterRemoveLog > removed.afterRemoveActivity);
+  assert.deepEqual(removed.pastLogs, ['25 min']);
+  assert.ok(removed.afterRemoveLog[1] > removed.afterRemoveActivity[1]);
+  assert.equal(removed.afterRemoveLog[0], removed.afterRemoveActivity[0]);
+  assert.equal(removed.afterRemoveLog[2], removed.afterRemoveActivity[2]);
   assert.deepEqual(removed.remaining, []);
 
   await page.reload();
   await settle(page);
   const finalState = await page.evaluate(() => {
-    const day = document.querySelector('[aria-current="date"]');
-    day.click();
+    const today = document.querySelector('[aria-current="date"]');
+    const yesterday = today.previousElementSibling;
+    const heights = [yesterday.previousElementSibling, yesterday, today].map((day) => day.getBoundingClientRect().top);
+    yesterday.click();
+    const pastLogs = document.querySelectorAll('.log-row').length;
+    today.click();
+    const todayLogs = [...document.querySelectorAll('.log-value')].map((value) => value.textContent);
     document.querySelector('#manage').click();
     return {
-      height: day.getBoundingClientRect().top,
-      logs: document.querySelectorAll('.log-row').length,
+      heights, pastLogs, todayLogs,
       activities: [...document.querySelectorAll('dialog .activity-name')].map((row) => row.textContent),
     };
   });
-  assert.equal(finalState.height, removed.afterRemoveLog);
-  assert.equal(finalState.logs, 0);
+  assert.deepEqual(finalState.heights, removed.afterRemoveLog);
+  assert.equal(finalState.pastLogs, 0);
+  assert.deepEqual(finalState.todayLogs, ['20 min']);
   assert.deepEqual(finalState.activities, ['Stretch']);
 });
 

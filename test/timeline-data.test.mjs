@@ -40,7 +40,9 @@ test('values lift their day and blanks dip gently after the first active day', (
   assert.ok(high(today - 5, today).height > low(today - 5, today).height);
   removeValue(journal, key, id);
   assert.ok(!journal.days[key]);
-  assert.equal(timelineScores(journal)(today - 2, today).height, 0);
+  const after = timelineScores(journal);
+  assert.equal(after(today - 5, today).height, 0);
+  assert.equal(after(today - 2, today).height, 0);
 });
 
 test('standout power compares activity count with the previous seven days', () => {
