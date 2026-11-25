@@ -17,4 +17,5 @@
 
 ## Git workflow
 
-- After each implementation, run the relevant checks, commit the changes for that task, and push the commit to the branch's remote.
+- Use a dedicated branch for each pull request. Run the relevant checks and commit the task changes locally.
+- Push a branch or open or update a pull request only when the user asks. Do not push directly to the default branch.
