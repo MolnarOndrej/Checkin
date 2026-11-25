@@ -27,3 +27,11 @@ A day's dot rises with the number and values of its activities. Days that stand 
 With Node.js 24 installed, run `npm start` and open [Checkin](http://127.0.0.1:4173). Keep using the same address and browser profile. Checkin stores its activity list and logs in the browser.
 
 The server serves `dist/` directly. Run `npm test` with Chrome or Edge installed. The browser test uses a separate server and temporary browser profile.
+
+## Run with Docker Compose
+
+1. Create a `.env` file in the repository and set `POSTGRES_PASSWORD` to a strong password.
+2. Run `docker compose up --build -d` and open [Checkin on port 4174](http://127.0.0.1:4174). If that port is busy, set `CHECKIN_PORT` in `.env` to another free port while reserving 4173 for `npm start`.
+3. Run `docker compose down` to stop the containers and retain the `postgres-data` volume.
+
+The stack runs Checkin and PostgreSQL 18 in separate containers. Only Checkin publishes a host port, bound to loopback. The journal still lives in browser storage. Port 4174 has its own journal, and entries saved at port 4173 stay available there in the original browser profile.

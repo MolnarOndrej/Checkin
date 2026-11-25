@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { openBrowser, startProcess } from './browser.mjs';
 
 async function openCheckin(t, ...beforeLoad) {
+  const env = { ...process.env, PORT: '0' };
+  delete env.CHECKIN_HOST;
   const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
-    env: { ...process.env, PORT: '0' },
+    env,
   }, /Checkin is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
   t.after(() => server.stop());
   const url = await server.ready;

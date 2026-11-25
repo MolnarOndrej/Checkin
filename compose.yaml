@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:${CHECKIN_PORT:-4174}:4173"
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: checkin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env or the shell}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "checkin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:

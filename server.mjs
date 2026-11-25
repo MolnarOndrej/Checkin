@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readdir, readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 
-const host = '127.0.0.1';
+const host = process.env.CHECKIN_HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 4173);
 const assets = new Set([
   'index.html', 'styles.css', 'app.js', 'calendar.js', 'measurements.js', 'journal-data.js', 'journal-storage.js',
