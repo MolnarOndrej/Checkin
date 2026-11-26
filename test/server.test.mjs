@@ -17,7 +17,7 @@ test('serves Checkin when HOST is set to the container bind address', async (t) 
 
 test('HEAD returns the same asset metadata as GET with an empty body', async (t) => {
   const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
-    env: { ...process.env, PORT: '0' },
+    env: { ...process.env, HOST: '127.0.0.1', PORT: '0' },
   }, /Checkin is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
   t.after(() => server.stop());
   const url = await server.ready;
