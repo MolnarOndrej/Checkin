@@ -47,7 +47,7 @@ function browserExecutable() {
   return executable;
 }
 
-export async function openBrowser(t) {
+export async function openBrowser(t, ...args) {
   const executable = browserExecutable();
   const temp = await realpath(tmpdir());
   const profile = await mkdtemp(join(temp, 'checkin-browser-'));
@@ -69,7 +69,7 @@ export async function openBrowser(t) {
 
   browser = startProcess(executable, [
     '--headless', '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
-    '--mute-audio', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank',
+    '--mute-audio', '--remote-debugging-port=0', `--user-data-dir=${profile}`, ...args, 'about:blank',
   ], {}, /DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/\S+)\r?\n/);
   socket = new WebSocket(await browser.ready);
   await once(socket, 'open', { signal: AbortSignal.timeout(timeout) });

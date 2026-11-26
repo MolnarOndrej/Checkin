@@ -3,13 +3,18 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { openBrowser, startProcess } from './browser.mjs';
 
-async function openCheckin(t, ...beforeLoad) {
+async function startCheckin(t) {
   const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
     env: { ...process.env, HOST: '127.0.0.1', PORT: '0' },
   }, /Checkin is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
   t.after(() => server.stop());
   const url = await server.ready;
   assert.notEqual(new URL(url).port, '4173');
+  return url;
+}
+
+async function openCheckin(t, ...beforeLoad) {
+  const url = await startCheckin(t);
   const page = await openBrowser(t);
   for (const action of beforeLoad) await page.beforeLoad(action);
   await page.setViewport(1440, 900);
@@ -438,6 +443,30 @@ test('an empty day offers Add activity directly and opens logging with the new a
     return [...document.querySelectorAll('.log-row')].map((row) => row.innerText.trim());
   });
   assert.deepEqual(logs, ['Hike\n2.5 km']);
+});
+
+test('an activity can be created and reloaded over plain HTTP on a non-loopback hostname', async (t) => {
+  const url = new URL(await startCheckin(t));
+  url.hostname = 'checkin.test';
+  const page = await openBrowser(t, '--no-proxy-server', '--host-resolver-rules=MAP checkin.test 127.0.0.1');
+  await page.navigate(url.href);
+  await settle(page);
+  assert.deepEqual(await page.evaluate(() => [isSecureContext, typeof crypto.randomUUID]), [false, 'undefined']);
+
+  await page.evaluate(() => {
+    document.querySelector('#manage').click();
+    document.querySelector('dialog input').value = 'Reading';
+    document.querySelector('dialog [type="submit"]').click();
+  });
+  await settle(page);
+  const activityNames = () => page.evaluate(() => [...document.querySelectorAll('dialog .activity-name')]
+    .map((name) => name.innerText));
+  assert.deepEqual(await activityNames(), ['Reading']);
+
+  await page.reload();
+  await settle(page);
+  await page.evaluate(() => document.querySelector('#manage').click());
+  assert.deepEqual(await activityNames(), ['Reading']);
 });
 
 test('logging preselects the sole available activity or the last one created through the shortcut', async (t) => {
