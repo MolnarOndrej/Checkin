@@ -912,7 +912,7 @@ test('ambient effects pause out of focus and resume from the same frame', async 
   assert.notEqual(frames.resumed.accent, frames.moving.accent);
 });
 
-test('new log sounds, ripples and node movement share a playback clock through the end', async (t) => {
+test('new log sounds, ripples and node movement share a playback clock even on cold start', async (t) => {
   const page = await openCheckin(t, controlTimelineEffects, () => {
     const activities = ['Reading', 'Walking', 'Writing'].map((text) => ({
       id: text, text, type: 'minutes', unit: 'min', goals: [],
@@ -925,6 +925,7 @@ test('new log sounds, ripples and node movement share a playback clock through t
     const decoder = new OfflineAudioContext(1, 1, 44100);
     window.soundRequests = [];
     window.playedSounds = [];
+    window.decodedSounds = 0;
     window.audioTime = 1;
     window.audioOutputLag = .8;
     window.fetch = (path) => {
@@ -937,7 +938,10 @@ test('new log sounds, ripples and node movement share a playback clock through t
 
       get currentTime() { return window.audioTime; }
 
-      async resume() { this.state = 'running'; }
+      async resume() {
+        await new Promise((resolve) => { window.finishAudioResume = resolve; });
+        this.state = 'running';
+      }
 
       getOutputTimestamp() {
         return {
@@ -948,6 +952,7 @@ test('new log sounds, ripples and node movement share a playback clock through t
 
       async decodeAudioData(bytes) {
         const buffer = await decoder.decodeAudioData(bytes);
+        window.decodedSounds++;
         // Exercise the short-clip path with a two-second excerpt of the decoded asset.
         if (!window.shortClip) return buffer;
         const excerpt = decoder.createBuffer(1, decoder.sampleRate * 2, decoder.sampleRate);
@@ -1029,6 +1034,19 @@ test('new log sounds, ripples and node movement share a playback clock through t
       const beforeAlpha = beforeRipple();
       const count = window.playedSounds.length + 1;
       find('.inline-editor [type="submit"]').click();
+      if (count === 1) {
+        for (let tries = 0; !window.decodedSounds; tries++) {
+          if (tries === 90) throw new Error('First submit sound did not decode');
+          await frame();
+        }
+        await frame();
+        window.advanceCheckin(600);
+        await frame();
+        if (!find(`[data-activity="${activity}"]`) || nodeRise() !== 0 || beforeRipple() !== beforeAlpha) {
+          throw new Error('The first log should be saved without moving or pulsing while the audio device starts');
+        }
+        window.finishAudioResume();
+      }
       for (let tries = 0; window.playedSounds.length < count; tries++) {
         if (tries === 90) throw new Error('Submit sound did not play');
         await frame();

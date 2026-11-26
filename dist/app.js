@@ -160,8 +160,8 @@ async function refreshJournal() {
   renderDay();
 }
 
-async function showLogFeedback(index, updated) {
-  const playback = await playSubmitSound();
+async function showLogFeedback(index, updated, audioReady) {
+  const playback = await playSubmitSound(audioReady);
   timeline.showSavedLog(index, playback, () => {
     if (journal === updated) return timelineScores(updated);
   });
@@ -173,12 +173,12 @@ async function persist(write, error, { pulse, sound = false, after } = {}) {
   const originatingDialog = dialogVersion;
   const syncFeedback = sound && !reducedMotion.matches;
   error.hidden = true;
-  if (sound) unlockSubmitAudio();
+  const audioReady = sound ? unlockSubmitAudio() : undefined;
   try {
     const updated = await write();
     setJournal(updated, !syncFeedback);
-    if (syncFeedback) void showLogFeedback(pulse, updated);
-    else if (sound) void playSubmitSound();
+    if (syncFeedback) void showLogFeedback(pulse, updated, audioReady);
+    else if (sound) void playSubmitSound(audioReady);
     else if (pulse !== undefined) timeline.pulse(pulse);
     after?.(originatingDialog === dialogVersion);
   } catch (failure) {

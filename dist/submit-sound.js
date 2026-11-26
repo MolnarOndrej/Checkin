@@ -2,16 +2,24 @@ const maxDuration = 4;
 const fadeDuration = .75;
 const playbackGain = .25;
 const onsetLevel = .01;
+const resumeTimeoutMs = 1000;
 let audio;
 let sounds;
 
-export function unlockSubmitAudio() {
+export async function unlockSubmitAudio() {
+  let timeout;
   try {
     // Resume during the submit gesture, before the journal lock is acquired.
     audio ??= new AudioContext();
-    if (audio.state !== 'running') void audio.resume().catch(() => {});
+    if (audio.state === 'running') return;
+    const resumed = audio.resume();
+    const deadline = new Promise((resolve) => { timeout = setTimeout(resolve, resumeTimeoutMs); });
+    // Autoplay restrictions can leave resume pending.
+    await Promise.race([resumed, deadline]);
   } catch {
     // Saving a log also works when audio is unavailable.
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -45,7 +53,7 @@ function outputTime(now) {
   return audio.currentTime - (audio.baseLatency ?? 0) - (audio.outputLatency ?? 0);
 }
 
-export async function playSubmitSound() {
+export async function playSubmitSound(audioReady) {
   if (!audio) return;
   try {
     sounds ??= await (await load('/submitsounds.json')).json();
@@ -53,6 +61,7 @@ export async function playSubmitSound() {
     const path = sounds[Math.floor(Math.random() * sounds.length)];
     const response = await load(`/${path}`);
     const buffer = await audio.decodeAudioData(await response.arrayBuffer());
+    await audioReady;
     if (audio.state !== 'running') return;
 
     const offset = soundOffset(buffer);
