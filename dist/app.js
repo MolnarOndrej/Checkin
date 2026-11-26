@@ -207,6 +207,16 @@ function showManager({ focusId, focusRemove = false, draft } = {}) {
   setDialog('Activities', list, focus);
 }
 
+function createActivityId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function showActivityForm({ existing, draft, returnToLog = false, closeOnCancel = returnToLog }) {
   const name = element('input');
   name.required = true;
@@ -225,11 +235,14 @@ function showActivityForm({ existing, draft, returnToLog = false, closeOnCancel 
   const custom = labelled('Unit', unit);
 
   const { form, error } = makeForm((message) => {
-    const activity = {
-      id: existing?.id ?? crypto.randomUUID(), text: name.value.trim(), type: kind.value,
-      unit: kind.value === 'minutes' ? 'min' : unit.value.trim(),
+    let activity;
+    const write = () => {
+      activity = {
+        id: existing?.id ?? createActivityId(), text: name.value.trim(), type: kind.value,
+        unit: kind.value === 'minutes' ? 'min' : unit.value.trim(),
+      };
+      return existing ? journalStore.editActivity(activity) : journalStore.createActivity(activity);
     };
-    const write = () => existing ? journalStore.editActivity(activity) : journalStore.createActivity(activity);
     persist(write, message, {
       after: (sameDialog) => {
         if (!existing && draft) draft.preselectedActivityId = activity.id;
