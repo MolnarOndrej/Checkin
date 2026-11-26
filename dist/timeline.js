@@ -84,7 +84,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
       const nextScore = getScores();
       if (nextScore) updateScores(nextScore, now, playbackProgressAt);
       if (!motion.matches) {
-        ripples.push(createRipple(index, now, spacing, playbackProgressAt));
+        ripples.push(createRipple(index, now, { spacing, width }, playbackProgressAt));
       }
       return false;
     });
@@ -457,7 +457,7 @@ export function createTimeline({ stage, canvas, days, yearLabels, backToday, dra
     closeSelected,
     pulse(index) {
       if (motion.matches) return;
-      ripples.push(createRipple(index, performance.now(), spacing));
+      ripples.push(createRipple(index, performance.now(), { spacing, width }));
       schedule();
     },
     showSavedLog(index, playback, getScores) {
