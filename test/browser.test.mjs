@@ -1231,6 +1231,44 @@ test('swiping reveals the glow continuing at the same speed beyond either end of
   }
 });
 
+test('traveling glows cross the same fraction of the timeline on phones and desktops', async (t) => {
+  const page = await openCheckin(t, controlTimelineEffects);
+  await page.setReducedMotion('no-preference');
+
+  for (const width of [360, 1440, 2560]) {
+    await page.setViewport(width, width === 360 ? 780 : 900);
+    await page.reload();
+    await settle(page);
+    const positions = await page.evaluate(async () => {
+      const graph = document.querySelector('#graph');
+      const context = graph.getContext('2d');
+      function glowPosition() {
+        const { width, height } = graph;
+        const { data } = context.getImageData(0, Math.floor(height * .56), width, 1);
+        for (let x = 0; x < width; x++) {
+          if (Math.abs(x - width / 2) < 8) continue; // Today's dot has its own white center.
+          const i = x * 4;
+          if (data[i] > 235 && data[i + 1] > 235 && data[i + 2] > 235 && data[i + 3] > 220) return x / width;
+        }
+        return null;
+      }
+
+      window.traverse(0);
+      const positions = [];
+      for (const elapsed of [1100, 900]) {
+        window.advanceCheckin(elapsed);
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        positions.push(glowPosition());
+      }
+      return positions;
+    });
+    for (const [index, expected] of [.19, .70].entries()) {
+      assert.ok(positions[index] !== null && Math.abs(positions[index] - expected) < .015,
+        JSON.stringify({ width, positions }));
+    }
+  }
+});
+
 test('traveling effects and silent ripples cover the same screen distance on flat and steep paths', async (t) => {
   const page = await openCheckin(t);
   const result = await page.evaluate(async () => {
@@ -1296,7 +1334,7 @@ test('traveling effects and silent ripples cover the same screen distance on fla
       const visit = looping
         ? { panel: { left: 550, right: 890, top: 320, bottom: 550 }, stage: { left: 0, top: 0 } }
         : null;
-      const ripple = silent && createRipple(0, 0, spacing);
+      const ripple = silent && createRipple(0, 0, { spacing, width });
       const latest = silent ? 270 : 4500;
       const stats = { samples: 0, farthestError: 0, holds: 0, steep: 0 };
       function draw(now) {
@@ -1362,6 +1400,7 @@ test('traveling lights charge nodes on contact and fade after passing', async (t
     const canvas = document.createElement('canvas');
     const width = canvas.width = 960;
     const height = canvas.height = 540;
+    const speed = .81 * width / 1440;
     const spacing = 60;
     const baseline = height * .56;
     const pointAt = (index) => ({ index, x: width / 2 + index * spacing, y: baseline, count: 0, power: 0 });
@@ -1393,17 +1432,17 @@ test('traveling lights charge nodes on contact and fade after passing', async (t
       paintGraph(canvas, { ...frame, wave, now });
       return charges.get(pointAt(day).x) ?? 0;
     }
-    const approach = 12 * spacing / .81;
+    const approach = 12 * spacing / speed;
     const sweep = makeWave('daybreak-sweep');
     const inkedReverse = makeWave('backlight-sweep', { ink: 'spark' });
     const weave = makeWave('over-under');
     draw(weave, 0);
-    const weaveContact = weave.motion.length / 2 / .81;
+    const weaveContact = weave.motion.length / 2 / speed;
     const beacon = makeWave('beacon-landing', { entry: { day: -12, y: -1 } });
     draw(beacon, 0);
-    const hover = beacon.motion.arrival.length / .81;
-    const landing = hover + 700 + beacon.motion.descent.length / .81;
-    const nextNode = landing + beacon.motion.exit.distanceAtDay(1) / .81;
+    const hover = beacon.motion.arrival.length / speed;
+    const landing = hover + 700 + beacon.motion.descent.length / speed;
+    const nextNode = landing + beacon.motion.exit.distanceAtDay(1) / speed;
     return {
       forwards: [-35, -1, 0, 250, 600, 1100].map((offset) => draw(sweep, approach + offset)),
       backwards: [-1, 0, 600].map((offset) => draw(inkedReverse, approach + offset)),
@@ -1951,7 +1990,7 @@ test('Beacon Landing eases into place, blooms while still, and fades as it trave
   const result = await page.evaluate(async () => {
     const { paintGraph } = await import('/graph.js');
     const canvas = document.createElement('canvas');
-    const width = canvas.width = 960;
+    const width = canvas.width = 1440;
     const height = canvas.height = 540;
     const spacing = 60;
     const baseline = height * .56;
@@ -2029,6 +2068,7 @@ test('Beacon Landing bloom fades before the upper and lower graph edges', async 
     function sample(width, height, nodeFraction, side, descent = 0) {
       canvas.width = width;
       canvas.height = height;
+      const speed = .81 * width / 1440;
       const x = width / 2;
       const nodeY = height * nodeFraction;
       const pointAt = (index) => ({ index, x: x + index * 61, y: nodeY, count: 0, power: 0 });
@@ -2042,7 +2082,7 @@ test('Beacon Landing bloom fades before the upper and lower graph edges', async 
         drawerGlow: {},
       };
       paintGraph(canvas, frame);
-      frame.now = 700 + (wave.motion.arrival.length + wave.motion.descent.length * descent) / .81;
+      frame.now = 700 + (wave.motion.arrival.length + wave.motion.descent.length * descent) / speed;
       paintGraph(canvas, frame);
 
       const alpha = (column, row) => context.getImageData(column, row, 1, 1).data[3];

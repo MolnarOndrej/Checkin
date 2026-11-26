@@ -52,7 +52,7 @@ const paletteColors = ['accent', 'secondary', 'spark'];
 const borders = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
 const glowFade = 1050;
 const inkReach = .51;
-const glowSpeed = .81; // CSS pixels per millisecond along the path.
+const glowSpeedForWidth = (width) => .81 * (width / 1440); // CSS pixels per millisecond.
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export function randomWave({ center, visibleDays, today, now, countAt }) {
@@ -66,7 +66,9 @@ export function randomWave({ center, visibleDays, today, now, countAt }) {
   const radius = Math.max(.5, visibleDays / 2 - .35);
   const first = Math.ceil(center - radius);
   const last = Math.floor(center + radius);
-  const reach = visibleDays / 2 + 9;
+  // Scale the offscreen lead-in to keep the time before the glow enters the viewport consistent.
+  const padding = visibleDays * (9 / 21);
+  const reach = Math.max(visibleDays / 2 + padding, kind === 'split-pulse' ? splitReach + 1 : 0);
   let anchor = Math.abs(today - center) <= visibleDays * .43 ? today : Math.round(center);
   let entry;
   if (kind === 'sky-ribbon') {
@@ -200,13 +202,13 @@ function hops(wave) {
 
 const rippleReach = 4.2;
 const splitReach = Math.round(rippleReach);
-const splitFadeIn = 240 * glowSpeed;
-const beaconHold = 700 * glowSpeed;
-const beaconEase = 65 * glowSpeed;
-const beaconFade = 500 * glowSpeed;
+const splitFadeInMs = 240;
+const beaconHoldMs = 700;
+const beaconEaseMs = 65;
+const beaconFadeMs = 500;
 
-function easeBeaconTrack(track, { start = false, end = false }) {
-  const ease = Math.min(beaconEase, track.length / 2);
+function easeBeaconTrack(track, speed, { start = false, end = false }) {
+  const ease = Math.min(beaconEaseMs * speed, track.length / 2);
   const lead = start ? ease : 0;
   const tail = end ? ease : 0;
   // Each eased end averages half the cruising speed, so it needs twice the time.
@@ -235,7 +237,7 @@ function easeBeaconTrack(track, { start = false, end = false }) {
 }
 
 function prepareWave(wave, layout) {
-  const { from, to, anchor, direction, side, entry } = wave;
+  const { from, to, anchor, direction, side, entry, speed } = wave;
   const track = (route, extend) => graphTrack(route, layout, extend);
   const across = (start, end) => track(followGraph(start, end), true);
   const together = (tracks) => ({
@@ -285,7 +287,7 @@ function prepareWave(wave, layout) {
       });
       const tracks = branches.map(({ reach }) => reach);
       const ripple = { index: anchor, tracks, distance: Math.max(...tracks.map(({ length }) => length)) };
-      const exitStart = arrival.length + ripple.distance + splitFadeIn;
+      const exitStart = arrival.length + ripple.distance + splitFadeInMs * speed;
       const length = exitStart + Math.max(...branches.map(({ exit }) => exit.length));
       const nodeTracks = [{ track: arrival }, ...branches.map(({ exit }, contact) => (
         { track: exit, offset: exitStart, contact }
@@ -298,13 +300,13 @@ function prepareWave(wave, layout) {
         const { height } = currentLayout;
         const start = entry.y ? height * (entry.y < 0 ? -.14 : 1.14) : hover + (hover - nodeY) * .26;
         return { day: mix(entry.day, anchor, position), y: mix(start, hover, position) };
-      }), { end: true });
+      }), speed, { end: true });
       const descent = easeBeaconTrack(track((position, currentLayout) => {
         const { hover, nodeY } = beaconHeights(wave, currentLayout);
         return { day: anchor, y: mix(hover, nodeY, position) };
-      }), { start: true, end: true });
-      const exit = easeBeaconTrack(across(anchor, to), { start: true });
-      const visitFrom = arrival.length + beaconHold + descent.length;
+      }), speed, { start: true, end: true });
+      const exit = easeBeaconTrack(across(anchor, to), speed, { start: true });
+      const visitFrom = arrival.length + beaconHoldMs * speed + descent.length;
       return {
         arrival, descent, exit, length: visitFrom + exit.length, visitFrom, visitTo: visitFrom + exit.length * .93,
         nodeTracks: [{ track: arrival }, { track: exit, offset: visitFrom }],
@@ -323,7 +325,7 @@ function splitPulse(wave, motion, distance, colors, layout) {
     return { ripple: { ...ripple, progress: outward / ripple.distance } };
   }
   const exitDistance = Math.max(0, distance - exitStart);
-  const fade = smooth(clamp((outward - ripple.distance) / splitFadeIn, 0, 1));
+  const fade = smooth(clamp((outward - ripple.distance) / (splitFadeInMs * wave.speed), 0, 1));
   const style = clamp(exitDistance / (layout.spacing * 3), 0, 1);
   return {
     heads: branches.map(({ side, exit }) => ({
@@ -346,19 +348,20 @@ function beaconHeights({ anchor, side }, { yAt, height }) {
 function landBall(wave, motion, distance, color, layout, complete, trailStart) {
   const { arrival, descent, exit } = motion;
   const { large } = beaconHeights(wave, layout);
+  const holdDistance = beaconHoldMs * wave.speed;
   const approach = arrival.length;
-  const expanded = approach + beaconHold;
+  const expanded = approach + holdDistance;
   const landed = approach + descent.length;
   // Keep the trail at the same location while the beacon hovers.
-  const traveled = (value) => value - clamp(value - approach, 0, beaconHold);
+  const traveled = (value) => value - clamp(value - approach, 0, holdDistance);
   const route = (position) => {
     if (position <= approach) return arrival.at(position, layout);
     if (position < landed) return descent.at(position - approach, layout);
     return exit.at(position - landed, layout);
   };
   const position = traveled(distance);
-  const gathering = smooth(clamp((distance - approach) / beaconHold, 0, 1));
-  const fading = smooth(clamp((distance - expanded) / (descent.length + beaconFade), 0, 1));
+  const gathering = smooth(clamp((distance - approach) / holdDistance, 0, 1));
+  const fading = smooth(clamp((distance - expanded) / (descent.length + beaconFadeMs * wave.speed), 0, 1));
   const bloom = gathering * (1 - fading);
   const ball = {
     ...route(position), radius: mix(4.5, 8, bloom), color, strength: 1, bloom,
@@ -395,9 +398,9 @@ function ribbon(route, distance, options, complete, trailStart) {
 
 function traversalAt(wave, now, colors, layout, { complete = true, after = wave?.started } = {}) {
   if (!wave || now < wave.started) return {};
-  const { direction, motion } = wave;
-  const distance = (now - wave.started) * glowSpeed;
-  const trailStart = (after - wave.started) * glowSpeed;
+  const { direction, motion, speed } = wave;
+  const distance = (now - wave.started) * speed;
+  const trailStart = (after - wave.started) * speed;
   const at = (index) => motion.tracks[index].at(distance, layout).day;
   const drawRibbon = (index, options) => {
     const track = motion.tracks[index];
@@ -449,13 +452,14 @@ function traversalAt(wave, now, colors, layout, { complete = true, after = wave?
   }
 }
 
-export function createRipple(index, started, spacing, audioProgressAt) {
+export function createRipple(index, started, { spacing, width }, audioProgressAt) {
   const distance = rippleReach * spacing;
+  const speed = glowSpeedForWidth(width);
   return {
     index,
     distance,
     audioBound: Boolean(audioProgressAt),
-    progressAt: audioProgressAt ?? ((now) => (now - started) * glowSpeed / distance),
+    progressAt: audioProgressAt ?? ((now) => (now - started) * speed / distance),
   };
 }
 
@@ -551,13 +555,13 @@ function graphContacts({ heads, ribbons, ball }) {
 }
 
 function nodeLightAt(wave, now, colors, layout) {
-  const { kind, started, departed = Infinity, motion, visit } = wave;
+  const { kind, started, departed = Infinity, motion, visit, speed } = wave;
   return ({ index, y }) => {
     let light;
     for (const { track, offset = 0, contact = 0 } of motion.nodeTracks) {
       const crossing = track.distanceAtDay(index);
       if (crossing === undefined) continue;
-      const elapsed = (offset + crossing) / glowSpeed;
+      const elapsed = (offset + crossing) / speed;
       const followsLead = contact === 0 || !companionTracks[kind];
       const paused = followsLead && visit && elapsed >= visit.begin ? visit.delay : 0;
       const arrived = started + elapsed + paused;
@@ -792,7 +796,7 @@ function planVisit(wave, visit, width, colors, worldToX, layout) {
   let moment;
   let selectedLead;
   for (let index = 0; index <= 48; index++) {
-    const elapsed = mix(visitFrom, visitTo, index / 48) / glowSpeed;
+    const elapsed = mix(visitFrom, visitTo, index / 48) / wave.speed;
     const signal = traversalAt(wave, wave.started + elapsed, colors, layout, { complete: false });
     const lead = leadOf(wave, signal);
     if (!lead) continue;
@@ -810,7 +814,7 @@ function planVisit(wave, visit, width, colors, worldToX, layout) {
   const origin = visitOrigin(visit, selectedLead, worldToX, layout.yAt);
   const { route } = drawerPath(visit.panel, selectedLead.direction, origin);
   const timing = measurePath(route, 720);
-  return { begin: moment, timing, delay: timing.length / glowSpeed };
+  return { begin: moment, timing, delay: timing.length / wave.speed };
 }
 
 function waveFrameAt(wave, now) {
@@ -985,7 +989,11 @@ export function paintGraph(canvas, frame) {
     return mix(pointAt(left).y, pointAt(left + 1).y, smooth(day - left));
   };
   const layout = { yAt, height, spacing };
-  if (wave) wave.motion ??= prepareWave(wave, layout);
+  if (wave && !wave.motion) {
+    // Keep the launch speed alongside the measured path if the viewport resizes mid-wave.
+    wave.speed = glowSpeedForWidth(width);
+    wave.motion = prepareWave(wave, layout);
+  }
   const dye = wave?.ink && colors[wave.ink];
   const waveColors = dye ? { accent: dye, secondary: dye, spark: dye } : colors;
   if (wave?.panel && visit && wave.visit === undefined) {
@@ -1003,7 +1011,7 @@ export function paintGraph(canvas, frame) {
   let onGraph = wave?.departed === undefined
     ? traversalOnGraph(wave, phase, waveColors, layout, { startingHeads: atRejoin?.heads })
     : {};
-  if (wave && (phase.time - wave.started) * glowSpeed >= wave.motion.length && wave.departed === undefined) {
+  if (wave && (phase.time - wave.started) * wave.speed >= wave.motion.length && wave.departed === undefined) {
     if (!traversalInView(onGraph, worldToX, width)) {
       wave.departed = now;
       wave.ends = now + glowFade;
