@@ -1231,6 +1231,8 @@ test('traveling effects and silent ripples cover the same screen distance on fla
       points: Array.from({ length: 23 }, (_, index) => pointAt(index - 11)),
       colors: { accent: '#9bfae2', secondary: '#aaa1ff', spark: '#efbaf4' },
     };
+    const splitPointAt = (index) => index === 1 ? { ...pointAt(index), y: baseline + 155 } : pointAt(index);
+    const splitFrame = { ...frame, pointAt: splitPointAt, points: frame.points.map(({ index }) => splitPointAt(index)) };
     const kinds = [
       'daybreak-sweep', 'backlight-sweep', 'crossing-lights', 'over-under', 'sky-ribbon',
       'split-pulse', 'skipping-sparks', 'twin-ribbons', 'beacon-landing', 'drawer-loop', 'silent-ripple',
@@ -1239,6 +1241,7 @@ test('traveling effects and silent ripples cover the same screen distance on fla
     for (const kind of kinds) {
       const looping = kind === 'drawer-loop';
       const silent = kind === 'silent-ripple';
+      const graph = kind === 'split-pulse' ? splitFrame : frame;
       const wave = {
         kind: looping ? 'daybreak-sweep' : kind, started: 0, panel: looping,
         from: -11, to: 11, anchor: 0, direction: 1, side: -1, entry: { day: -8, y: -1 },
@@ -1252,8 +1255,18 @@ test('traveling effects and silent ripples cover the same screen distance on fla
       function draw(now) {
         tips.length = drawerTips.length = 0;
         if (ripple) ripple.progress = ripple.progressAt(now);
-        paintGraph(canvas, { ...frame, now, visit, wave: silent ? undefined : wave, ripples: silent ? [ripple] : [] });
+        paintGraph(canvas, { ...graph, now, visit, wave: silent ? undefined : wave, ripples: silent ? [ripple] : [] });
         return [...(looping ? drawerTips : tips)];
+      }
+      if (kind === 'split-pulse') {
+        draw(0);
+        const { arrival, ripple } = wave.motion;
+        const shorterEnd = (arrival.length + ripple.tracks[0].length) / .81;
+        const longerEnd = (arrival.length + ripple.distance) / .81;
+        stats.oneSideFaded = draw(shorterEnd + 1).map(({ x }) => x);
+        stats.bothSidesFaded = draw(longerEnd).length;
+        stats.reappearing = draw(longerEnd + 120).map(({ x, y }) => [x, y]);
+        stats.endNodes = [-4, 4].map((day) => [pointAt(day).x, pointAt(day).y]);
       }
       for (let now = 11; now < latest; now += silent ? 14 : 67) {
         const before = draw(now);
@@ -1287,7 +1300,12 @@ test('traveling effects and silent ripples cover the same screen distance on fla
     assert.ok(stats.samples >= 10 && stats.farthestError < .45, JSON.stringify({ kind, stats }));
   }
   assert.ok(result['daybreak-sweep'].steep >= 2);
-  assert.ok(result['split-pulse'].holds > 0 && result['beacon-landing'].holds > 0);
+  const split = result['split-pulse'];
+  assert.equal(split.oneSideFaded.length, 1);
+  assert.ok(split.oneSideFaded[0] > split.endNodes[0][0] && split.oneSideFaded[0] < split.endNodes[1][0]);
+  assert.equal(split.bothSidesFaded, 0);
+  assert.deepEqual(split.reappearing, split.endNodes);
+  assert.ok(split.holds > 0 && result['beacon-landing'].holds > 0);
 });
 
 test('traveling lights charge nodes on contact and fade after passing', async (t) => {
@@ -1427,8 +1445,8 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const fall = .62;
     const launchDay = 4;
     const exit = .45;
-    const pulseEdges = [-.5, .5].map((offset) => [offset, baseline]);
-    const pulseDots = [-1, 1].map((offset) => [offset, baseline - 9]);
+    const pulseRing = [[0, baseline - 25]];
+    const pulseEnds = [-4, 4].map((offset) => [offset, baseline - 9]);
     const fallDay = (position) => launchDay + .6 * Math.sin(Math.PI * position);
     const fallY = (position) => height * (-.14 + .7 * position ** 1.24);
     const fallTime = (end) => window.glowTravelTime((position) => [fallDay(position) * spacing, fallY(position)], 0, end);
@@ -1442,13 +1460,17 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     };
     await frame();
     return {
-      pulseBase: [...pulseEdges, ...pulseDots].map(([offset, y]) => sample(offset, y)),
+      pulseRingBase: sample(...pulseRing[0]),
+      pulseBase: pulseEnds.map(([offset, y]) => sample(offset, y)),
       below: await play(3, time(weave(-.31, 5), -reach, -2.5), [[-2.5, baseline + height * .31]]),
       above: await play(3, time(weave(-.31, 5), -reach, 2.5), [[2.5, baseline - height * .31]]),
       launch: await play(4, fallTime(fall), [[fallDay(fall), fallY(fall)]], [.99, .69]),
       launchExit: await play(4, fallTime(1) + time(exitY, launchDay, launchExit), [[launchExit, baseline]], [.99, .69]),
-      pause: await play(5, pulseTime(1.08) + 420, [...pulseEdges, ...pulseDots]),
-      splitExit: await play(5, pulseTime(splitExit) + 850, [[-splitExit, baseline], [splitExit, baseline]]),
+      pulseRing: (await play(5, pulseTime(0) + 24, pulseRing))[0],
+      pulseFaded: await play(5, pulseTime(4), pulseEnds),
+      pulseFadingIn: await play(5, pulseTime(4) + 85, pulseEnds),
+      pulseFadedIn: await play(5, pulseTime(4) + 230, pulseEnds),
+      splitExit: await play(5, pulseTime(splitExit) + 240, [[-splitExit, baseline], [splitExit, baseline]]),
       hop: await play(6, time(hopY, -reach, -1.5), [[-1.5, baseline + height * .27]]),
       braid: [
         ...(await play(7, time(weave(-.21, 6), -reach, -3), [[-3, baseline + height * .21]])),
@@ -1459,7 +1481,12 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
   for (const effect of ['below', 'above', 'launch', 'launchExit', 'splitExit', 'hop', 'braid']) {
     assert.ok(playful[effect].every((opacity) => opacity > 140), JSON.stringify({ effect, playful }));
   }
-  assert.ok(playful.pause.every((opacity, index) => opacity > playful.pulseBase[index] + 15), JSON.stringify(playful));
+  assert.ok(playful.pulseRing > playful.pulseRingBase + 70, JSON.stringify(playful));
+  for (const [index, opacity] of playful.pulseFaded.entries()) {
+    assert.ok(opacity < playful.pulseBase[index] + 25, JSON.stringify(playful));
+    assert.ok(playful.pulseFadingIn[index] > opacity + 4, JSON.stringify(playful));
+    assert.ok(playful.pulseFadedIn[index] > playful.pulseFadingIn[index] + 12, JSON.stringify(playful));
+  }
 
   const wake = await page.evaluate(async () => {
     const canvas = document.querySelector('#graph');
