@@ -10,7 +10,7 @@
 
 ## Automated tests
 
-- Run `npm test` with Node.js 24 and an installed Chrome or Edge. Run `npm run test:unit` for calendar checks without a browser, or `npm run test:browser` for the browser smoke test alone.
+- Run `npm test` with Node.js 26 and an installed Chrome or Edge. Run `npm run test:unit` for calendar checks without a browser, or `npm run test:browser` for the browser smoke test alone.
 - The smoke test starts Checkin with `PORT=0`, uses a temporary headless browser profile, and cleans up both processes and the profile. Set `CHECKIN_BROWSER` to the executable path if Chrome or Edge is installed outside its usual location.
 - If the sandbox blocks browser startup, run the unit tests inside the sandbox and use the `npm run test:browser` approval for the browser test.
 - Extend the suite in `test/` for new or changed behavior. Assert visible results and verify saved entries after reloading when persistence matters.
