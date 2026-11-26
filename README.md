@@ -24,6 +24,6 @@ A day's dot rises with the number and values of its activities. Days that stand 
 
 ## Run locally
 
-With Node.js 24 installed, run `npm start` and open [Checkin](http://127.0.0.1:4173). Keep using the same address and browser profile. Checkin stores its activity list and logs in the browser.
+With Node.js 26.13.1 LTS installed, run `npm start` and open [Checkin](http://127.0.0.1:4173). Keep using the same address and browser profile. Checkin stores its activity list and logs in the browser.
 
 The server serves `dist/` directly. Run `npm test` with Chrome or Edge installed. The browser test uses a separate server and temporary browser profile.
