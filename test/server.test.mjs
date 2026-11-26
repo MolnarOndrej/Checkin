@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { startProcess } from './browser.mjs';
+
+test('HEAD returns the same asset metadata as GET with an empty body', async (t) => {
+  const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
+    env: { ...process.env, PORT: '0' },
+  }, /Checkin is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
+  t.after(() => server.stop());
+  const url = await server.ready;
+
+  for (const [path, contentType] of [
+    ['/styles.css', 'text/css; charset=utf-8'],
+    ['/submitsounds.json', 'application/json'],
+    ['/submitsounds/1.mp3', 'audio/mpeg'],
+  ]) {
+    const asset = new URL(path, url);
+    const signal = AbortSignal.timeout(10_000);
+    const [full, head] = await Promise.all([
+      fetch(asset, { signal }),
+      fetch(asset, { method: 'HEAD', signal }),
+    ]);
+    assert.equal(full.status, 200, path);
+    assert.equal(head.status, 200, path);
+    assert.equal(full.headers.get('content-type'), contentType, path);
+    assert.equal(head.headers.get('content-type'), contentType, path);
+    const body = await full.arrayBuffer();
+    assert.ok(body.byteLength > 0, path);
+    assert.equal(full.headers.get('content-length'), String(body.byteLength), path);
+    assert.equal(head.headers.get('content-length'), String(body.byteLength), path);
+    assert.equal(await head.text(), '', path);
+  }
+});

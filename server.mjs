@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readdir, readFile } from 'node:fs/promises';
+import { open, readdir } from 'node:fs/promises';
 import { extname } from 'node:path';
 
 const host = '127.0.0.1';
@@ -15,7 +15,7 @@ const sounds = new Map(soundFiles
     const path = `submitsounds/${encodeURIComponent(name)}`;
     return [path, new URL(path, import.meta.url)];
   }));
-const soundList = JSON.stringify([...sounds.keys()]);
+const soundList = Buffer.from(JSON.stringify([...sounds.keys()]));
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -38,9 +38,25 @@ const server = createServer(async (request, response) => {
     return;
   }
   try {
-    const content = source ? await readFile(source) : soundList;
-    response.writeHead(200, { 'Content-Type': contentTypes[extname(file).toLowerCase()] });
-    response.end(request.method === 'HEAD' ? undefined : content);
+    const head = request.method === 'HEAD';
+    let content = soundList;
+    let length = soundList.length;
+    if (source) {
+      await using asset = await open(source);
+      if (head) {
+        const stats = await asset.stat();
+        if (!stats.isFile()) throw new Error(`Expected a file for ${file}`);
+        length = stats.size;
+      } else {
+        content = await asset.readFile();
+        length = content.length;
+      }
+    }
+    response.writeHead(200, {
+      'Content-Type': contentTypes[extname(file).toLowerCase()],
+      'Content-Length': length,
+    });
+    response.end(head ? undefined : content);
   } catch (error) {
     console.error(error);
     response.writeHead(500).end('Could not load the application');
