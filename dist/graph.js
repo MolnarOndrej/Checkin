@@ -198,7 +198,9 @@ function hops(wave) {
   };
 }
 
-const splitHold = 850 * glowSpeed;
+const rippleReach = 4.2;
+const splitReach = Math.round(rippleReach);
+const splitFadeIn = 240 * glowSpeed;
 const beaconHold = 700 * glowSpeed;
 const beaconEase = 65 * glowSpeed;
 const beaconFade = 500 * glowSpeed;
@@ -275,18 +277,20 @@ function prepareWave(wave, layout) {
     case 'split-pulse': {
       const arrival = track(followGraph(from, anchor));
       const branches = [-1, 1].map((side) => {
-        const flare = anchor + side * 1.08;
+        const end = anchor + side * splitReach;
         return {
-          side, reach: track(followGraph(anchor, flare)),
-          exit: across(flare, side === direction ? to : from),
+          side, reach: track(followGraph(anchor, end)),
+          exit: across(end, side === direction ? to : from),
         };
       });
-      const length = arrival.length + splitHold + Math.max(...branches.map(({ reach, exit }) => reach.length + exit.length));
-      const nodeTracks = [{ track: arrival }, ...branches.flatMap(({ reach, exit }, contact) => [
-        { track: reach, offset: arrival.length, contact },
-        { track: exit, offset: arrival.length + reach.length + splitHold, contact },
-      ])];
-      return { arrival, branches, length, nodeTracks, visitTo: arrival.length * .96 };
+      const tracks = branches.map(({ reach }) => reach);
+      const ripple = { index: anchor, tracks, distance: Math.max(...tracks.map(({ length }) => length)) };
+      const exitStart = arrival.length + ripple.distance + splitFadeIn;
+      const length = exitStart + Math.max(...branches.map(({ exit }) => exit.length));
+      const nodeTracks = [{ track: arrival }, ...branches.map(({ exit }, contact) => (
+        { track: exit, offset: exitStart, contact }
+      ))];
+      return { arrival, branches, ripple, exitStart, length, nodeTracks, visitTo: arrival.length * .96 };
     }
     case 'beacon-landing': {
       const arrival = easeBeaconTrack(track((position, currentLayout) => {
@@ -310,23 +314,23 @@ function prepareWave(wave, layout) {
 }
 
 function splitPulse(wave, motion, distance, colors, layout) {
-  const { arrival, branches } = motion;
+  const { arrival, branches, ripple, exitStart } = motion;
   if (distance <= arrival.length) {
     return { heads: [head(arrival.at(distance, layout).day, wave.direction, colors.spark)] };
   }
   const outward = distance - arrival.length;
+  if (outward < ripple.distance) {
+    return { ripple: { ...ripple, progress: outward / ripple.distance } };
+  }
+  const exitDistance = Math.max(0, distance - exitStart);
+  const fade = smooth(clamp((outward - ripple.distance) / splitFadeIn, 0, 1));
+  const style = clamp(exitDistance / (layout.spacing * 3), 0, 1);
   return {
-    heads: branches.map(({ side, reach, exit }) => {
-      const exitDistance = outward - reach.length - splitHold;
-      const time = clamp((outward - reach.length) / splitHold, 0, 1);
-      const style = clamp(exitDistance / (layout.spacing * 3), 0, 1);
-      const { day } = exitDistance > 0 ? exit.at(exitDistance, layout) : reach.at(outward, layout);
-      return {
-        ...head(day, side, colors.spark, mix(.70 + .18 * Math.sin(Math.PI * time), 1, style), mix(1.2, 4, style)),
-        lead: mix(.32, .75, style),
-        trailOpacity: mix(.66, .24, style),
-      };
-    }),
+    heads: branches.map(({ side, exit }) => ({
+      ...head(exit.at(exitDistance, layout).day, side, colors.spark, fade * mix(.84, 1, style), mix(1.2, 4, style)),
+      lead: mix(.32, .75, style),
+      trailOpacity: mix(.66, .24, style),
+    })),
   };
 }
 
@@ -445,8 +449,6 @@ function traversalAt(wave, now, colors, layout, { complete = true, after = wave?
   }
 }
 
-const rippleReach = 4.2;
-
 export function createRipple(index, started, spacing, audioProgressAt) {
   const distance = rippleReach * spacing;
   return {
@@ -466,13 +468,14 @@ function rippleHeads(ripple, colors, layout) {
     ));
   }
   const spread = rippleReach * (1 - (1 - progress) ** 2);
-  return directions.map((direction, track) => ({
-    day: audioBound ? index + direction * spread : ripple.tracks[track].at(distance * progress, layout).day,
-    direction,
-    color: direction === 1 ? colors.accent : colors.spark,
-    strength: 1.65 * (1 - progress) ** 2,
-    tail: 1.5,
-  }));
+  const traveled = distance * progress;
+  return directions.map((direction, side) => {
+    const track = ripple.tracks?.[side];
+    // Each side fades by the time it reaches its own endpoint, even on an uneven graph.
+    const fraction = track ? Math.min(1, traveled / Math.min(distance, track.length)) : progress;
+    const day = track ? track.at(traveled, layout).day : index + direction * spread;
+    return head(day, direction, direction === 1 ? colors.accent : colors.spark, 1.65 * (1 - fraction) ** 2, 1.5);
+  });
 }
 
 export function traceCurve(points) {
@@ -496,6 +499,17 @@ function stroke(context, path, color, width) {
 function circle(context, x, y, size) {
   context.beginPath();
   context.arc(x, y, size, 0, 2 * Math.PI);
+}
+
+function paintRipple(context, { index, progress, audioBound, distance }, color, points) {
+  const origin = points[index - points[0].index];
+  if (!origin) return;
+  const remaining = 1 - progress;
+  const radius = audioBound ? 35 * (1 - remaining ** 4) : Math.min(35, distance * progress);
+  circle(context, origin.x, origin.y, 6 + radius);
+  context.strokeStyle = tint(color, .92 * remaining ** 3);
+  context.lineWidth = 1.5 + remaining;
+  context.stroke();
 }
 
 function halo(context, x, y, radius, color, brightness) {
@@ -998,7 +1012,9 @@ export function paintGraph(canvas, frame) {
   }
   const ink = inkOnGraph(wave, now, waveColors, layout);
   const nodeLight = wave && nodeLightAt(wave, now, waveColors, layout);
+  const splitRipple = onGraph.ripple;
   const rippleLights = ripples.flatMap((ripple) => rippleHeads(ripple, colors, layout));
+  if (splitRipple) rippleLights.push(...rippleHeads(splitRipple, waveColors, layout));
   const heads = [...(onGraph.heads ?? []), ...rippleLights];
   const ribbons = onGraph.ribbons ?? [];
   const path = frame.curve ?? traceCurve(points);
@@ -1043,14 +1059,6 @@ export function paintGraph(canvas, frame) {
   }
   if (onGraph.ball) paintBall(context, onGraph.ball, worldToX, width, height);
 
-  for (const { index, progress, audioBound, distance } of ripples) {
-    const origin = points[index - first.index];
-    if (!origin) continue;
-    const remaining = 1 - progress;
-    const radius = audioBound ? 35 * (1 - remaining ** 4) : Math.min(35, distance * progress);
-    circle(context, origin.x, origin.y, 6 + radius);
-    context.strokeStyle = tint(colors.spark, .92 * remaining ** 3);
-    context.lineWidth = 1.5 + remaining;
-    context.stroke();
-  }
+  for (const ripple of ripples) paintRipple(context, ripple, colors.spark, points);
+  if (splitRipple) paintRipple(context, splitRipple, waveColors.spark, points);
 }

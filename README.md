@@ -15,7 +15,7 @@ A day's dot rises with the number and values of its activities. Days that stand 
 | Crossing Lights | Two glows approach each other and pass through. |
 | Over Under | A ribbon weaves above and below the curve. |
 | Sky Ribbon | A ribbon enters from above or below, touches a random dot, and heads toward the farther edge. |
-| Split Pulse | A glow splits at a dot and ripples through its neighbors. Both ends continue outward. |
+| Split Pulse | A glow splits at a dot into a ripple that fades at the end nodes. Both lights fade back in there and continue outward. |
 | Skipping Sparks | A dotted arc hops between dates. |
 | Twin Ribbons | Two strands braid around the curve. |
 | Beacon Landing | A glow streaks in, blooms above or below the busiest visible dot, and lands before following the curve. |
