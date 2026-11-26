@@ -66,10 +66,13 @@ export function randomWave({ center, visibleDays, today, now, countAt }) {
   const radius = Math.max(.5, visibleDays / 2 - .35);
   const first = Math.ceil(center - radius);
   const last = Math.floor(center + radius);
+  let anchor = Math.abs(today - center) <= visibleDays * .43 ? today : Math.round(center);
   // Scale the offscreen lead-in to keep the time before the glow enters the viewport consistent.
   const padding = visibleDays * (9 / 21);
-  const reach = Math.max(visibleDays / 2 + padding, kind === 'split-pulse' ? splitReach + 1 : 0);
-  let anchor = Math.abs(today - center) <= visibleDays * .43 ? today : Math.round(center);
+  let reach = visibleDays / 2 + padding;
+  if (kind === 'split-pulse') {
+    reach = Math.max(reach, Math.abs(anchor - center) + splitReach + 1);
+  }
   let entry;
   if (kind === 'sky-ribbon') {
     anchor = first + Math.floor(Math.random() * (last - first + 1));

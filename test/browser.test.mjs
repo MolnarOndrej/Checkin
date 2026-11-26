@@ -1269,6 +1269,45 @@ test('traveling glows cross the same fraction of the timeline on phones and desk
   }
 });
 
+test('an off-center Split Pulse keeps its outgoing glows moving outward on a phone', async (t) => {
+  const page = await openCheckin(t, controlTimelineEffects);
+  await page.setViewport(360, 780);
+  await page.setReducedMotion('reduce');
+  await settle(page);
+  await page.evaluate(() => {
+    const timeline = document.querySelector('#timeline');
+    for (let i = 0; i < 3; i++) {
+      timeline.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    }
+  });
+  await settle(page);
+  await page.setReducedMotion('no-preference');
+  await settle(page);
+
+  const { todayX, arriving, returning } = await page.evaluate(async () => {
+    const graph = document.querySelector('#graph');
+    const context = graph.getContext('2d');
+    const todayX = parseFloat(document.querySelector('[aria-current="date"]').style.translate);
+    async function rightGlowAfter(elapsed) {
+      window.advanceCheckin(elapsed);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const { width, height } = graph;
+      const { data } = context.getImageData(0, Math.floor(height * .56), width, 1);
+      for (let x = width / 2; x < width; x++) {
+        if (Math.abs(x - todayX) < 8) continue;
+        const i = x * 4;
+        if (data[i] > 235 && data[i + 1] > 235 && data[i + 2] > 235 && data[i + 3] > 220) return x;
+      }
+      return null;
+    }
+    window.traverse(5);
+    return { todayX, arriving: await rightGlowAfter(2200), returning: await rightGlowAfter(2600) };
+  });
+  assert.equal(todayX, 333);
+  assert.ok(arriving !== null && arriving < todayX);
+  assert.equal(returning, null, `An outgoing glow returned at x=${returning}`);
+});
+
 test('traveling effects and silent ripples cover the same screen distance on flat and steep paths', async (t) => {
   const page = await openCheckin(t);
   const result = await page.evaluate(async () => {
