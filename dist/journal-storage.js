@@ -1,6 +1,6 @@
 import * as journalData from './journal-data.js';
 
-const storageKey = 'checkin.timeline.v1';
+const storageKey = 'daytrack.timeline.v1';
 
 function readJournal() {
   try {

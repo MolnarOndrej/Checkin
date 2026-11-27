@@ -63,4 +63,4 @@ const server = createServer(async (request, response) => {
   }
 });
 
-server.listen(port, host, () => console.log(`Checkin is ready at http://${host}:${server.address().port}`));
+server.listen(port, host, () => console.log(`DayTrack is ready at http://${host}:${server.address().port}`));

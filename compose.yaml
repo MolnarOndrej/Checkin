@@ -1,5 +1,5 @@
 services:
-  checkin:
+  daytrack:
     build: .
     ports:
       - "127.0.0.1:4174:4173"
