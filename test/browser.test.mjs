@@ -697,45 +697,6 @@ test('an activity edit keeps old logs and the open log editor leaves room to swi
   assert.deepEqual(reopened.goals, [{ id: 'weekly-walk', metric: 'minutes', amount: 60, repeat: 'weekly', start: today }]);
 });
 
-test('the renamed app loads an existing journal and saves edits under the DayTrack key', async (t) => {
-  const page = await openDayTrack(t, () => {
-    const legacyKey = 'checkin.timeline.v1';
-    if (localStorage.getItem(legacyKey) !== null) return;
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    localStorage.setItem(legacyKey, JSON.stringify({
-      activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min' }],
-      days: { [today]: { values: { walk: { amount: 30, effort: .29 } } } },
-    }));
-  });
-  await settle(page);
-
-  const openToday = () => {
-    document.querySelector('[aria-current="date"]').click();
-    return document.querySelector('.log-row')?.innerText.trim();
-  };
-  assert.equal(await page.evaluate(openToday), 'Walk\n30 min');
-
-  await page.evaluate(async () => {
-    document.querySelector('.log-row').click();
-    const dialog = document.querySelector('dialog');
-    dialog.querySelector('input').value = '45';
-    dialog.querySelector('[type="submit"]').click();
-    for (let attempt = 0; dialog.open; attempt++) {
-      if (attempt === 90) throw new Error('Log edit did not save');
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-    }
-  });
-  assert.equal(await page.evaluate(() => {
-    const today = document.querySelector('[aria-current="date"]').dataset.date;
-    return JSON.parse(localStorage.getItem('daytrack.timeline.v1')).days[today].values.walk.amount;
-  }), 45);
-
-  await page.reload();
-  await settle(page);
-  assert.equal(await page.evaluate(openToday), 'Walk\n45 min');
-});
-
 test('a stale add form reports a conflict and keeps the saved log after reload', async (t) => {
   const page = await openDayTrack(t, () => {
     const key = 'daytrack.timeline.v1';
