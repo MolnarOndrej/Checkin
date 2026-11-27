@@ -9,28 +9,28 @@ test('defaults to the loopback host when HOST is unset', async (t) => {
   );
   const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
     env: { ...env, PORT: '0' },
-  }, /Checkin is ready at http:\/\/(.+):\d+\r?\n/);
+  }, /DayTrack is ready at http:\/\/(.+):\d+\r?\n/);
   t.after(() => server.stop());
 
   assert.equal(await server.ready, '127.0.0.1');
 });
 
-test('serves Checkin when HOST is set to the container bind address', async (t) => {
+test('serves DayTrack when HOST is set to the container bind address', async (t) => {
   const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
     env: { ...process.env, HOST: '0.0.0.0', PORT: '0' },
-  }, /Checkin is ready at http:\/\/0\.0\.0\.0:(\d+)\r?\n/);
+  }, /DayTrack is ready at http:\/\/0\.0\.0\.0:(\d+)\r?\n/);
   t.after(() => server.stop());
 
   const port = await server.ready;
   const response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(10_000) });
   assert.equal(response.status, 200);
-  assert.match(await response.text(), /<title>Checkin<\/title>/);
+  assert.match(await response.text(), /<title>DayTrack<\/title>/);
 });
 
 test('HEAD returns the same asset metadata as GET with an empty body', async (t) => {
   const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
     env: { ...process.env, HOST: '127.0.0.1', PORT: '0' },
-  }, /Checkin is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
+  }, /DayTrack is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
   t.after(() => server.stop());
   const url = await server.ready;
 

@@ -1,6 +1,6 @@
-# Checkin
+# DayTrack
 
-Checkin is a local activity log centered on a daily timeline. Swipe or drag left and right to browse, or tab to the timeline and use the arrow keys. Select a dot to open the day's activity. The timeline opens on today.
+DayTrack is a local activity log centered on a daily timeline. Swipe or drag left and right to browse, or tab to the timeline and use the arrow keys. Select a dot to open the day's activity. The timeline opens on today.
 
 Use the top-right icon to manage activities measured in minutes or a custom unit. If the list is empty, it opens the **Add activity** form. Select today or a past day to log a value. If the day has no logs, the logging form opens automatically once you have an activity to choose from. Select **+** to log another activity, or select a saved row to edit or remove it. You can save one value per activity per day.
 
@@ -24,6 +24,6 @@ A day's dot rises with the number and values of its activities. Days that stand 
 
 ## Run locally
 
-With Node.js 26.13.1 LTS installed, run `npm start` and open [Checkin](http://127.0.0.1:4173). Keep using the same address and browser profile. Checkin stores its activity list and logs in the browser.
+With Node.js 26.13.1 LTS installed, run `npm start` and open [DayTrack](http://127.0.0.1:4173). Keep using the same address and browser profile. DayTrack stores its activity list and logs in the browser.
 
 The server serves `dist/` directly. Run `npm test` with Node.js 26 and Chrome or Edge installed. The browser test uses a separate server and temporary browser profile.

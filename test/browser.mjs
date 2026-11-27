@@ -35,22 +35,22 @@ export function startProcess(command, args, options, readyPattern) {
 }
 
 function browserExecutable() {
-  const { CHECKIN_BROWSER, ProgramFiles, LOCALAPPDATA } = process.env;
+  const { DAYTRACK_BROWSER, ProgramFiles, LOCALAPPDATA } = process.env;
   const candidates = [ProgramFiles, process.env['ProgramFiles(x86)'], LOCALAPPDATA]
     .filter(Boolean)
     .flatMap((root) => [
       join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'),
       join(root, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     ]);
-  const executable = CHECKIN_BROWSER || candidates.find((path) => existsSync(path));
-  if (!executable) throw new Error('Set CHECKIN_BROWSER to the path of an installed Chrome or Edge executable.');
+  const executable = DAYTRACK_BROWSER || candidates.find((path) => existsSync(path));
+  if (!executable) throw new Error('Set DAYTRACK_BROWSER to the path of an installed Chrome or Edge executable.');
   return executable;
 }
 
 export async function openBrowser(t, ...args) {
   const executable = browserExecutable();
   const temp = await realpath(tmpdir());
-  const profile = await mkdtemp(join(temp, 'checkin-browser-'));
+  const profile = await mkdtemp(join(temp, 'daytrack-browser-'));
   let browser;
   let socket;
   t.after(async () => {

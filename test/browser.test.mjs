@@ -3,18 +3,18 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { openBrowser, startProcess } from './browser.mjs';
 
-async function startCheckin(t) {
+async function startDayTrack(t) {
   const server = startProcess(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], {
     env: { ...process.env, HOST: '127.0.0.1', PORT: '0' },
-  }, /Checkin is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
+  }, /DayTrack is ready at (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
   t.after(() => server.stop());
   const url = await server.ready;
   assert.notEqual(new URL(url).port, '4173');
   return url;
 }
 
-async function openCheckin(t, ...beforeLoad) {
-  const url = await startCheckin(t);
+async function openDayTrack(t, ...beforeLoad) {
+  const url = await startDayTrack(t);
   const page = await openBrowser(t);
   for (const action of beforeLoad) await page.beforeLoad(action);
   await page.setViewport(1440, 900);
@@ -27,7 +27,7 @@ async function settle(page) {
 }
 
 test('today starts centered with 21 dated dots, and year labels and touch swipes work on a phone', async (t) => {
-  const page = await openCheckin(t, () => {
+  const page = await openDayTrack(t, () => {
     const NativeDate = Date;
     window.Date = class extends NativeDate {
       constructor(...args) {
@@ -91,7 +91,7 @@ test('today starts centered with 21 dated dots, and year labels and touch swipes
 });
 
 test('Today swipes back from either direction and finishes long trips within two seconds', async (t) => {
-  const page = await openCheckin(t, controlTimelineEffects);
+  const page = await openDayTrack(t, controlTimelineEffects);
   await page.setReducedMotion('no-preference');
   await settle(page);
   const trips = await page.evaluate(async () => {
@@ -108,7 +108,7 @@ test('Today swipes back from either direction and finishes long trips within two
       return Math.round(offset + (left + width / 2 - bounds.left - bounds.width / 2) / spacing);
     };
     const frame = async (elapsed) => {
-      window.advanceCheckin(elapsed);
+      window.advanceDayTrack(elapsed);
       await new Promise((resolve) => requestAnimationFrame(resolve));
     };
 
@@ -144,20 +144,20 @@ test('Today swipes back from either direction and finishes long trips within two
 });
 
 test('activities can be managed, logged, edited, deleted and reloaded on a phone', async (t) => {
-  const page = await openCheckin(t);
+  const page = await openDayTrack(t);
   await page.setViewport(390, 844);
   await page.setReducedMotion('reduce');
   await settle(page);
   const created = await page.evaluate(async () => {
     const find = (selector) => document.querySelector(selector);
-    window.waitForCheckin = async (test) => {
+    window.waitForDayTrack = async (test) => {
       for (let round = 0; round < 90; round++) {
         if (test()) return;
         await new Promise((resolve) => requestAnimationFrame(resolve));
       }
-      throw new Error('Checkin update did not finish');
+      throw new Error('DayTrack update did not finish');
     };
-    window.createCheckinActivity = async (name, unit) => {
+    window.createDayTrackActivity = async (name, unit) => {
       find('[aria-label="New activity"]')?.click();
       find('dialog input').value = name;
       if (unit) {
@@ -166,7 +166,7 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
         find('dialog input[placeholder]').value = unit;
       }
       find('dialog [type="submit"]').click();
-      await window.waitForCheckin(() => find('[aria-label="Remove ' + name + '"]'));
+      await window.waitForDayTrack(() => find('[aria-label="Remove ' + name + '"]'));
     };
     const manage = find('#manage');
     manage.focus();
@@ -179,8 +179,8 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
     find('dialog .actions [type="button"]').click();
     const managerCancel = { closed: !find('dialog').open, focusRestored: document.activeElement === manage };
     manage.click();
-    await window.createCheckinActivity('Read', 'pages');
-    await window.createCheckinActivity('Stretch');
+    await window.createDayTrackActivity('Read', 'pages');
+    await window.createDayTrackActivity('Stretch');
     const activityRows = [...document.querySelectorAll('dialog .activity-row')].map((row) => row.innerText.trim());
     find('#close-dialog').click();
     find('[aria-current="date"]').click();
@@ -194,18 +194,18 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
     logForm().querySelector('.actions [type="button"]').click();
     const logCancel = { closed: !logForm(), focused: document.activeElement === logToggle() };
     logToggle().click();
-    window.logCheckinValue = async (name, amount) => {
+    window.logDayTrackValue = async (name, amount) => {
       if (!logForm()) logToggle().click();
       const picker = find('#day-content select');
       picker.value = [...picker.options].find((option) => option.text === name).value;
       picker.dispatchEvent(new Event('change'));
       find('#day-content input').value = amount;
       find('#day-content [type="submit"]').click();
-      await window.waitForCheckin(() => !find('#day-content form'));
+      await window.waitForDayTrack(() => !find('#day-content form'));
     };
     const originalY = find('[aria-current="date"]').getBoundingClientRect().top;
-    await window.logCheckinValue('Read', 4.5);
-    await window.logCheckinValue('Stretch', 20);
+    await window.logDayTrackValue('Read', 4.5);
+    await window.logDayTrackValue('Stretch', 20);
     const value = find('.log-value').textContent;
     find('.log-row').click();
     const controls = [...document.querySelectorAll('dialog .actions button')].map((control) => control.textContent);
@@ -216,13 +216,13 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
     const today = find('[aria-current="date"]');
     today.previousElementSibling.click();
     const emptyPast = logForm()?.checkVisibility();
-    await window.logCheckinValue('Read', 12);
-    await window.logCheckinValue('Stretch', 25);
+    await window.logDayTrackValue('Read', 12);
+    await window.logDayTrackValue('Stretch', 25);
     today.click();
     find('.log-row').click();
     find('dialog input').value = '100';
     find('dialog [type="submit"]').click();
-    await window.waitForCheckin(() => !find('dialog').open);
+    await window.waitForDayTrack(() => !find('dialog').open);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     return {
       firstActivity, managerCancel, emptyToday, logCancel, emptyPast,
@@ -351,7 +351,7 @@ test('activities can be managed, logged, edited, deleted and reloaded on a phone
 });
 
 test('an empty day offers Add activity directly and opens logging with the new activity selected', async (t) => {
-  const page = await openCheckin(t);
+  const page = await openDayTrack(t);
   await page.setViewport(320, 640);
   await page.setReducedMotion('reduce');
   await settle(page);
@@ -364,7 +364,7 @@ test('an empty day offers Add activity directly and opens logging with the new a
     };
     const waitFor = async (condition) => {
       for (let attempt = 0; !condition(); attempt++) {
-        if (attempt === 90) throw new Error('Checkin update did not finish');
+        if (attempt === 90) throw new Error('DayTrack update did not finish');
         await new Promise((resolve) => requestAnimationFrame(resolve));
       }
     };
@@ -446,9 +446,9 @@ test('an empty day offers Add activity directly and opens logging with the new a
 });
 
 test('an activity can be created and reloaded over plain HTTP on a non-loopback hostname', async (t) => {
-  const url = new URL(await startCheckin(t));
-  url.hostname = 'checkin.test';
-  const page = await openBrowser(t, '--no-proxy-server', '--host-resolver-rules=MAP checkin.test 127.0.0.1');
+  const url = new URL(await startDayTrack(t));
+  url.hostname = 'daytrack.test';
+  const page = await openBrowser(t, '--no-proxy-server', '--host-resolver-rules=MAP daytrack.test 127.0.0.1');
   await page.navigate(url.href);
   await settle(page);
   assert.deepEqual(await page.evaluate(() => [isSecureContext, typeof crypto.randomUUID]), [false, 'undefined']);
@@ -470,13 +470,13 @@ test('an activity can be created and reloaded over plain HTTP on a non-loopback 
 });
 
 test('logging preselects the sole available activity or the last one created through the shortcut', async (t) => {
-  const page = await openCheckin(t);
+  const page = await openDayTrack(t);
   await page.setViewport(390, 844);
   await page.setReducedMotion('reduce');
   await settle(page);
   await page.evaluate(() => {
     const date = document.querySelector('[aria-current="date"]').dataset.date;
-    localStorage.setItem('checkin.timeline.v1', JSON.stringify({
+    localStorage.setItem('daytrack.timeline.v1', JSON.stringify({
       activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min', goals: [] }],
       days: { [date]: { values: { walk: { amount: 30, effort: .29 } } } },
     }));
@@ -544,12 +544,12 @@ test('logging preselects the sole available activity or the last one created thr
 });
 
 test('the day drawer and all dialogs share a width from phones to 4K', async (t) => {
-  const page = await openCheckin(t);
+  const page = await openDayTrack(t);
   await page.setReducedMotion('reduce');
   await settle(page);
   await page.evaluate(() => {
     const date = document.querySelector('[aria-current="date"]').dataset.date;
-    localStorage.setItem('checkin.timeline.v1', JSON.stringify({
+    localStorage.setItem('daytrack.timeline.v1', JSON.stringify({
       activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min', goals: [] }],
       days: { [date]: { values: { walk: { amount: 30, effort: .29 } } } },
     }));
@@ -595,13 +595,13 @@ test('the day drawer and all dialogs share a width from phones to 4K', async (t)
 });
 
 test('an activity edit keeps old logs and the open log editor leaves room to swipe on mobile', async (t) => {
-  const page = await openCheckin(t);
+  const page = await openDayTrack(t);
   await page.setViewport(390, 844);
   await page.setReducedMotion('reduce');
   await settle(page);
   const today = await page.evaluate(() => {
     const date = document.querySelector('[aria-current="date"]').dataset.date;
-    localStorage.setItem('checkin.timeline.v1', JSON.stringify({
+    localStorage.setItem('daytrack.timeline.v1', JSON.stringify({
       activities: [{
         id: 'walk', text: 'Walk', type: 'minutes', unit: 'min',
         goals: [{ id: 'weekly-walk', metric: 'minutes', amount: 60, repeat: 'weekly', start: date }],
@@ -689,7 +689,7 @@ test('an activity edit keeps old logs and the open log editor leaves room to swi
     const picker = find('#day-content select');
     picker.selectedIndex = 1;
     picker.dispatchEvent(new Event('change'));
-    const { activities } = JSON.parse(localStorage.getItem('checkin.timeline.v1'));
+    const { activities } = JSON.parse(localStorage.getItem('daytrack.timeline.v1'));
     return { log, newUnit: find('#day-content .unit').textContent, goals: activities[0].goals };
   });
   assert.equal(reopened.log, 'Morning walk\n42 min');
@@ -697,9 +697,48 @@ test('an activity edit keeps old logs and the open log editor leaves room to swi
   assert.deepEqual(reopened.goals, [{ id: 'weekly-walk', metric: 'minutes', amount: 60, repeat: 'weekly', start: today }]);
 });
 
+test('the renamed app loads an existing journal and saves edits under the DayTrack key', async (t) => {
+  const page = await openDayTrack(t, () => {
+    const legacyKey = 'checkin.timeline.v1';
+    if (localStorage.getItem(legacyKey) !== null) return;
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    localStorage.setItem(legacyKey, JSON.stringify({
+      activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min' }],
+      days: { [today]: { values: { walk: { amount: 30, effort: .29 } } } },
+    }));
+  });
+  await settle(page);
+
+  const openToday = () => {
+    document.querySelector('[aria-current="date"]').click();
+    return document.querySelector('.log-row')?.innerText.trim();
+  };
+  assert.equal(await page.evaluate(openToday), 'Walk\n30 min');
+
+  await page.evaluate(async () => {
+    document.querySelector('.log-row').click();
+    const dialog = document.querySelector('dialog');
+    dialog.querySelector('input').value = '45';
+    dialog.querySelector('[type="submit"]').click();
+    for (let attempt = 0; dialog.open; attempt++) {
+      if (attempt === 90) throw new Error('Log edit did not save');
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+  });
+  assert.equal(await page.evaluate(() => {
+    const today = document.querySelector('[aria-current="date"]').dataset.date;
+    return JSON.parse(localStorage.getItem('daytrack.timeline.v1')).days[today].values.walk.amount;
+  }), 45);
+
+  await page.reload();
+  await settle(page);
+  assert.equal(await page.evaluate(openToday), 'Walk\n45 min');
+});
+
 test('a stale add form reports a conflict and keeps the saved log after reload', async (t) => {
-  const page = await openCheckin(t, () => {
-    const key = 'checkin.timeline.v1';
+  const page = await openDayTrack(t, () => {
+    const key = 'daytrack.timeline.v1';
     if (localStorage.getItem(key) === null) {
       localStorage.setItem(key, JSON.stringify({
         activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min' }], days: {},
@@ -728,22 +767,22 @@ test('a stale add form reports a conflict and keeps the saved log after reload',
 });
 
 test('unreadable journals stay in local storage and can be loaded again after repair', async (t) => {
-  const page = await openCheckin(t, () => {
-    const key = 'checkin.timeline.v1';
+  const page = await openDayTrack(t, () => {
+    const key = 'daytrack.timeline.v1';
     if (localStorage.getItem(key) === null) localStorage.setItem(key, '{broken');
   });
   await settle(page);
   const readState = () => page.evaluate(() => ({
     disabled: document.querySelector('#manage').disabled,
     error: document.querySelector('#journal-error:not([hidden]) [role="alert"]')?.textContent ?? null,
-    saved: localStorage.getItem('checkin.timeline.v1'),
+    saved: localStorage.getItem('daytrack.timeline.v1'),
   }));
   const error = 'Could not load your saved journal.';
   assert.deepEqual(await readState(), { disabled: true, error, saved: '{broken' });
 
   const invalidShape = '{"activities":[],"days":[]}';
   await page.evaluate(() => {
-    localStorage.setItem('checkin.timeline.v1', '{"activities":[],"days":[]}');
+    localStorage.setItem('daytrack.timeline.v1', '{"activities":[],"days":[]}');
     document.querySelector('#retry-journal').click();
   });
   await settle(page);
@@ -756,7 +795,7 @@ test('unreadable journals stay in local storage and can be loaded again after re
       activities: [{ id: 'walk', text: 'Walk', type: 'minutes', unit: 'min' }],
       days: { [today.dataset.date]: { values: { walk: { amount: 30, effort: .29 } } } },
     });
-    localStorage.setItem('checkin.timeline.v1', saved);
+    localStorage.setItem('daytrack.timeline.v1', saved);
     document.querySelector('#retry-journal').click();
     return saved;
   });
@@ -785,9 +824,9 @@ function controlTimelineEffects() {
       }
     };
   };
-  window.advanceCheckin = (duration) => { time += duration; };
+  window.advanceDayTrack = (duration) => { time += duration; };
   window.finishGlow = async () => {
-    window.advanceCheckin(10_000);
+    window.advanceDayTrack(10_000);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   };
   window.glowTravelTime = (path, start, end) => {
@@ -803,7 +842,7 @@ function controlTimelineEffects() {
 }
 
 test('stationary frames skip duplicate paints and reuse the curve for color changes and effects', async (t) => {
-  const page = await openCheckin(t, controlTimelineEffects);
+  const page = await openDayTrack(t, controlTimelineEffects);
   await page.setReducedMotion('no-preference');
   await settle(page);
   const rendering = await page.evaluate(async () => {
@@ -846,18 +885,18 @@ test('stationary frames skip duplicate paints and reuse the curve for color chan
     await waitForColorTick();
     const duplicatePaints = paints - beforeIdle;
 
-    window.advanceCheckin(1600);
+    window.advanceDayTrack(1600);
     await waitForColorTick();
     const recolored = paints > beforeIdle && curve === stationaryCurve;
 
     const beforeWave = paints;
     window.traverse(0, [.29, .95]);
-    window.advanceCheckin(1980);
+    window.advanceDayTrack(1980);
     await frame();
     const animated = paints > beforeWave && curve === stationaryCurve;
 
     today.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    window.advanceCheckin(300);
+    window.advanceDayTrack(300);
     await frame();
     return { duplicatePaints, recolored, animated, mostGradientStops, panned: curve !== stationaryCurve };
   });
@@ -869,7 +908,7 @@ test('stationary frames skip duplicate paints and reuse the curve for color chan
 });
 
 test('ambient effects pause out of focus and resume from the same frame', async (t) => {
-  const page = await openCheckin(t, controlTimelineEffects);
+  const page = await openDayTrack(t, controlTimelineEffects);
   await page.setReducedMotion('no-preference');
   await settle(page);
   const frames = await page.evaluate(async () => {
@@ -890,7 +929,7 @@ test('ambient effects pause out of focus and resume from the same frame', async 
 
     const idle = sample();
     window.traverse(0);
-    window.advanceCheckin(1400);
+    window.advanceDayTrack(1400);
     await frame();
     const moving = sample();
 
@@ -906,7 +945,7 @@ test('ambient effects pause out of focus and resume from the same frame', async 
       redraws++;
       clear(...args);
     };
-    window.advanceCheckin(5000);
+    window.advanceDayTrack(5000);
     window.traverse(1);
     await new Promise((resolve) => setTimeout(resolve, 120));
     const unfocused = sample();
@@ -915,7 +954,7 @@ test('ambient effects pause out of focus and resume from the same frame', async 
     document.dispatchEvent(new Event('visibilitychange'));
     focused = true;
     window.dispatchEvent(new Event('focus'));
-    window.advanceCheckin(5000);
+    window.advanceDayTrack(5000);
     await frame();
     const hiddenRedraws = redraws;
     const background = sample();
@@ -924,7 +963,7 @@ test('ambient effects pause out of focus and resume from the same frame', async 
     document.dispatchEvent(new Event('visibilitychange'));
     await frame();
     const returned = sample();
-    window.advanceCheckin(550);
+    window.advanceDayTrack(550);
     await frame();
     const resumed = sample();
     return { idle, moving, unfocused, background, hiddenRedraws, returned, resumed };
@@ -942,12 +981,12 @@ test('ambient effects pause out of focus and resume from the same frame', async 
 });
 
 test('new log sounds, ripples and node movement share a playback clock even on cold start', async (t) => {
-  const page = await openCheckin(t, controlTimelineEffects, () => {
+  const page = await openDayTrack(t, controlTimelineEffects, () => {
     const activities = ['Reading', 'Walking', 'Writing'].map((text) => ({
       id: text, text, type: 'minutes', unit: 'min', goals: [],
     }));
-    if (!localStorage.getItem('checkin.timeline.v1')) {
-      localStorage.setItem('checkin.timeline.v1', JSON.stringify({ activities, days: {} }));
+    if (!localStorage.getItem('daytrack.timeline.v1')) {
+      localStorage.setItem('daytrack.timeline.v1', JSON.stringify({ activities, days: {} }));
     }
 
     const fetchAsset = window.fetch;
@@ -1069,7 +1108,7 @@ test('new log sounds, ripples and node movement share a playback clock even on c
           await frame();
         }
         await frame();
-        window.advanceCheckin(600);
+        window.advanceDayTrack(600);
         await frame();
         if (!find(`[data-activity="${activity}"]`) || nodeRise() !== 0 || beforeRipple() !== beforeAlpha) {
           throw new Error('The first log should be saved without moving or pulsing while the audio device starts');
@@ -1097,7 +1136,7 @@ test('new log sounds, ripples and node movement share a playback clock even on c
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const radius = 6 + 35 * (1 - (1 - elapsed / sound.duration) ** 4);
       const onset = { rise: nodeRise(), ring: ringAlpha(radius, 3) };
-      window.advanceCheckin(4500);
+      window.advanceDayTrack(4500);
       await frame();
       const heldRise = nodeRise();
       seek(.25);
@@ -1167,7 +1206,7 @@ test('new log sounds, ripples and node movement share a playback clock even on c
 });
 
 test('swiping reveals the glow continuing at the same speed beyond either end of its route', async (t) => {
-  const page = await openCheckin(t, controlTimelineEffects);
+  const page = await openDayTrack(t, controlTimelineEffects);
 
   for (const direction of [1, -1]) {
     await settle(page);
@@ -1191,14 +1230,14 @@ test('swiping reveals the glow continuing at the same speed beyond either end of
       };
       window.stepGlow = async (duration) => {
         for (let remaining = duration; remaining > 0; remaining -= 40) {
-          window.advanceCheckin(Math.min(40, remaining));
+          window.advanceDayTrack(Math.min(40, remaining));
           await new Promise((resolve) => requestAnimationFrame(resolve));
         }
       };
       return Math.round(graph.getBoundingClientRect().top + height * .42);
     });
     await page.evaluate(direction > 0 ? () => window.traverse(0) : () => window.traverse(1));
-    await page.evaluate(() => { window.advanceCheckin(2500); });
+    await page.evaluate(() => { window.advanceDayTrack(2500); });
     await settle(page);
     const swipe = () => page.swipe(direction > 0 ? 1290 : 125, direction > 0 ? 125 : 1290, y);
     await swipe();
@@ -1232,7 +1271,7 @@ test('swiping reveals the glow continuing at the same speed beyond either end of
 });
 
 test('traveling glows cross the same fraction of the timeline on phones and desktops', async (t) => {
-  const page = await openCheckin(t, controlTimelineEffects);
+  const page = await openDayTrack(t, controlTimelineEffects);
   await page.setReducedMotion('no-preference');
 
   for (const width of [360, 1440, 2560]) {
@@ -1256,7 +1295,7 @@ test('traveling glows cross the same fraction of the timeline on phones and desk
       window.traverse(0);
       const positions = [];
       for (const elapsed of [1100, 900]) {
-        window.advanceCheckin(elapsed);
+        window.advanceDayTrack(elapsed);
         await new Promise((resolve) => requestAnimationFrame(resolve));
         positions.push(glowPosition());
       }
@@ -1270,7 +1309,7 @@ test('traveling glows cross the same fraction of the timeline on phones and desk
 });
 
 test('an off-center Split Pulse keeps its outgoing glows moving outward on a phone', async (t) => {
-  const page = await openCheckin(t, controlTimelineEffects);
+  const page = await openDayTrack(t, controlTimelineEffects);
   await page.setViewport(360, 780);
   await page.setReducedMotion('reduce');
   await settle(page);
@@ -1289,7 +1328,7 @@ test('an off-center Split Pulse keeps its outgoing glows moving outward on a pho
     const context = graph.getContext('2d');
     const todayX = parseFloat(document.querySelector('[aria-current="date"]').style.translate);
     async function rightGlowAfter(elapsed) {
-      window.advanceCheckin(elapsed);
+      window.advanceDayTrack(elapsed);
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const { width, height } = graph;
       const { data } = context.getImageData(0, Math.floor(height * .56), width, 1);
@@ -1309,7 +1348,7 @@ test('an off-center Split Pulse keeps its outgoing glows moving outward on a pho
 });
 
 test('traveling effects and silent ripples cover the same screen distance on flat and steep paths', async (t) => {
-  const page = await openCheckin(t);
+  const page = await openDayTrack(t);
   const result = await page.evaluate(async () => {
     const { createRipple, paintGraph } = await import('/graph.js');
     const canvas = document.createElement('canvas');
@@ -1433,7 +1472,7 @@ test('traveling effects and silent ripples cover the same screen distance on fla
 });
 
 test('traveling lights charge nodes on contact and fade after passing', async (t) => {
-  const page = await openCheckin(t);
+  const page = await openDayTrack(t);
   const result = await page.evaluate(async () => {
     const { paintGraph } = await import('/graph.js');
     const canvas = document.createElement('canvas');
@@ -1501,14 +1540,14 @@ test('traveling lights charge nodes on contact and fade after passing', async (t
 });
 
 test('random effects can follow, leave, pulse, and recolor the graph, or land on the busiest day', async (t) => {
-  const page = await openCheckin(t, controlTimelineEffects);
+  const page = await openDayTrack(t, controlTimelineEffects);
   await page.setReducedMotion('no-preference');
   await settle(page);
   const colorSteps = await page.evaluate(async () => {
     const accent = () => document.documentElement.style.getPropertyValue('--accent');
     const result = [accent()];
     for (const step of [120, 3000, 3000]) {
-      window.advanceCheckin(step);
+      window.advanceDayTrack(step);
       await new Promise((resolve) => setTimeout(() => requestAnimationFrame(resolve), 100));
       result.push(accent());
     }
@@ -1530,7 +1569,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const results = [sample()];
     for (let index = 0; index < 3; index++) {
       window.traverse(index);
-      window.advanceCheckin(3300 * progress);
+      window.advanceDayTrack(3300 * progress);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       results.push(sample());
       await window.finishGlow();
@@ -1561,7 +1600,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     };
     async function play(kind, elapsed, points, rolls) {
       window.traverse(kind, rolls);
-      window.advanceCheckin(elapsed);
+      window.advanceDayTrack(elapsed);
       await frame();
       const visible = points.map(([offset, y]) => sample(offset, y));
       await window.finishGlow();
@@ -1624,7 +1663,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     const duration = 3300 * .6;
     async function play(chance) {
       window.traverse(0, [chance, .95]);
-      window.advanceCheckin(duration);
+      window.advanceDayTrack(duration);
       await frame();
       const pixels = [-2, -2.35, 8].map(sample);
       const spark = document.documentElement.style.getPropertyValue('--spark');
@@ -1669,7 +1708,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       let continued = false;
       let enteredFrom = null;
       for (let time = 60; time <= 4900; time += 60) {
-        window.advanceCheckin(60);
+        window.advanceDayTrack(60);
         await frame();
         if (glow.hidden) {
           if (appeared) {
@@ -1745,7 +1784,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
 
     async function step(time) {
       tipPainted = false;
-      window.advanceCheckin(time);
+      window.advanceDayTrack(time);
       await frame();
     }
 
@@ -1807,7 +1846,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
           const day = offsetFor(position);
           return [day * width / 21, yFor(day)];
         }, 0, progress);
-        window.advanceCheckin(time - previous);
+        window.advanceDayTrack(time - previous);
         await frame();
         moving.push({ looping: !glow.hidden, opacity: tipOpacity(progress) });
         previous = time;
@@ -1837,14 +1876,14 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       window.traverse(kind, rolls);
       let seen = false;
       for (let time = 0; time < 4800 && !seen; time += 200) {
-        window.advanceCheckin(200);
+        window.advanceDayTrack(200);
         await frame();
         seen = !glow.hidden;
       }
       visited.push(seen);
     }
     document.querySelector('#close-day').click();
-    window.advanceCheckin(100);
+    window.advanceDayTrack(100);
     await frame();
     return { visited, hiddenAfterClose: glow.hidden };
   });
@@ -1863,7 +1902,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       const active = offset === -1 ? activities : activities.slice(0, 1);
       days[toDateKey(offset)] = { values: Object.fromEntries(active.map(({ id }) => [id, value])) };
     }
-    localStorage.setItem('checkin.timeline.v1', JSON.stringify({ activities, days }));
+    localStorage.setItem('daytrack.timeline.v1', JSON.stringify({ activities, days }));
   });
   await page.reload();
   await settle(page);
@@ -1894,7 +1933,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     window.traverse(1, [.99, .399]);
     let bottomLit = false;
     for (let time = 0; time < 4500 && !bottomLit; time += 100) {
-      window.advanceCheckin(100);
+      window.advanceDayTrack(100);
       await frame();
       if (glow.hidden) continue;
       const pixels = context.getImageData(x - 2, y - 2, 5, 5).data;
@@ -1924,7 +1963,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
     };
     let elapsed = 0;
     async function go(to) {
-      window.advanceCheckin(to - elapsed);
+      window.advanceDayTrack(to - elapsed);
       elapsed = to;
       await frame();
     }
@@ -2017,7 +2056,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
       if (tries === 90) throw new Error('Log save did not finish');
       await frame();
     }
-    window.advanceCheckin(140);
+    window.advanceDayTrack(140);
     await frame();
     return { before, after: sample() };
   });
@@ -2025,7 +2064,7 @@ test('random effects can follow, leave, pulse, and recolor the graph, or land on
 });
 
 test('Beacon Landing eases into place, blooms while still, and fades as it travels away', async (t) => {
-  const page = await openCheckin(t);
+  const page = await openDayTrack(t);
   const result = await page.evaluate(async () => {
     const { paintGraph } = await import('/graph.js');
     const canvas = document.createElement('canvas');
@@ -2097,7 +2136,7 @@ test('Beacon Landing eases into place, blooms while still, and fades as it trave
 });
 
 test('Beacon Landing bloom fades before the upper and lower graph edges', async (t) => {
-  const page = await openCheckin(t);
+  const page = await openDayTrack(t);
   const cases = await page.evaluate(async () => {
     const { paintGraph } = await import('/graph.js');
     const canvas = document.createElement('canvas');

@@ -1,10 +1,11 @@
 import * as journalData from './journal-data.js';
 
-const storageKey = 'checkin.timeline.v1';
+const storageKey = 'daytrack.timeline.v1';
+const legacyStorageKey = 'checkin.timeline.v1';
 
 function readJournal() {
   try {
-    const saved = localStorage.getItem(storageKey);
+    const saved = localStorage.getItem(storageKey) ?? localStorage.getItem(legacyStorageKey);
     if (saved === null) return { activities: [], days: {} };
     const journal = JSON.parse(saved);
     if (journalData.isJournal(journal)) return journal;
@@ -49,7 +50,9 @@ export const journalStore = {
   },
   subscribe(onChange) {
     window.addEventListener('storage', ({ key, storageArea }) => {
-      if ((key === storageKey || key === null) && storageArea === localStorage) onChange();
+      if (storageArea === localStorage && (key === null || key === storageKey || key === legacyStorageKey)) {
+        onChange();
+      }
     });
   },
 };
